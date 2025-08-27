@@ -1,0 +1,21 @@
+# Architecture rules for Go project
+# Enforce layered architecture
+
+# Internal packages should not be accessible from outside
+!internal/
+
+# Database access only through repository layer
+!database/sql
+!gorm
+
+# No direct fmt.Println in production code (use logger)
+fmt:!Println
+fmt:!Printf
+
+# No test methods in production code
+*:!Test*
+*:!Mock*
+
+# HTTP client access controlled
+!net/http:Get
+!net/http:Post

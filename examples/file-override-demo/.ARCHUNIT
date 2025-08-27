@@ -1,0 +1,22 @@
+# File-specific override demonstration
+
+# Base rules: Deny these packages everywhere
+!fmt:Println
+!fmt:Printf
+!testing
+!database/sql
+
+# File-specific overrides:
+
+# Allow test files to use testing and fmt.Print*
+[*_test.go] +testing
+[*_test.go] +fmt:Println
+[*_test.go] +fmt:Printf
+
+# Allow main.go to use fmt for demos
+[main.go] +fmt:Println
+[main.go] +fmt:Printf
+
+# Allow repository layer to use database
+[*_repository.go] +database/sql
+[repository/*.go] +database/sql

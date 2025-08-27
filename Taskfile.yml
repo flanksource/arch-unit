@@ -1,0 +1,191 @@
+version: '3'
+
+vars:
+  BINARY_NAME: arch-unit
+  GO_VERSION: 1.23
+  MAIN_PACKAGE: .
+  LDFLAGS: -s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}} -X main.dirty={{.DIRTY}}
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  _ginkgo:
+    internal: true
+    desc: Base ginkgo command that passes through all CLI args
+    vars:
+      FLAGS: '{{.FLAGS | default ""}}'
+      PATHS: '{{.PATHS | default "./..."}}'
+    cmds:
+      - ginkgo run {{.FLAGS}} {{.CLI_ARGS}} {{.PATHS}}
+    env:
+      CGO_ENABLED: '{{.CGO_ENABLED | default "1"}}'
+
+  build:
+    desc: Build the binary
+    vars:
+      VERSION:
+        sh: git describe --tags --always 2>/dev/null || echo "dev"
+      COMMIT:
+        sh: git rev-parse --short HEAD 2>/dev/null || echo "unknown"
+      DATE:
+        sh: date -u '+%Y-%m-%dT%H:%M:%SZ'
+      DIRTY:
+        sh: if [ -n "$(git status --porcelain 2>/dev/null)" ]; then echo "true"; else echo "false"; fi
+    cmds:
+      - go build -ldflags "{{.LDFLAGS}}" -o {{.BINARY_NAME}} {{.MAIN_PACKAGE}}
+    sources:
+      - ./**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - ./{{.BINARY_NAME}}
+
+  install:
+    desc: Install the binary to $GOPATH/bin
+    vars:
+      VERSION:
+        sh: git describe --tags --always 2>/dev/null || echo "dev"
+      COMMIT:
+        sh: git rev-parse --short HEAD 2>/dev/null || echo "unknown"
+      DATE:
+        sh: date -u '+%Y-%m-%dT%H:%M:%SZ'
+      DIRTY:
+        sh: if [ -n "$(git status --porcelain 2>/dev/null)" ]; then echo "true"; else echo "false"; fi
+    cmds:
+      - go install -ldflags "{{.LDFLAGS}}" {{.MAIN_PACKAGE}}
+
+  test:
+    desc: Run tests
+    cmds:
+      # Use centralized exclusion patterns aligned with linter exclusions
+      - go test -v -race -coverprofile=coverage.out $(go list ./... | grep -v '/examples/' | grep -v '/hack/' | grep -v '/vendor/' | grep -v '/build/' | grep -v '/dist/' | grep -v '/__pycache__/' | grep -v '/.git/' | grep -v '/node_modules/')
+    env:
+      CGO_ENABLED: 1
+
+  test:unit:
+    desc: Run unit tests only
+    cmds:
+      # Use centralized exclusion patterns aligned with linter exclusions  
+      - go test -v -short $(go list ./... | grep -v '/examples/' | grep -v '/hack/' | grep -v '/vendor/' | grep -v '/build/' | grep -v '/dist/' | grep -v '/__pycache__/' | grep -v '/.git/' | grep -v '/node_modules/')
+
+  test:integration:
+    desc: Run integration tests
+    cmds:
+      # Use centralized exclusion patterns aligned with linter exclusions
+      - go test -v -run Integration $(go list ./... | grep -v '/examples/' | grep -v '/hack/' | grep -v '/vendor/' | grep -v '/build/' | grep -v '/dist/' | grep -v '/__pycache__/' | grep -v '/.git/' | grep -v '/node_modules/')
+
+  test:coverage:
+    desc: Run tests with coverage report
+    cmds:
+      # Use centralized exclusion patterns aligned with linter exclusions
+      - go test -v -race -coverprofile=coverage.out $(go list ./... | grep -v '/examples/' | grep -v '/hack/' | grep -v '/vendor/' | grep -v '/build/' | grep -v '/dist/' | grep -v '/__pycache__/' | grep -v '/.git/' | grep -v '/node_modules/')
+      - go tool cover -html=coverage.out -o coverage.html
+      - echo "Coverage report generated at coverage.html"
+
+  lint:
+    desc: Run linters
+    cmds:
+      - cmd: golangci-lint run
+        ignore_error: true
+      - go vet ./...
+      - go mod tidy
+
+  fmt:
+    desc: Format code
+    cmds:
+      - go fmt ./...
+      - gofmt -s -w .
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -f {{.BINARY_NAME}}
+      - rm -f coverage.out coverage.html
+      - rm -rf dist/
+      - go clean -cache
+
+  mod:
+    desc: Download and tidy modules
+    cmds:
+      - go mod download
+      - go mod tidy
+
+  run:
+    desc: Run the application
+    deps: [build]
+    cmds:
+      - ./{{.BINARY_NAME}} {{.CLI_ARGS}}
+
+  run:check:
+    desc: Run check on current directory
+    deps: [build]
+    cmds:
+      - ./{{.BINARY_NAME}} check {{.CLI_ARGS}}
+
+  run:init:
+    desc: Initialize .ARCHUNIT file
+    deps: [build]
+    cmds:
+      - ./{{.BINARY_NAME}} init {{.CLI_ARGS}}
+
+  dev:
+    desc: Run in development mode with live reload
+    cmds:
+      - air
+
+  docker:build:
+    desc: Build Docker image
+    cmds:
+      - docker build -t {{.BINARY_NAME}}:latest .
+
+  docker:run:
+    desc: Run Docker container
+    deps: [docker:build]
+    cmds:
+      - docker run --rm -v $(pwd):/workspace {{.BINARY_NAME}}:latest check /workspace
+
+  release:
+    desc: Create a new release
+    cmds:
+      - goreleaser release --clean
+
+  release:snapshot:
+    desc: Create a snapshot release
+    cmds:
+      - goreleaser release --snapshot --clean
+
+  deps:check:
+    desc: Check for dependency updates
+    cmds:
+      - go list -u -m all
+
+  deps:update:
+    desc: Update dependencies
+    cmds:
+      - go get -u ./...
+      - go mod tidy
+
+  ci:
+    desc: Run CI pipeline locally
+    cmds:
+      - task: fmt
+      - task: lint
+      - task: test
+      - task: build
+
+  example:go:
+    desc: Run example on Go project
+    deps: [build]
+    cmds:
+      - ./{{.BINARY_NAME}} init examples/go-project
+      - ./{{.BINARY_NAME}} check examples/go-project
+
+  example:python:
+    desc: Run example on Python project
+    deps: [build]
+    cmds:
+      - ./{{.BINARY_NAME}} init examples/python-project
+      - ./{{.BINARY_NAME}} check examples/python-project

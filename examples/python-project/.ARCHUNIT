@@ -1,0 +1,23 @@
+# Architecture rules for Python project
+# Enforce clean architecture
+
+# Internal modules should not be accessible
+!internal.
+
+# Database access only through repository layer
+!sqlite3
+!psycopg2
+!sqlalchemy
+!django.db
+
+# No direct print statements (use logging)
+!print
+
+# Test modules not in production
+!unittest
+!pytest
+!mock
+
+# HTTP client access controlled
+!requests
+!urllib

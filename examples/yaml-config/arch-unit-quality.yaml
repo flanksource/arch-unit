@@ -1,0 +1,300 @@
+# arch-unit-quality.yaml - Extended Configuration with Quality Analysis
+#
+# This file demonstrates the new quality analysis features alongside
+# existing architecture constraints and linter integrations.
+
+# Global settings
+version: "1.0"
+debounce: "30s" # Global debounce setting
+
+# Path-based rule configurations with quality analysis
+rules:
+  # Root level rules (apply to all files unless overridden)
+  "**":
+    imports:
+      - "!internal/" # Deny access to internal packages
+      - "!testing" # No test packages in production
+      - "!*_test" # No test files
+      - "!fmt:Println" # No fmt.Println, use logger
+      - "!fmt:Printf" # No fmt.Printf, use logger
+
+  # Go files with quality analysis
+  "**/*.go":
+    imports:
+      - "!fmt:Print*" # No fmt.Print functions
+    quality:
+      max_file_length: 400
+      max_function_name_length: 50
+      max_variable_name_length: 30
+      max_parameter_name_length: 25
+      disallowed_names:
+        - pattern: "temp*"
+          reason: "Temporary names are not descriptive"
+        - pattern: "*Manager"
+          reason: "Manager suffix is overused and vague"
+        - pattern: "data*"
+          reason: "Data prefix is too generic"
+        - pattern: "*Util"
+          reason: "Util suffix indicates poor design"
+      comment_analysis:
+        enabled: true
+        word_limit: 10
+        ai_model: "claude-3-haiku-20240307"
+        min_descriptive_score: 0.7
+        check_verbosity: true
+
+  # Test files can use testing packages and have more lenient quality rules
+  "**/*_test.go":
+    imports:
+      - "+testing" # Allow testing package
+      - "+github.com/stretchr/testify" # Allow testify
+      - "+fmt:Println" # Allow fmt.Println in tests
+      - "+fmt:Printf" # Allow fmt.Printf in tests
+    quality:
+      max_file_length: 600 # Tests can be longer
+      max_function_name_length: 80 # Test function names can be descriptive
+      max_variable_name_length: 40
+      max_parameter_name_length: 30
+      disallowed_names:
+        - pattern: "temp*"
+          reason: "Even in tests, use descriptive names"
+      comment_analysis:
+        enabled: true
+        word_limit: 15 # Tests may need more explanation
+        ai_model: "claude-3-haiku-20240307"
+        min_descriptive_score: 0.6 # Slightly more lenient
+        check_verbosity: true
+    debounce: "10s" # Faster checks for test files
+    linters:
+      golangci-lint:
+        args: ["--tests=true"]
+
+  # Main files can use os.Exit and fmt - less strict quality rules
+  "**/main.go":
+    imports:
+      - "+os:Exit" # Allow os.Exit in main
+      - "+fmt:Println" # Allow fmt for demos
+      - "+fmt:Printf"
+    quality:
+      max_file_length: 200 # Main files should be simple
+      max_function_name_length: 40
+      comment_analysis:
+        enabled: true
+        word_limit: 8
+        min_descriptive_score: 0.8 # Main should be well documented
+    linters:
+      golangci-lint:
+        args: ["--disable=forbidigo"]
+
+  # Repository layer can access database
+  "**/*_repository.go":
+    imports:
+      - "+database/sql" # Allow database access
+      - "+github.com/lib/pq" # Allow PostgreSQL driver
+      - "+gorm.io/gorm" # Allow GORM
+    quality:
+      max_file_length: 300
+      max_function_name_length: 60 # Database methods can be descriptive
+      disallowed_names:
+        - pattern: "*DAO"
+          reason: "Use Repository pattern instead of DAO"
+        - pattern: "*Model"
+          reason: "Entity or Domain objects, not Model"
+
+  "repository/**":
+    imports:
+      - "+database/sql"
+      - "+github.com/lib/pq"
+      - "+gorm.io/gorm"
+    quality:
+      max_file_length: 300
+      comment_analysis:
+        enabled: true
+        word_limit: 12
+        min_descriptive_score: 0.8 # Database code should be well documented
+
+  # Service layer restrictions with strict quality rules
+  "**/*_service.go":
+    imports:
+      - "!database/sql" # Services should not access DB directly
+      - "!net/http:Get" # No direct HTTP calls
+      - "!net/http:Post"
+    quality:
+      max_file_length: 250 # Keep services focused
+      max_function_name_length: 45
+      disallowed_names:
+        - pattern: "*Handler"
+          reason: "Handlers should be in separate layer"
+        - pattern: "*Controller"
+          reason: "Controllers should be in separate layer"
+      comment_analysis:
+        enabled: true
+        word_limit: 8
+        min_descriptive_score: 0.8 # Business logic needs good documentation
+    linters:
+      golangci-lint:
+        args: ["--enable=cyclop", "--cyclop.max-complexity=10"]
+
+  # API/Handler layer
+  "api/**":
+    imports:
+      - "+net/http" # Allow HTTP in API layer
+      - "+github.com/gin-gonic/gin" # Allow Gin framework
+    quality:
+      max_file_length: 350
+      max_function_name_length: 55 # HTTP handlers can be descriptive
+      disallowed_names:
+        - pattern: "*Service"
+          reason: "Services should be in separate layer"
+      comment_analysis:
+        enabled: true
+        word_limit: 10
+        min_descriptive_score: 0.75
+    linters:
+      golangci-lint:
+        args: ["--enable=bodyclose", "--enable=noctx"]
+
+  # Internal packages (stricter rules)
+  "internal/**":
+    imports:
+      - "!fmt:Print*" # No fmt.Print* in internal
+      - "!log:Print*" # No log.Print* in internal
+    quality:
+      max_file_length: 300
+      max_function_name_length: 45
+      max_variable_name_length: 25
+      max_parameter_name_length: 20
+      disallowed_names:
+        - pattern: "*Helper"
+          reason: "Helper is too generic, be more specific"
+        - pattern: "*Common"
+          reason: "Common is too generic, be more specific"
+      comment_analysis:
+        enabled: true
+        word_limit: 8
+        min_descriptive_score: 0.85 # Internal code should be very well documented
+    debounce: "45s"
+    linters:
+      golangci-lint:
+        args: ["--enable=gocritic", "--enable=gosec"]
+
+  # Python-specific rules with quality analysis
+  "**/*.py":
+    imports:
+      - "!django.db" # No direct Django DB access
+      - "!sqlalchemy" # No direct SQLAlchemy
+    quality:
+      max_file_length: 400
+      max_function_name_length: 50
+      max_variable_name_length: 30
+      max_parameter_name_length: 25
+      disallowed_names:
+        - pattern: "temp*"
+          reason: "Use descriptive names in Python"
+        - pattern: "*mgr"
+          reason: "Avoid abbreviations like 'mgr'"
+        - pattern: "*obj"
+          reason: "Object suffix is redundant in Python"
+      comment_analysis:
+        enabled: true
+        word_limit: 12 # Python docstrings can be longer
+        ai_model: "claude-3-haiku-20240307"
+        min_descriptive_score: 0.75
+        check_verbosity: true
+    linters:
+      ruff:
+        args: ["--select=E,W,F,UP,N", "--ignore=E501"]
+
+  # Python test files
+  "**/*test*.py":
+    imports:
+      - "+unittest" # Allow unittest
+      - "+pytest" # Allow pytest
+      - "+mock" # Allow mocking
+    quality:
+      max_file_length: 600
+      max_function_name_length: 80 # Test methods can be very descriptive
+      comment_analysis:
+        enabled: true
+        word_limit: 15
+        min_descriptive_score: 0.6
+    linters:
+      ruff:
+        args: ["--select=E,W,F", "--ignore=E501,S101"] # Ignore assert warnings
+
+  # Python models can use ORM
+  "**/models.py":
+    imports:
+      - "+django.db"
+      - "+sqlalchemy"
+    quality:
+      max_file_length: 500
+      comment_analysis:
+        enabled: true
+        word_limit: 10
+        min_descriptive_score: 0.8 # Model fields should be well documented
+
+  "models/**":
+    imports:
+      - "+django.db"
+      - "+sqlalchemy"
+    quality:
+      max_file_length: 350
+      comment_analysis:
+        enabled: true
+
+# Global linter settings
+linters:
+  golangci-lint:
+    enabled: true
+    args: ["run"]
+    output_format: "json"
+
+  ruff:
+    enabled: true
+    debounce: "30s"
+    args: ["--format=json"]
+    output_format: "json"
+
+  pyright:
+    enabled: false # Disabled by default
+    args: ["--outputjson"]
+    output_format: "json"
+
+  eslint:
+    enabled: false # Disabled by default
+    args: ["--format=json"]
+    output_format: "json"
+
+  markdownlint:
+    enabled: false # Disabled by default
+    args: ["--json"]
+    output_format: "json"
+
+  vale:
+    enabled: false # Disabled by default
+    args: ["--output=JSON"]
+    output_format: "json"
+
+  black:
+    enabled: false
+    debounce: "30s"
+    args: ["--check", "--diff"]
+    output_format: "text"
+
+  mypy:
+    enabled: false # Disabled by default
+    debounce: "45s"
+    args: ["--show-error-codes", "--show-column-numbers"]
+    output_format: "text"
+
+  # Custom make targets
+  "make lint":
+    enabled: false
+    debounce: "60s"
+    output_format: "text"
+
+  "make test":
+    enabled: false # Don't run automatically
+    debounce: "120s"
+    output_format: "text"

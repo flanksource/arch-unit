@@ -1,0 +1,168 @@
+# arch-unit.yaml - Architecture Rules Configuration
+# 
+# This file defines architectural constraints and linter integrations
+# for your codebase using a structured YAML format.
+
+# Global settings
+version: "1.0"
+debounce: "30s"  # Global debounce setting
+
+# Path-based rule configurations
+# Keys can be:
+# - Specific files: "cmd/main.go"  
+# - Directory patterns: "internal/**"
+# - Glob patterns: "**/*_test.go"
+rules:
+  # Root level rules (apply to all files unless overridden)
+  "**":
+    imports:
+      - "!internal/"           # Deny access to internal packages
+      - "!testing"            # No test packages in production
+      - "!*_test"             # No test files
+      - "!fmt:Println"        # No fmt.Println, use logger
+      - "!fmt:Printf"         # No fmt.Printf, use logger
+    debounce: "30s"           # Override global debounce for this pattern
+    linters:
+      golangci-lint:
+        debounce: "60s"       # Linter-specific debounce
+        args: ["--fast", "--timeout=5m"]
+      ruff:
+        debounce: "30s"
+        args: ["--select=E,W,F"]
+      "make lint":            # Custom make target
+        debounce: "45s"
+
+  # Test files can use testing packages
+  "**/*_test.go":
+    imports:
+      - "+testing"            # Allow testing package
+      - "+github.com/stretchr/testify"  # Allow testify
+      - "+fmt:Println"        # Allow fmt.Println in tests
+      - "+fmt:Printf"         # Allow fmt.Printf in tests
+    debounce: "10s"           # Faster checks for test files
+    linters:
+      golangci-lint:
+        args: ["--fast", "--tests=true"]
+
+  # Main files can use os.Exit and fmt
+  "**/main.go":
+    imports:
+      - "+os:Exit"            # Allow os.Exit in main
+      - "+fmt:Println"        # Allow fmt for demos
+      - "+fmt:Printf"
+    linters:
+      golangci-lint:
+        args: ["--fast", "--disable=forbidigo"]
+
+  # Repository layer can access database
+  "**/*_repository.go":
+    imports:
+      - "+database/sql"       # Allow database access
+      - "+github.com/lib/pq"  # Allow PostgreSQL driver
+      - "+gorm.io/gorm"       # Allow GORM
+    
+  "repository/**":
+    imports:
+      - "+database/sql"
+      - "+github.com/lib/pq"
+      - "+gorm.io/gorm"
+
+  # Service layer restrictions
+  "**/*_service.go":
+    imports:
+      - "!database/sql"       # Services should not access DB directly
+      - "!net/http:Get"       # No direct HTTP calls
+      - "!net/http:Post"
+    linters:
+      golangci-lint:
+        args: ["--enable=cyclop", "--cyclop.max-complexity=10"]
+
+  # API/Handler layer
+  "api/**":
+    imports:
+      - "+net/http"           # Allow HTTP in API layer
+      - "+github.com/gin-gonic/gin"  # Allow Gin framework
+    linters:
+      golangci-lint:
+        args: ["--enable=bodyclose", "--enable=noctx"]
+
+  # Internal packages (stricter rules)
+  "internal/**":
+    imports:
+      - "!fmt:Print*"         # No fmt.Print* in internal
+      - "!log:Print*"         # No log.Print* in internal
+    debounce: "45s"
+    linters:
+      golangci-lint:
+        args: ["--enable=gocritic", "--enable=gosec"]
+
+  # Python-specific rules
+  "**/*.py":
+    imports:
+      - "!django.db"          # No direct Django DB access
+      - "!sqlalchemy"         # No direct SQLAlchemy
+    linters:
+      ruff:
+        args: ["--select=E,W,F,UP,N", "--ignore=E501"]
+      black:
+        args: ["--line-length=88"]
+      mypy:
+        args: ["--strict"]
+
+  # Python test files
+  "**/*test*.py":
+    imports:
+      - "+unittest"           # Allow unittest
+      - "+pytest"             # Allow pytest
+      - "+mock"               # Allow mocking
+    linters:
+      ruff:
+        args: ["--select=E,W,F", "--ignore=E501,S101"]  # Ignore assert warnings
+
+  # Python models can use ORM
+  "**/models.py":
+    imports:
+      - "+django.db"
+      - "+sqlalchemy"
+    
+  "models/**":
+    imports:
+      - "+django.db"
+      - "+sqlalchemy"
+
+# Global linter settings
+linters:
+  golangci-lint:
+    enabled: true
+    debounce: "60s"
+    args: ["--timeout=10m", "--issues-exit-code=0"]
+    output_format: "json"
+  
+  ruff:
+    enabled: true
+    debounce: "30s"
+    args: ["--format=json"]
+    output_format: "json"
+  
+  black:
+    enabled: true
+    debounce: "30s"
+    args: ["--check", "--diff"]
+    output_format: "text"
+  
+  mypy:
+    enabled: false  # Disabled by default
+    debounce: "45s"
+    args: ["--show-error-codes", "--show-column-numbers"]
+    output_format: "text"
+  
+  # Custom make targets
+  "make lint":
+    enabled: true
+    debounce: "60s"
+    output_format: "text"
+  
+  "make test":
+    enabled: false  # Don't run automatically
+    debounce: "120s"
+    output_format: "text"

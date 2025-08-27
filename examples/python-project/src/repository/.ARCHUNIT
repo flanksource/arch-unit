@@ -1,0 +1,5 @@
+# Repository layer can access database
++sqlite3
++psycopg2
++sqlalchemy
++django.db

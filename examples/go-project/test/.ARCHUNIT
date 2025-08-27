@@ -1,0 +1,7 @@
+# Test directory can use test utilities
++testing
++*_test
++internal/
++fmt:Println
++*:Test*
++*:Mock*
