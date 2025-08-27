@@ -17,8 +17,10 @@ import (
 
 // Scanner orchestrates dependency scanning across multiple languages
 type Scanner struct {
-	Registry   *analysis.DependencyRegistry
-	gitManager git.GitRepositoryManager
+	Registry     *analysis.DependencyRegistry
+	gitManager   git.GitRepositoryManager
+	GitFilters   []string // Git URL filters for depth scanning
+	NameFilters  []string // Package name filters for depth scanning
 
 	// Tracking for two-phase scanning
 	visited        map[string]*git.VisitedDep

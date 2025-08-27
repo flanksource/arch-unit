@@ -234,6 +234,8 @@ type ASTNode struct {
 	StartLine            int           `json:"start_line"`
 	EndLine              int           `json:"end_line"`
 	CyclomaticComplexity int           `json:"cyclomatic_complexity"`
+	ParameterCount       int           `json:"parameter_count"`
+	ReturnCount          int           `json:"return_count"`
 	LineCount            int           `json:"line_count"`
 	Imports              []string      `json:"imports,omitempty"`       // List of import paths
 	Parameters           []Parameter   `json:"parameters,omitempty"`    // Detailed parameter information

@@ -50,7 +50,7 @@ func NewResolutionServiceWithTTL(astCache *cache.ASTCache, cacheTTL time.Duratio
 func GetResolutionService() (*ResolutionService, error) {
 	var err error
 	resolutionServiceOnce.Do(func() {
-		astCache, astErr := cache.GetASTCache()
+		astCache, astErr := cache.NewASTCache()
 		if astErr != nil {
 			err = astErr
 			return

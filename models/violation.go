@@ -6,19 +6,19 @@ import (
 )
 
 type Violation struct {
-	File             string
-	Line             int
-	Column           int
-	CallerPackage    string
-	CallerMethod     string
-	CalledPackage    string
-	CalledMethod     string
-	Rule             *Rule
-	Message          string
-	Fixable          bool
-	FixApplicability string // e.g., "safe", "manual"
-	Source           string // e.g., "arch-unit", "golangci-lint"
-	CreatedAt        time.Time
+	File              string    `json:"file,omitempty"`
+	Line              int       `json:"line,omitempty"`
+	Column            int       `json:"column,omitempty"`
+	CallerPackage     string    `json:"caller_package,omitempty"`
+	CallerMethod      string    `json:"caller_method,omitempty"`
+	CalledPackage     string    `json:"called_package,omitempty"`
+	CalledMethod      string    `json:"called_method,omitempty"`
+	Rule              *Rule     `json:"rule,omitempty"`
+	Message           string    `json:"message,omitempty"`
+	Source            string    `json:"source,omitempty"` // Source tool that reported the violation (e.g., arch-unit, golangci-lint)
+	Fixable           bool      `json:"fixable,omitempty"`
+	FixApplicability  string    `json:"fix_applicability,omitempty"`
+	CreatedAt         time.Time `json:"created_at,omitempty"`
 }
 
 func (v Violation) String() string {
@@ -37,7 +37,7 @@ func (v Violation) String() string {
 }
 
 type AnalysisResult struct {
-	Violations []Violation
-	FileCount  int
-	RuleCount  int
+	Violations []Violation `json:"violations,omitempty"`
+	FileCount  int         `json:"file_count,omitempty"`
+	RuleCount  int         `json:"rule_count,omitempty"`
 }

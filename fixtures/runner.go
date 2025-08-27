@@ -2,22 +2,24 @@ package fixtures
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/task"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
+	"github.com/flanksource/gomplate/v3"
+	"github.com/samber/lo"
 )
 
 // RunnerOptions configures the fixture runner
 type RunnerOptions struct {
 	Paths      []string // Fixture file paths/patterns
-	Format     string   // Output format: table, tree, json
+	Format     string   // Output format: tree, table, json, yaml, csv
 	Filter     string   // Filter tests by name pattern (glob)
 	NoColor    bool     // Disable colored output
 	WorkDir    string   // Working directory
@@ -31,7 +33,7 @@ type Runner struct {
 	fixtures    []FixtureTest
 	evaluator   *CELEvaluator
 	taskManager *clicky.TaskManager
-	tree        *FixtureTree // Hierarchical tree structure
+	tree        *FixtureNode // Hierarchical tree structure
 }
 
 // NewRunner creates a new fixture runner
@@ -55,7 +57,10 @@ func NewRunner(opts RunnerOptions) (*Runner, error) {
 		fixtures:    []FixtureTest{},
 		evaluator:   evaluator,
 		taskManager: taskManager,
-		tree:        NewFixtureTree(),
+		tree: &FixtureNode{
+			Name: "Fixtures",
+			Type: SectionNode,
+		},
 	}, nil
 }
 
@@ -99,6 +104,7 @@ func (r *Runner) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to format results: %w", err)
 	}
+	clicky.WaitForGlobalCompletionSilent()
 
 	fmt.Println(output)
 
@@ -110,7 +116,7 @@ func (r *Runner) Run() error {
 	return nil
 }
 
-// parseFixtureFiles parses all fixture files from the provided paths
+// parseFixtureFiles parses all fixture files from the provided paths and builds tree structure
 func (r *Runner) parseFixtureFiles() error {
 	var allFixtures []FixtureTest
 
@@ -127,6 +133,18 @@ func (r *Runner) parseFixtureFiles() error {
 		}
 
 		for _, filepath := range matches {
+			// Parse with tree structure
+			fileTree, err := ParseMarkdownFixturesWithTree(filepath)
+			if err != nil {
+				return fmt.Errorf("failed to parse fixture file '%s': %w", filepath, err)
+			}
+
+			// Merge file tree into main tree
+			if fileTree != nil {
+				r.tree.AddChild(fileTree)
+			}
+
+			// Also maintain flat fixture list for backwards compatibility
 			fixtures, err := ParseMarkdownFixtures(filepath)
 			if err != nil {
 				return fmt.Errorf("failed to parse fixture file '%s': %w", filepath, err)
@@ -143,7 +161,10 @@ func (r *Runner) parseFixtureFiles() error {
 	}
 
 	r.fixtures = allFixtures
-	logger.Infof("Loaded %d total fixtures", len(allFixtures))
+
+	// Log the loaded fixtures
+	fileCount := len(r.tree.Children)
+	logger.Infof("Loaded %d total fixtures in %d files", len(allFixtures), fileCount)
 	return nil
 }
 
@@ -167,10 +188,10 @@ func (r *Runner) filterTests() {
 }
 
 // executeFixtures runs all fixtures using TaskManager concurrency
-func (r *Runner) executeFixtures() (*FixtureResults, error) {
-	results := &FixtureResults{
-		Tests:   make([]FixtureResult, 0, len(r.fixtures)),
-		Summary: ResultSummary{},
+func (r *Runner) executeFixtures() (*FixtureGroup, error) {
+	results := &FixtureGroup{
+		Tests:   make([]FixtureNode, 0, len(r.fixtures)),
+		Summary: Stats{},
 	}
 
 	// Check if any fixtures need build
@@ -188,25 +209,20 @@ func (r *Runner) executeFixtures() (*FixtureResults, error) {
 		)
 	}
 
-	// Create tasks for each fixture using the tree structure
-	testNodes := r.tree.AllTests
-	tasks := make([]*clicky.Task, 0, len(testNodes))
 	taskToNodeMap := make(map[*clicky.Task]*FixtureNode)
-
-	for _, testNode := range testNodes {
-		if testNode.Test != nil {
-			task := r.createFixtureTask(*testNode.Test, buildTask)
+	var tasks []*clicky.Task
+	r.tree.Walk(func(node *FixtureNode) {
+		if node.Test != nil {
+			task := r.createFixtureTask(*node.Test, buildTask)
 			tasks = append(tasks, task)
-			taskToNodeMap[task] = testNode
+			taskToNodeMap[task] = node
 		}
-	}
+	})
 
 	// Wait for all tasks to complete and collect results
 	logger.Debugf("Waiting for %d tasks to complete", len(tasks))
-	for i, task := range tasks {
-		logger.Debugf("Waiting for task %d/%d: %s", i+1, len(tasks), task.Name())
+	for _, task := range tasks {
 		waitResult := task.WaitFor()
-		logger.Debugf("Task %s completed with status: %v", task.Name(), waitResult.Status)
 		result := r.taskResultToFixtureResult(task, waitResult)
 
 		// Create a FixtureNode for the result
@@ -220,25 +236,13 @@ func (r *Runner) executeFixtures() (*FixtureResults, error) {
 		// Update the corresponding tree node with results
 		if testNode, exists := taskToNodeMap[task]; exists {
 			testNode.Results = &result
-			logger.Debugf("Updated node %s with result: %v (duration: %v)", testNode.Name, result.Status, result.Duration)
 		} else {
 			logger.Warnf("No tree node found for task: %s", task.Name())
 		}
 
-		// Update summary
-		results.Summary.Total++
-		switch result.Status {
-		case "PASS":
-			results.Summary.Passed++
-		case "FAIL":
-			results.Summary.Failed++
-		case "SKIP":
-			results.Summary.Skipped++
-		}
 	}
 
-	// Update tree statistics after all tests complete
-	r.tree.UpdateStats()
+	r.tree.Stats = lo.ToPtr(r.tree.GetStats())
 
 	return results, nil
 }
@@ -253,11 +257,23 @@ func (r *Runner) getBuildCommand() string {
 	return ""
 }
 
-// executeBuildCommand runs the build command with context cancellation
+// executeBuildCommand runs the build command with context cancellation and gomplate templating
 func (r *Runner) executeBuildCommand(ctx flanksourceContext.Context, buildCmd string) error {
-	ctx.Infof("🔨 Build command: %s", buildCmd)
+	// Prepare template context for build command
+	templateData := make(map[string]interface{})
+	templateData["PWD"] = r.options.WorkDir
+	templateData["WorkDir"] = r.options.WorkDir
 
-	cmd := exec.CommandContext(ctx, "sh", "-c", buildCmd)
+	// Template the build command
+	templatedCmd, err := renderBuildTemplate(buildCmd, templateData)
+	if err != nil {
+		ctx.Errorf("Failed to template build command: %v", err)
+		return fmt.Errorf("failed to template build command: %w", err)
+	}
+
+	ctx.Infof("🔨 Build command: %s", templatedCmd)
+
+	cmd := exec.CommandContext(ctx, "sh", "-c", templatedCmd)
 	cmd.Dir = r.options.WorkDir
 
 	var buildOut bytes.Buffer
@@ -278,67 +294,36 @@ func (r *Runner) executeBuildCommand(ctx flanksourceContext.Context, buildCmd st
 
 // createFixtureTask creates a task for a single fixture
 func (r *Runner) createFixtureTask(fixture FixtureTest, buildTask *clicky.Task) *clicky.Task {
-	taskName := r.getFixtureTaskName(fixture)
-
-	// Prepare task options
-	opts := []clicky.TaskOption{
-		clicky.WithTaskTimeout(2 * time.Minute), // Default 2-minute timeout per test
-	}
-
-	// Add build task as dependency if it exists
-	if buildTask != nil {
-		opts = append(opts, clicky.WithDependencies(buildTask))
-	}
-
-	task := r.taskManager.StartWithResult(taskName,
+	t := r.taskManager.StartWithResult(fixture.String(),
 		func(ctx flanksourceContext.Context, task *clicky.Task) (interface{}, error) {
 			// Execute the fixture (build task dependency is handled by TaskManager)
-			return r.executeFixture(ctx, fixture)
+			result, err := r.executeFixture(ctx, fixture)
+			return result, err
 		},
-		opts...,
+		clicky.WithDependencies(buildTask),
+		clicky.WithTaskTimeout(2*time.Minute),
 	)
 
-	return task
-}
-
-// getFixtureTaskName creates a descriptive task name
-func (r *Runner) getFixtureTaskName(fixture FixtureTest) string {
-	command := r.getFixtureCommand(fixture)
-	return fmt.Sprintf("%s: %s", fixture.Name, command)
-}
-
-// getFixtureCommand extracts the command string from a fixture
-func (r *Runner) getFixtureCommand(fixture FixtureTest) string {
-	if fixture.Exec != "" {
-		if fixture.CLIArgs != "" {
-			return fmt.Sprintf("%s %s", fixture.Exec, fixture.CLIArgs)
-		}
-		return fixture.Exec
-	}
-	if fixture.CLI != "" {
-		return fixture.CLI
-	}
-	if fixture.CLIArgs != "" {
-		return fixture.CLIArgs
-	}
-	if fixture.Query != "" {
-		return fmt.Sprintf("query: %s", fixture.Query)
-	}
-	return "unknown command"
+	return t
 }
 
 // executeFixture runs a single fixture test
-func (r *Runner) executeFixture(ctx flanksourceContext.Context, fixture FixtureTest) (interface{}, error) {
+func (r *Runner) executeFixture(ctx flanksourceContext.Context, fixture FixtureTest) (FixtureResult, error) {
 	// Get the appropriate fixture type from registry
 	fixtureType, err := DefaultRegistry.GetForFixture(fixture)
 	if err != nil {
-		return nil, fmt.Errorf("fixture type error: %w", err)
+		return FixtureResult{}, fmt.Errorf("fixture type error: %w", err)
 	}
+
+	if r.options.WorkDir == "" {
+		r.options.WorkDir, _ = os.Getwd()
+	}
+	ctx.Debugf("Using CWD: %s", r.options.WorkDir)
 
 	// Prepare run options with flanksource context
 	opts := RunOptions{
 		WorkDir:   r.options.WorkDir,
-		Verbose:   true,
+		Verbose:   ctx.Logger.IsLevelEnabled(logger.Debug),
 		NoCache:   false,
 		Evaluator: r.evaluator,
 		ExtraArgs: map[string]interface{}{
@@ -346,259 +331,40 @@ func (r *Runner) executeFixture(ctx flanksourceContext.Context, fixture FixtureT
 		},
 	}
 
+	start := time.Now()
 	// Run the fixture test
 	result := fixtureType.Run(ctx, fixture, opts)
-
-	// Check if the fixture failed and return an error
-	if result.Status == "FAIL" {
-		if result.Error != "" {
-			return result, fmt.Errorf("fixture failed: %s", result.Error)
-		}
-		return result, fmt.Errorf("fixture failed")
-	}
+	result.Duration = time.Since(start)
 
 	return result, nil
-}
-
-// taskResultToFixtureResult converts a task result to a FixtureTestResult
-func (r *Runner) taskResultToFixtureResult(task *clicky.Task, waitResult *clicky.WaitResult) FixtureTestResult {
-	// Get the actual fixture result from the task
-	taskResult, taskErr := task.GetResult()
-
-	// Default result structure
-	result := FixtureTestResult{
-		Name:     task.Name(),
-		Duration: waitResult.Duration.String(),
-	}
-
-	if taskErr != nil {
-		result.Status = "FAIL"
-		result.Error = taskErr.Error()
-		return result
-	}
-
-	// Try to cast the task result to FixtureResult
-	if fixtureResult, ok := taskResult.(FixtureResult); ok {
-		// Use the actual fixture result but preserve task-level info
-		result = fixtureResult
-		if result.Duration == "" {
-			result.Duration = waitResult.Duration.String()
-		}
-		if result.Name == "" {
-			result.Name = task.Name()
-		}
-	} else {
-		// Fallback: infer status from task completion
-		switch waitResult.Status {
-		case clicky.StatusSuccess:
-			result.Status = "PASS"
-		case clicky.StatusFailed:
-			result.Status = "FAIL"
-			if waitResult.Error != nil {
-				result.Error = waitResult.Error.Error()
-			}
-		case clicky.StatusCancelled:
-			result.Status = "SKIP"
-		default:
-			result.Status = "SKIP"
-		}
-	}
-
-	return result
-}
-
-// taskResultToFixtureResult converts task result to FixtureTestResult
-func (r *Runner) taskResultToFixtureResult(task *clicky.Task, waitResult *clicky.WaitResult) FixtureTestResult {
-	// Try to get fixture result from task result
-	if result, err := task.GetResult(); err == nil && result != nil {
-		if fixtureResult, ok := result.(FixtureResult); ok {
-			return FixtureTestResult{
-				Name:      fixtureResult.Name,
-				Type:      fixtureResult.Type,
-				Status:    fixtureResult.Status,
-				Error:     fixtureResult.Error,
-				Expected:  getIntFromInterface(fixtureResult.Expected),
-				Actual:    getIntFromInterface(fixtureResult.Actual),
-				CELResult: fixtureResult.CELResult,
-				Duration:  fixtureResult.Duration,
-				Details:   fixtureResult.Details,
-				Command:   fixtureResult.Command,
-				CWD:       fixtureResult.CWD,
-				Stdout:    fixtureResult.Stdout,
-				Stderr:    fixtureResult.Stderr,
-				ExitCode:  fixtureResult.ExitCode,
-			}
-		}
-	}
-
-	// Fallback: create result from task info
-	status := "FAIL"
-	if waitResult.Status == clicky.StatusSuccess {
-		status = "PASS"
-	} else if waitResult.Status == clicky.StatusCancelled {
-		status = "SKIP"
-	}
-
-	error := ""
-	if waitResult.Error != nil {
-		error = waitResult.Error.Error()
-	}
-
-	return FixtureTestResult{
-		Name:     task.Name(),
-		Type:     "task",
-		Status:   status,
-		Error:    error,
-		Duration: waitResult.Duration.String(),
-	}
-}
-
-// formatResults formats the test results in the specified format
-func (r *Runner) formatResults(results *FixtureResults) (string, error) {
-	switch r.options.Format {
-	case "json":
-		return r.formatJSON(results)
-	case "tree":
-		return r.formatTree(results)
-	case "table":
-		fallthrough
-	default:
-		return r.formatTable(results)
-	}
-}
-
-// formatJSON formats results as JSON
-func (r *Runner) formatJSON(results *FixtureResults) (string, error) {
-	data, err := jsonMarshalIndent(results, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("failed to format JSON: %w", err)
-	}
-	return string(data), nil
-}
-
-// formatTree formats results as a tree view (simplified)
-func (r *Runner) formatTree(results *FixtureResults) (string, error) {
-	output := fmt.Sprintf("📊 Summary: %d total, %d passed, %d failed, %d skipped\n\n",
-		results.Summary.Total, results.Summary.Passed, results.Summary.Failed, results.Summary.Skipped)
-
-	for _, test := range results.Tests {
-		var symbol string
-		switch test.Status {
-		case "PASS":
-			symbol = "✓"
-		case "FAIL":
-			symbol = "✗"
-		case "SKIP":
-			symbol = "⊘"
-		default:
-			symbol = "?"
-		}
-
-		output += fmt.Sprintf("%s %s (%s)\n", symbol, test.Name, test.Duration)
-		if test.Error != "" {
-			output += fmt.Sprintf("  Error: %s\n", test.Error)
-		}
-	}
-
-	return output, nil
-}
-
-// formatTable formats results as a table (simplified)
-func (r *Runner) formatTable(results *FixtureResults) (string, error) {
-	output := fmt.Sprintf("Test Results Summary: %d total, %d passed, %d failed, %d skipped\n\n",
-		results.Summary.Total, results.Summary.Passed, results.Summary.Failed, results.Summary.Skipped)
-
-	output += "Status | Test Name | Duration | Error\n"
-	output += "-------|-----------|----------|------\n"
-
-	for _, test := range results.Tests {
-		errorMsg := test.Error
-		if len(errorMsg) > 50 {
-			errorMsg = errorMsg[:47] + "..."
-		}
-		output += fmt.Sprintf("%-6s | %-40s | %8s | %s\n",
-			test.Status, test.Name, test.Duration, errorMsg)
-	}
-
-	return output, nil
-}
-
-// Helper functions
-
-// getIntFromInterface safely converts interface{} to int
-func getIntFromInterface(val interface{}) int {
-	if val == nil {
-		return 0
-	}
-	if intVal, ok := val.(int); ok {
-		return intVal
-	}
-	return 0
-}
-
-// jsonMarshalIndent marshals to JSON with indentation
-func jsonMarshalIndent(v interface{}, prefix, indent string) ([]byte, error) {
-	return json.MarshalIndent(v, prefix, indent)
 }
 
 // renderBuildTemplate renders a gomplate template for build commands
 func renderBuildTemplate(template string, data map[string]interface{}) (string, error) {
-	// Import gomplate if not already imported
-	// This is a simple template rendering for build commands
-	// For now, just do basic replacement of {{.PWD}} and {{.WorkDir}}
-	result := template
-	if pwd, ok := data["PWD"].(string); ok {
-		result = strings.ReplaceAll(result, "{{.PWD}}", pwd)
-	}
-	if workDir, ok := data["WorkDir"].(string); ok {
-		result = strings.ReplaceAll(result, "{{.WorkDir}}", workDir)
-	}
-	return result, nil
+	return gomplate.RunTemplate(data, gomplate.Template{
+		Template: template,
+	})
 }
 
-// taskResultToFixtureResult converts a task result to a FixtureTestResult
-func (r *Runner) taskResultToFixtureResult(task *clicky.Task, waitResult *clicky.WaitResult) FixtureTestResult {
+// taskResultToFixtureResult converts a task result to a FixtureResult
+func (r *Runner) taskResultToFixtureResult(t *clicky.Task, waitResult *clicky.WaitResult) FixtureResult {
 	// Get the actual fixture result from the task
-	taskResult, taskErr := task.GetResult()
+	taskResult, taskErr := t.GetResult()
 
-	// Default result structure
-	result := FixtureTestResult{
-		Name:     task.Name(),
-		Duration: waitResult.Duration.String(),
-	}
+	if result, ok := taskResult.(FixtureResult); ok {
+		if result.Name == "" {
+			result.Name = t.Name()
+		}
 
-	if taskErr != nil {
-		result.Status = "FAIL"
-		result.Error = taskErr.Error()
+		if taskErr != nil {
+			result.Status = task.StatusERR
+			result.Error += taskErr.Error()
+		}
 		return result
 	}
 
-	// Try to cast the task result to FixtureTestResult
-	if fixtureResult, ok := taskResult.(FixtureTestResult); ok {
-		// Use the actual fixture result but preserve task-level info
-		result = fixtureResult
-		if result.Duration == "" {
-			result.Duration = waitResult.Duration.String()
-		}
-		if result.Name == "" {
-			result.Name = task.Name()
-		}
-	} else {
-		// Fallback: infer status from task completion
-		switch waitResult.Status {
-		case clicky.StatusSuccess:
-			result.Status = "PASS"
-		case clicky.StatusFailed:
-			result.Status = "FAIL"
-			if waitResult.Error != nil {
-				result.Error = waitResult.Error.Error()
-			}
-		case clicky.StatusCancelled:
-			result.Status = "SKIP"
-		default:
-			result.Status = "SKIP"
-		}
+	return FixtureResult{
+		Status: task.StatusERR,
+		Error:  fmt.Sprintf("Unknown result %t -> %s", taskResult, taskErr),
 	}
-
-	return result
 }

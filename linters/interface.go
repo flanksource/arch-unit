@@ -39,6 +39,11 @@ type Linter interface {
 	ValidateConfig(config *models.LinterConfig) error
 }
 
+// OptionsMixin provides a way to set options on linters that support it
+type OptionsMixin interface {
+	SetOptions(opts RunOptions)
+}
+
 // LinterWithLanguageSupport extends Linter to provide language-aware file filtering
 type LinterWithLanguageSupport interface {
 	Linter

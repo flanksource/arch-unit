@@ -7,7 +7,6 @@ import (
 
 	"github.com/flanksource/arch-unit/analysis"
 	"github.com/flanksource/arch-unit/models"
-	"github.com/flanksource/clicky"
 	"gopkg.in/yaml.v3"
 )
 
@@ -37,11 +36,11 @@ func (s *NodeDependencyScanner) ScanFile(ctx *analysis.ScanContext, filepath str
 	case strings.HasSuffix(filename, "package.json"):
 		return s.scanPackageJson(ctx, filepath, content)
 	case strings.HasSuffix(filename, "package-lock.json"):
-		return s.scanPackageLockJson(task, filepath, content)
+		return s.scanPackageLockJson(ctx, filepath, content)
 	case strings.HasSuffix(filename, "yarn.lock"):
-		return s.scanYarnLock(task, filepath, content)
+		return s.scanYarnLock(ctx, filepath, content)
 	case strings.HasSuffix(filename, "pnpm-lock.yaml"):
-		return s.scanPnpmLock(task, filepath, content)
+		return s.scanPnpmLock(ctx, filepath, content)
 	default:
 		return nil, fmt.Errorf("unsupported Node.js dependency file: %s", filepath)
 	}
@@ -49,7 +48,7 @@ func (s *NodeDependencyScanner) ScanFile(ctx *analysis.ScanContext, filepath str
 
 // scanPackageJson scans package.json files
 func (s *NodeDependencyScanner) scanPackageJson(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
-	s.LogProgress(task, "Scanning Node.js dependencies from %s", filepath)
+	ctx.Debugf("Scanning Node.js dependencies from %s", filepath)
 
 	var packageJson struct {
 		Name                 string            `json:"name"`
@@ -70,37 +69,37 @@ func (s *NodeDependencyScanner) scanPackageJson(ctx *analysis.ScanContext, filep
 	for name, version := range packageJson.Dependencies {
 		dep := s.createNodeDependency(name, version)
 		dependencies = append(dependencies, dep)
-		s.LogDebug(task, "Found dependency: %s@%s", name, version)
+		ctx.Debugf("Found dependency: %s@%s", name, version)
 	}
 
 	// Process dev dependencies
 	for name, version := range packageJson.DevDependencies {
 		dep := s.createNodeDependency(name, version)
 		dependencies = append(dependencies, dep)
-		s.LogDebug(task, "Found dev dependency: %s@%s", name, version)
+		ctx.Debugf("Found dev dependency: %s@%s", name, version)
 	}
 
 	// Process peer dependencies
 	for name, version := range packageJson.PeerDependencies {
 		dep := s.createNodeDependency(name, version)
 		dependencies = append(dependencies, dep)
-		s.LogDebug(task, "Found peer dependency: %s@%s", name, version)
+		ctx.Debugf("Found peer dependency: %s@%s", name, version)
 	}
 
 	// Process optional dependencies
 	for name, version := range packageJson.OptionalDependencies {
 		dep := s.createNodeDependency(name, version)
 		dependencies = append(dependencies, dep)
-		s.LogDebug(task, "Found optional dependency: %s@%s", name, version)
+		ctx.Debugf("Found optional dependency: %s@%s", name, version)
 	}
 
-	s.LogProgress(task, "Found %d Node.js dependencies", len(dependencies))
+	ctx.Debugf("Found %d Node.js dependencies", len(dependencies))
 	return dependencies, nil
 }
 
 // scanPackageLockJson scans package-lock.json files
-func (s *NodeDependencyScanner) scanPackageLockJson(task *clicky.Task, filepath string, content []byte) ([]*models.Dependency, error) {
-	s.LogProgress(task, "Scanning Node.js lock file from %s", filepath)
+func (s *NodeDependencyScanner) scanPackageLockJson(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+	ctx.Debugf("Scanning Node.js lock file from %s", filepath)
 
 	var lockFile struct {
 		Dependencies map[string]struct {
@@ -141,8 +140,7 @@ func (s *NodeDependencyScanner) scanPackageLockJson(task *clicky.Task, filepath 
 				Name:    name,
 				Version: info.Version,
 				Type:    models.DependencyTypeNpm,
-
-				Git: fmt.Sprintf("https://www.npmjs.com/package/%s", name),
+				Git:     fmt.Sprintf("https://www.npmjs.com/package/%s", name),
 			}
 
 			dependencies = append(dependencies, dep)
@@ -154,21 +152,20 @@ func (s *NodeDependencyScanner) scanPackageLockJson(task *clicky.Task, filepath 
 				Name:    name,
 				Version: info.Version,
 				Type:    models.DependencyTypeNpm,
-
-				Git: fmt.Sprintf("https://www.npmjs.com/package/%s", name),
+				Git:     fmt.Sprintf("https://www.npmjs.com/package/%s", name),
 			}
 
 			dependencies = append(dependencies, dep)
 		}
 	}
 
-	s.LogProgress(task, "Found %d Node.js dependencies in lock file", len(dependencies))
+	ctx.Debugf("Found %d Node.js dependencies in lock file", len(dependencies))
 	return dependencies, nil
 }
 
 // scanYarnLock scans yarn.lock files
-func (s *NodeDependencyScanner) scanYarnLock(task *clicky.Task, filepath string, content []byte) ([]*models.Dependency, error) {
-	s.LogProgress(task, "Scanning Yarn lock file from %s", filepath)
+func (s *NodeDependencyScanner) scanYarnLock(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+	ctx.Debugf("Scanning Yarn lock file from %s", filepath)
 
 	// Yarn lock files have a custom format, we'll do basic parsing
 	var dependencies []*models.Dependency
@@ -218,23 +215,22 @@ func (s *NodeDependencyScanner) scanYarnLock(task *clicky.Task, filepath string,
 						Name:    currentPackage,
 						Version: currentVersion,
 						Type:    models.DependencyTypeNpm,
-
-						Git: fmt.Sprintf("https://www.npmjs.com/package/%s", currentPackage),
+						Git:     fmt.Sprintf("https://www.npmjs.com/package/%s", currentPackage),
 					}
 					dependencies = append(dependencies, dep)
-					s.LogDebug(task, "Found Yarn dependency: %s@%s", currentPackage, currentVersion)
+					ctx.Debugf("Found Yarn dependency: %s@%s", currentPackage, currentVersion)
 				}
 			}
 		}
 	}
 
-	s.LogProgress(task, "Found %d unique Node.js dependencies in yarn.lock", len(dependencies))
+	ctx.Debugf("Found %d unique Node.js dependencies in yarn.lock", len(dependencies))
 	return dependencies, nil
 }
 
 // scanPnpmLock scans pnpm-lock.yaml files
-func (s *NodeDependencyScanner) scanPnpmLock(task *clicky.Task, filepath string, content []byte) ([]*models.Dependency, error) {
-	s.LogProgress(task, "Scanning pnpm lock file from %s", filepath)
+func (s *NodeDependencyScanner) scanPnpmLock(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+	ctx.Debugf("Scanning pnpm lock file from %s", filepath)
 
 	var lockFile struct {
 		Dependencies    map[string]string `yaml:"dependencies"`
@@ -285,11 +281,10 @@ func (s *NodeDependencyScanner) scanPnpmLock(task *clicky.Task, filepath string,
 					Name:    name,
 					Version: version,
 					Type:    models.DependencyTypeNpm,
-
-					Git: fmt.Sprintf("https://www.npmjs.com/package/%s", name),
+					Git:     fmt.Sprintf("https://www.npmjs.com/package/%s", name),
 				}
 				dependencies = append(dependencies, dep)
-				s.LogDebug(task, "Found pnpm dependency: %s@%s", name, version)
+				ctx.Debugf("Found pnpm dependency: %s@%s", name, version)
 			}
 		}
 	}
@@ -307,7 +302,7 @@ func (s *NodeDependencyScanner) scanPnpmLock(task *clicky.Task, filepath string,
 		}
 	}
 
-	s.LogProgress(task, "Found %d Node.js dependencies in pnpm-lock.yaml", len(dependencies))
+	ctx.Debugf("Found %d Node.js dependencies in pnpm-lock.yaml", len(dependencies))
 	return dependencies, nil
 }
 
@@ -328,10 +323,9 @@ func (s *NodeDependencyScanner) createNodeDependency(name, version string) *mode
 	}
 
 	dep := &models.Dependency{
-		Name:     name,
-		Version:  version,
-		Type:     models.DependencyTypeNpm,
-		Language: "javascript",
+		Name:    name,
+		Version: version,
+		Type:    models.DependencyTypeNpm,
 	}
 
 	// Add NPM registry URL

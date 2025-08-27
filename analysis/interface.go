@@ -23,6 +23,12 @@ type ASTResult struct {
 	// External library dependencies
 	Libraries []*models.LibraryRelationship
 
+	// Dependencies found in the file
+	Dependencies []*models.Dependency
+
+	// Relationships between dependencies
+	DependencyRelationships []*models.DependencyRelationship
+
 	// File metadata
 	FilePath    string
 	Language    string
@@ -63,6 +69,11 @@ func (r *ASTResult) AddRelationship(rel *models.ASTRelationship) {
 func (r *ASTResult) AddLibrary(lib *models.LibraryRelationship) {
 	r.Libraries = append(r.Libraries, lib)
 	r.LibraryCount++
+}
+
+// AddDependency adds a dependency to the result
+func (r *ASTResult) AddDependency(dep *models.Dependency) {
+	r.Dependencies = append(r.Dependencies, dep)
 }
 
 // Merge combines another result into this one

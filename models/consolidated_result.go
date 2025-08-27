@@ -39,26 +39,26 @@ type LinterResult struct {
 // NewConsolidatedResult creates a new consolidated result from arch-unit and linter results
 func NewConsolidatedResult(archResult *AnalysisResult, linterResults []LinterResult) *ConsolidatedResult {
 	start := time.Now()
-	
+
 	result := &ConsolidatedResult{
 		ArchUnit:  archResult,
 		Linters:   linterResults,
 		Timestamp: start,
 	}
-	
+
 	// Consolidate all violations
 	result.consolidateViolations()
-	
+
 	// Calculate summary
 	result.calculateSummary(start)
-	
+
 	return result
 }
 
 // consolidateViolations merges violations from arch-unit and all linters
 func (cr *ConsolidatedResult) consolidateViolations() {
 	var allViolations []Violation
-	
+
 	// Add arch-unit violations with source
 	if cr.ArchUnit != nil {
 		for _, v := range cr.ArchUnit.Violations {
@@ -69,7 +69,7 @@ func (cr *ConsolidatedResult) consolidateViolations() {
 			allViolations = append(allViolations, v)
 		}
 	}
-	
+
 	// Add linter violations with source
 	for _, linterResult := range cr.Linters {
 		for _, v := range linterResult.Violations {
@@ -79,7 +79,7 @@ func (cr *ConsolidatedResult) consolidateViolations() {
 			allViolations = append(allViolations, v)
 		}
 	}
-	
+
 	// Don't deduplicate - keep all violations to show which tools detected them
 	cr.Violations = allViolations
 }
@@ -88,17 +88,17 @@ func (cr *ConsolidatedResult) consolidateViolations() {
 func (cr *ConsolidatedResult) deduplicateViolations(violations []Violation) []Violation {
 	seen := make(map[string]bool)
 	var unique []Violation
-	
+
 	for _, violation := range violations {
 		// Create a key based on file, line, and message
 		key := fmt.Sprintf("%s:%d:%s", violation.File, violation.Line, violation.Message)
-		
+
 		if !seen[key] {
 			seen[key] = true
 			unique = append(unique, violation)
 		}
 	}
-	
+
 	return unique
 }
 
@@ -107,13 +107,13 @@ func (cr *ConsolidatedResult) calculateSummary(start time.Time) {
 	summary := ConsolidatedSummary{
 		Duration: time.Since(start),
 	}
-	
+
 	// Basic statistics
 	if cr.ArchUnit != nil {
 		summary.FilesAnalyzed = cr.ArchUnit.FileCount
 		summary.RulesApplied = cr.ArchUnit.RuleCount
 	}
-	
+
 	// Linter statistics
 	summary.LintersRun = len(cr.Linters)
 	for _, linterResult := range cr.Linters {
@@ -121,7 +121,7 @@ func (cr *ConsolidatedResult) calculateSummary(start time.Time) {
 			summary.LintersSuccessful++
 		}
 	}
-	
+
 	// Count violations by source
 	for _, v := range cr.Violations {
 		if v.Source == "arch-unit" || v.Source == "" {
@@ -130,52 +130,52 @@ func (cr *ConsolidatedResult) calculateSummary(start time.Time) {
 			summary.LinterViolations++
 		}
 	}
-	
+
 	// Total violations
 	summary.TotalViolations = len(cr.Violations)
-	
+
 	cr.Summary = summary
 }
 
 // GetViolationsByFile returns violations grouped by file
 func (cr *ConsolidatedResult) GetViolationsByFile() map[string][]Violation {
 	violationsByFile := make(map[string][]Violation)
-	
+
 	for _, violation := range cr.Violations {
 		violationsByFile[violation.File] = append(violationsByFile[violation.File], violation)
 	}
-	
+
 	return violationsByFile
 }
 
 // GetViolationsByType returns violations grouped by their source (arch-unit vs linter)
 func (cr *ConsolidatedResult) GetViolationsByType() map[string][]Violation {
 	violationsByType := make(map[string][]Violation)
-	
+
 	for _, violation := range cr.Violations {
 		source := "arch-unit"
-		if violation.CalledPackage == "golangci-lint" || 
-		   violation.CalledPackage == "ruff" || 
-		   violation.CalledPackage == "eslint" {
+		if violation.CalledPackage == "golangci-lint" ||
+			violation.CalledPackage == "ruff" ||
+			violation.CalledPackage == "eslint" {
 			source = violation.CalledPackage
 		}
-		
+
 		violationsByType[source] = append(violationsByType[source], violation)
 	}
-	
+
 	return violationsByType
 }
 
 // GetFailedLinters returns the names of linters that failed
 func (cr *ConsolidatedResult) GetFailedLinters() []string {
 	var failed []string
-	
+
 	for _, linterResult := range cr.Linters {
 		if !linterResult.Success {
 			failed = append(failed, linterResult.Linter)
 		}
 	}
-	
+
 	return failed
 }
 

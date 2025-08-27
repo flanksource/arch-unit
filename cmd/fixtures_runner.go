@@ -21,7 +21,7 @@ func runASTFixtures(cmd *cobra.Command, args []string) error {
 	runner, err := fixtures.NewRunner(fixtures.RunnerOptions{
 		Paths:      args,
 		Format:     clicky.Flags.Format,
-		Filter:     fixturesFilter,
+		Filter:     "", // No filter by default
 		NoColor:    clicky.Flags.FormatOptions.NoColor,
 		WorkDir:    workingDir,
 		MaxWorkers: clicky.Flags.MaxConcurrent,

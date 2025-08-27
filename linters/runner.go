@@ -9,6 +9,8 @@ import (
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/task"
+	flanksourceContext "github.com/flanksource/commons/context"
 	commonsCtx "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
 )
@@ -153,7 +155,9 @@ func (r *Runner) RunWithIntelligentDebounce(ctx context.Context, linterName stri
 		mixin.SetOptions(opts)
 	}
 
-	task := clicky.StartTask(fmt.Sprintf("Running %s", linterName), linter.Run)
+	task := clicky.StartTask[[]models.Violation](fmt.Sprintf("Running %s", linterName), func(fCtx flanksourceContext.Context, t *task.Task) ([]models.Violation, error) {
+		return linter.Run(context.Background(), opts)
+	})
 	violations, err := task.GetResult()
 
 	// Record execution stats

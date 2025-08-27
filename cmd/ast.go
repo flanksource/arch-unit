@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	jsonenc "encoding/json"
 	"fmt"
 	"os"
@@ -13,12 +14,14 @@ import (
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/arch-unit/parser"
 	"github.com/flanksource/arch-unit/query"
+	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
 	"github.com/spf13/cobra"
 )
 
 var (
 	astFormat        string
+	astTemplate      string
 	astShowCalls     bool
 	astShowLibraries bool
 	astShowComplexity bool
@@ -416,173 +419,72 @@ func rebuildASTCache(astCache *cache.ASTCache) error {
 	return nil
 }
 
-// formatASTQueryResults formats and outputs AST query results with clicky support
+// formatASTQueryResults formats and outputs AST query results
 func formatASTQueryResults(nodes []*models.ASTNode, pattern string) error {
 	// Get working directory for relative paths
 	workingDir, _ := GetWorkingDir()
 	
-	// Create the query result with relative paths
-	result := ast.CreateQueryResult(nodes, pattern, workingDir)
-	
-	// Create format manager
-	formatManager := formatters.NewFormatManager()
-	
-	// Get global format options
-	globalFormatOpts := GetFormatOptions()
-	
-	// Handle template format specially
-	if globalFormatOpts.Format == "template" && astTemplate != "" {
-		// For template format, we need custom handling
-		// For now, just use JSON format as fallback
-		globalFormatOpts.Format = "json"
-	}
-	
-	// Handle table and tree formats
-	if globalFormatOpts.Format == "table" || globalFormatOpts.Format == "tree" {
-		// These formats are supported by pretty formatter
-		globalFormatOpts.Format = "pretty"
-	}
-	
-	// Format and output
-	return formatManager.FormatToFile(*globalFormatOpts, result)
-}
-
-
-
-// formatASTQueryResults formats and outputs AST query results with clicky support
-func formatASTQueryResults(nodes []*models.ASTNode, pattern string) error {
-	// Determine output format - use global flags or astFormat
+	// Format based on the selected format
 	format := getASTQueryOutputFormat()
 	
-	// Handle different output formats
 	switch format {
 	case "json":
-		// For JSON, use simple structure
-		result := ast.CreateQueryResult(nodes, pattern)
-		data, err := json.MarshalIndent(result, "", "  ")
+		// Output as JSON
+		output, err := jsonenc.MarshalIndent(nodes, "", "  ")
 		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %w", err)
+			return fmt.Errorf("failed to marshal to JSON: %w", err)
 		}
-		
-		if outputFile != "" {
-			return os.WriteFile(outputFile, data, 0644)
-		}
-		fmt.Println(string(data))
-		return nil
-		
-	case "csv":
-		// CSV format
-		fmt.Println("File,Package,Type,Method,Field,NodeType,Line,Complexity,Parameters")
+		fmt.Println(string(output))
+	case "table", "pretty":
+		// Output as table
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintf(w, "Name\tType\tPackage\tFile\tLine\tComplexity\n")
 		for _, node := range nodes {
-			fileName := node.FilePath
-			if idx := strings.LastIndex(fileName, "/"); idx >= 0 {
-				fileName = fileName[idx+1:]
+			relPath, _ := filepath.Rel(workingDir, node.FilePath)
+			name := node.TypeName
+			if node.MethodName != "" {
+				name = node.MethodName
+			} else if node.FieldName != "" {
+				name = node.FieldName
 			}
-			
-			var params []string
-			for _, p := range node.Parameters {
-				params = append(params, fmt.Sprintf("%s %s", p.Name, p.Type))
-			}
-			
-			fmt.Printf("%s,%s,%s,%s,%s,%s,%d,%d,\"%s\"\n",
-				fileName, node.PackageName, node.TypeName, node.MethodName, 
-				node.FieldName, node.NodeType, node.StartLine, 
-				node.CyclomaticComplexity, strings.Join(params, ", "))
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%d\n",
+				name, node.NodeType, node.PackageName, relPath, node.StartLine, node.CyclomaticComplexity)
 		}
-		return nil
-		
-	case "markdown":
-		// Use clicky's markdown formatter
-		markdownFormatter := formatters.NewMarkdownFormatter()
-		output, err := ast.FormatQueryWithClicky(nodes, pattern, markdownFormatter)
-		if err != nil {
-			return fmt.Errorf("failed to format as markdown: %w", err)
-		}
-		
-		if outputFile != "" {
-			return os.WriteFile(outputFile, []byte(output), 0644)
-		}
-		fmt.Print(output)
-		return nil
-		
-	case "html":
-		// Use clicky's HTML formatter
-		htmlFormatter := formatters.NewHTMLFormatter()
-		output, err := ast.FormatQueryWithClicky(nodes, pattern, htmlFormatter)
-		if err != nil {
-			return fmt.Errorf("failed to format as HTML: %w", err)
-		}
-		
-		if outputFile != "" {
-			return os.WriteFile(outputFile, []byte(output), 0644)
-		}
-		fmt.Println(output)
-		return nil
-		
-	case "excel":
-		// For Excel, use CSV format
-		csvFormatter := formatters.NewCSVFormatter()
-		output, err := ast.FormatQueryWithClicky(nodes, pattern, csvFormatter)
-		if err != nil {
-			return fmt.Errorf("failed to format as CSV for Excel: %w", err)
-		}
-		
-		if outputFile == "" {
-			return fmt.Errorf("--output file is required for Excel format")
-		}
-		
-		if !strings.HasSuffix(outputFile, ".csv") && !strings.HasSuffix(outputFile, ".xlsx") {
-			outputFile += ".csv"
-		}
-		
-		return os.WriteFile(outputFile, []byte(output), 0644)
-		
-	case "pretty":
-		// Use clicky's pretty formatter for colored terminal output
-		prettyFormatter := formatters.NewPrettyFormatter()
-		if astNoColor {
-			// TODO: Add no-color support to clicky formatter
-		}
-		output, err := ast.FormatQueryWithClicky(nodes, pattern, prettyFormatter)
-		if err != nil {
-			return fmt.Errorf("failed to format as pretty: %w", err)
-		}
-		fmt.Print(output)
-		return nil
-		
+		w.Flush()
 	default:
-		// Fall back to legacy formatter for tree, table, template formats
-		formatter := ast.NewFormatter(astFormat, astTemplate, astNoColor, "")
-		output, err := formatter.FormatNodes(nodes, pattern)
-		if err != nil {
-			return fmt.Errorf("failed to format with legacy formatter: %w", err)
+		// Default text output
+		for _, node := range nodes {
+			relPath, _ := filepath.Rel(workingDir, node.FilePath)
+			fmt.Printf("%s:%d - %s (%s) [complexity: %d]\n",
+				relPath, node.StartLine, node.GetFullName(), node.NodeType, node.CyclomaticComplexity)
 		}
-		fmt.Println(output)
-		return nil
 	}
+	
+	return nil
 }
+
 
 // getASTQueryOutputFormat determines the output format for AST queries
 func getASTQueryOutputFormat() string {
-	// Check global flags first (from root.go)
-	if json {
+	// Use the astFormat flag
+	switch astFormat {
+	case "json":
 		return "json"
-	}
-	if csv {
+	case "csv":
 		return "csv"
-	}
-	if markdown {
+	case "markdown":
 		return "markdown"
-	}
-	if html {
+	case "html":
 		return "html"
-	}
-	if excel {
+	case "excel":
 		return "excel"
+	case "table":
+		return "table"
+	case "tree":
+		return "tree"
+	default:
+		return "pretty"
 	}
-	
-	// Use astFormat flag
-	return astFormat
 }
 
 // executeAQLQuery executes an AQL query
@@ -721,6 +623,9 @@ func analyzeFiles(astCache *cache.ASTCache, workingDir string) error {
 
 	logger.Infof("Analyzing %d source files...", len(sourceFiles))
 
+	// Create context for extraction
+	ctx := flanksourceContext.NewContext(context.Background())
+
 	// Process files
 	for i, file := range sourceFiles {
 		if i%10 == 0 {
@@ -730,15 +635,15 @@ func analyzeFiles(astCache *cache.ASTCache, workingDir string) error {
 		var err error
 		switch file.language {
 		case "go":
-			err = goExtractor.ExtractFile(file.path)
+			err = goExtractor.ExtractFile(ctx, file.path)
 		case "python":
-			err = pythonExtractor.ExtractFile(file.path)
+			err = pythonExtractor.ExtractFile(ctx, file.path)
 		case "javascript":
-			err = jsExtractor.ExtractFile(file.path)
+			err = jsExtractor.ExtractFile(ctx, file.path)
 		case "typescript":
-			err = tsExtractor.ExtractFile(file.path)
+			err = tsExtractor.ExtractFile(ctx, file.path)
 		case "markdown":
-			err = mdExtractor.ExtractFile(file.path)
+			err = mdExtractor.ExtractFile(ctx, file.path)
 		}
 		
 		if err != nil {
@@ -1104,7 +1009,7 @@ func displayNodeLibraries(astCache *cache.ASTCache, node *models.ASTNode, prefix
 
 // outputJSON outputs data as JSON
 func outputJSON(data interface{}) error {
-	encoder := json.NewEncoder(os.Stdout)
+	encoder := jsonenc.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(data)
 }

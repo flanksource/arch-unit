@@ -22,10 +22,10 @@ func NewGoDependencyScanner() *GoDependencyScanner {
 	scanner := &GoDependencyScanner{
 		BaseDependencyScanner: NewBaseDependencyScanner("go", []string{"go.mod", "go.sum"}),
 	}
-	
+
 	// Register with the global registry
 	DefaultDependencyRegistry.Register(scanner)
-	
+
 	return scanner
 }
 
@@ -35,10 +35,10 @@ func NewGoDependencyScannerWithResolver(resolver *ResolutionService) *GoDependen
 		BaseDependencyScanner: NewBaseDependencyScanner("go", []string{"go.mod", "go.sum"}),
 		resolver:              resolver,
 	}
-	
+
 	// Register with the global registry
 	DefaultDependencyRegistry.Register(scanner)
-	
+
 	return scanner
 }
 
@@ -48,17 +48,16 @@ func (s *GoDependencyScanner) ScanFile(ctx *ScanContext, filePath string, conten
 		return s.scanGoSum(ctx, filePath, content)
 	}
 
-	s.LogProgress(ctx, "Scanning Go dependencies from %s", filePath)
-	
+	ctx.Debugf("Scanning Go dependencies from %s", filePath)
+
 	// Parse go.mod file
 	modFile, err := modfile.Parse(filePath, content, nil)
 	if err != nil {
-		s.LogError(ctx, "Failed to parse go.mod: %v", err)
 		return nil, fmt.Errorf("failed to parse go.mod: %w", err)
 	}
-	
+
 	var dependencies []*models.Dependency
-	
+
 	// Extract module dependencies
 	for lineIdx, require := range modFile.Require {
 		dep := &models.Dependency{
@@ -70,18 +69,18 @@ func (s *GoDependencyScanner) ScanFile(ctx *ScanContext, filePath string, conten
 			Depth:    0, // Direct dependencies from go.mod have depth 0
 			Package:  []string{require.Mod.Path},
 		}
-		
+
 		// Use resolver to get Git URL if available
 		if s.resolver != nil {
 			if gitURL, err := s.resolver.ResolveGitURL(require.Mod.Path, "go"); err == nil && gitURL != "" {
 				dep.Git = gitURL
 			}
 		}
-		
+
 		dependencies = append(dependencies, dep)
-		s.LogDebug(task, "Found dependency: %s@%s at %s", dep.Name, dep.Version, dep.Source)
+		ctx.Debugf("Found dependency: %s@%s at %s", dep.Name, dep.Version, dep.Source)
 	}
-	
+
 	// Extract replace directives as they affect actual dependencies
 	for _, replace := range modFile.Replace {
 		// Find the dependency being replaced
@@ -95,14 +94,14 @@ func (s *GoDependencyScanner) ScanFile(ctx *ScanContext, filePath string, conten
 					// Track the original name
 					dep.Name = replace.New.Path
 				}
-				s.LogDebug(ctx, "Replaced %s with %s@%s", 
+				ctx.Debugf("Replaced %s with %s@%s",
 					replace.Old.Path, replace.New.Path, replace.New.Version)
 				break
 			}
 		}
 	}
-	
-	s.LogProgress(ctx, "Found %d Go dependencies", len(dependencies))
+
+	ctx.Debugf("Found %d Go dependencies", len(dependencies))
 	return dependencies, nil
 }
 
@@ -111,59 +110,64 @@ func (s *GoDependencyScanner) scanGoSum(ctx *ScanContext, filePath string, conte
 	if !strings.HasSuffix(filePath, "go.sum") {
 		return nil, fmt.Errorf("not a go.sum file: %s", filePath)
 	}
-	
-	s.LogProgress(ctx, "Scanning Go checksums from %s", filePath)
-	
+
+	ctx.Debugf("Scanning Go checksums from %s", filePath)
+
 	// go.sum contains checksums but not full dependency info
 	// We'll extract unique modules for reference
 	dependencies := make(map[string]*models.Dependency)
-	
+
 	scanner := bufio.NewScanner(bytes.NewReader(content))
+	lineNum := 0
 	for scanner.Scan() {
+		lineNum++
 		line := scanner.Text()
 		if line == "" || strings.HasPrefix(line, "//") {
 			continue
 		}
-		
+
 		// Format: module version hash
 		parts := strings.Fields(line)
 		if len(parts) < 2 {
 			continue
 		}
-		
+
 		module := parts[0]
 		version := parts[1]
-		
+
 		// Skip /go.mod entries
 		if strings.HasSuffix(version, "/go.mod") {
 			version = strings.TrimSuffix(version, "/go.mod")
 		}
-		
+
 		// Only keep the first occurrence of each module
 		if _, exists := dependencies[module]; !exists {
 			dep := &models.Dependency{
-				Name:     module,
-				Version:  version,
-				Type:     models.DependencyTypeGo,
+				Name:    module,
+				Version: version,
+				Type:    s.determineDependencyType(module),
+				Source:  fmt.Sprintf("%s:%d", filepath.Base(filePath), lineNum),
+				Package: []string{module},
+			}
 
+			// Use resolver to get Git URL if available
+			if s.resolver != nil {
+				if gitURL, err := s.resolver.ResolveGitURL(module, "go"); err == nil && gitURL != "" {
+					dep.Git = gitURL
+				}
 			}
-			
-			if strings.HasPrefix(module, "github.com/") {
-				dep.Git = fmt.Sprintf("https://%s", module)
-				dep.Package = []string{module}
-			}
-			
+
 			dependencies[module] = dep
 		}
 	}
-	
+
 	// Convert map to slice
 	result := make([]*models.Dependency, 0, len(dependencies))
 	for _, dep := range dependencies {
 		result = append(result, dep)
 	}
-	
-	s.LogProgress(ctx, "Found %d unique modules in go.sum", len(result))
+
+	ctx.Debugf("Found %d unique modules in go.sum", len(result))
 	return result, nil
 }
 
@@ -186,9 +190,4 @@ func (s *GoDependencyScanner) findRequireLine(content []byte, modulePath string,
 	// Fallback: estimate line based on position in requires slice
 	// This is approximate but better than no line number
 	return fallbackIdx + 10 // Rough estimate assuming require block starts around line 10
-}
-
-func init() {
-	// Auto-register the Go scanner
-	NewGoDependencyScanner()
 }

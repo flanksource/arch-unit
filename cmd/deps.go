@@ -2,38 +2,42 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 
-	"github.com/fatih/color"
 	"github.com/flanksource/arch-unit/analysis"
-	"github.com/flanksource/arch-unit/internal/cache"
+	"github.com/flanksource/arch-unit/analysis/dependencies"
 	"github.com/flanksource/arch-unit/models"
+	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/task"
 	"github.com/spf13/cobra"
 )
 
 var (
-	depsFilters    []string
-	depsIndirect   bool
-	depsDepth      int
-	depsNoCache    bool
-	depsGitCacheDir string
+	depsFilters       []string
+	depsIndirect      bool
+	depsDepth         int
+	depsNoCache       bool
+	depsGitCacheDir   string
 	depsShowConflicts bool
 )
 
 var depsCmd = &cobra.Command{
-	Use:   "deps [path]",
+	Use:   "deps [path-or-git-url]",
 	Short: "Analyze and visualize project dependencies",
-	Long: `Scan dependency files (go.mod, package.json, requirements.txt, etc.) 
+	Long: `Scan dependency files (go.mod, package.json, requirements.txt, etc.)
 and show dependency tree with versions.
+
+Path can be a local directory or git URL:
+  - Local:  ".", "/path/to/project"
+  - Git:    "github.com/user/repo@v1.0.0", "https://github.com/user/repo@main"
 
 Supported dependency files:
   - Go: go.mod, go.sum
   - JavaScript/TypeScript: package.json, package-lock.json, yarn.lock
   - Python: requirements.txt, Pipfile, pyproject.toml, poetry.lock
   - Helm: Chart.yaml
-  - Docker: Dockerfile`,
+  - Docker: Dockerfile
+
+Use --depth > 0 to enable git repository traversal and version conflict detection.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runDeps,
 }
@@ -67,11 +71,12 @@ func init() {
 	depsCmd.AddCommand(depsScanCmd)
 	depsCmd.AddCommand(depsTreeCmd)
 	depsCmd.AddCommand(depsListCmd)
-
-	// Common flags
-	depsCmd.PersistentFlags().StringVarP(&depsFormat, "format", "f", "tree", "Output format: tree, json, yaml")
-	depsCmd.PersistentFlags().StringVarP(&depsLanguage, "language", "l", "", "Filter by language: go, javascript, python, helm, docker")
-	depsCmd.PersistentFlags().BoolVar(&depsNoCache, "no-cache", false, "Disable cache and force re-scan")
+	depsCmd.PersistentFlags().BoolVar(&depsIndirect, "indirect", true, "Include indirect dependencies")
+	depsCmd.PersistentFlags().IntVar(&depsDepth, "depth", 0, "Maximum dependency depth to traverse (0 for local only, >0 for git traversal)")
+	depsCmd.PersistentFlags().StringSliceVar(&depsFilters, "filter", []string{}, "Filter dependencies (e.g., '!go', '*flanksource*', 'github.com/spf13/*')")
+	depsCmd.PersistentFlags().BoolVar(&depsNoCache, "no-cache", false, "Bypass cache for Git URL resolution")
+	depsCmd.PersistentFlags().StringVar(&depsGitCacheDir, "git-cache-dir", ".cache/arch-unit/repositories", "Directory for git repository cache")
+	depsCmd.PersistentFlags().BoolVar(&depsShowConflicts, "show-conflicts", false, "Show version conflicts in output")
 }
 
 func runDeps(cmd *cobra.Command, args []string) error {
@@ -84,82 +89,129 @@ func runDepsScan(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		path = args[0]
 	}
-	
-	fmt.Printf("DEBUG: Starting scan for path: %s, depth: %d\n", path, depsDepth)
 
-	// Resolve to absolute path
-	absPath, err := filepath.Abs(path)
+	result := task.StartTask(fmt.Sprintf("Dependency Scan: %s", path), func(ctx clicky.Context, t *clicky.Task) (*models.ScanResult, error) {
+		return performDependencyScan(ctx, t, path)
+	})
+
+	// Wait for the specific task to complete, not all global tasks
+	deps, err := result.GetResult()
 	if err != nil {
-		return fmt.Errorf("failed to resolve path: %w", err)
+		return err
 	}
 
-	// Find dependency files
-	depFiles, err := findDependencyFiles(absPath, depsLanguage)
-	if err != nil {
-		return fmt.Errorf("failed to find dependency files: %w", err)
-	}
-
-	if len(depFiles) == 0 {
-		fmt.Printf("No dependency files found in %s\n", absPath)
+	// Defensive check: ensure result is not nil
+	if deps == nil {
+		fmt.Println("No dependencies found")
 		return nil
 	}
 
-	fmt.Printf("Found %d dependency files\n", len(depFiles))
+	if len(deps.Dependencies) == 0 {
+		fmt.Println("No dependencies found")
+		return nil
+	}
 
-	// Create cache (unless disabled)
-	var astCache *cache.ASTCache
-	if !depsNoCache {
-		astCache, err = cache.NewASTCache()
-		if err != nil {
-			fmt.Printf("Warning: Failed to create cache: %v\n", err)
-			// Continue without cache
-		} else {
-			defer astCache.Close()
+	// Display results
+	if depsShowConflicts && len(deps.Conflicts) > 0 {
+		fmt.Printf("⚠️  Version conflicts detected (%d)\n\n", len(deps.Conflicts))
+		for _, conflict := range deps.Conflicts {
+			fmt.Printf("📦 %s:\n", conflict.DependencyName)
+			for _, version := range conflict.Versions {
+				fmt.Printf("  - %s (depth %d from %s)\n", version.Version, version.Depth, version.Source)
+			}
+			fmt.Printf("  Resolution: %s\n\n", conflict.ResolutionStrategy)
 		}
 	}
 
-	// Process each dependency file
-	allDeps := make([]*models.Dependency, 0)
-	for _, depFile := range depFiles {
-		fmt.Printf("Scanning %s...\n", depFile)
-		
-		// Read file content
-		content, err := os.ReadFile(depFile)
-		if err != nil {
-			fmt.Printf("  Failed to read file: %v\n", err)
-			continue
-		}
+	fmt.Println(clicky.MustFormat(deps.Dependencies, clicky.FormatOptions{Format: "tree"}))
+	return nil
+}
 
-		// Determine scanner based on file type
-		scanner := getScanner(depFile)
-		if scanner == nil {
-			fmt.Printf("  No scanner available for %s\n", depFile)
-			continue
-		}
+func performDependencyScan(ctx clicky.Context, t *clicky.Task, path string) (*models.ScanResult, error) {
 
-		// Scan dependencies
-		deps, err := scanner.ScanFile(nil, depFile, content)
-		if err != nil {
-			fmt.Printf("  Failed to scan: %v\n", err)
-			continue
-		}
+	// Configure resolution service TTL based on cache flag
+	if depsNoCache {
+		analysis.SetResolutionServiceTTL(0) // TTL of 0 means no caching
+	}
 
-		allDeps = append(allDeps, deps...)
-		fmt.Printf("  Found %d dependencies\n", len(deps))
+	// Create resolution service EARLY to avoid lazy initialization deadlock in parallel tasks
+	resolver, err := analysis.GetResolutionService()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resolution service: %w", err)
+	}
 
-		// Store in cache if available
-		if astCache != nil {
-			if err := astCache.StoreDependencies(depFile, deps); err != nil {
-				fmt.Printf("  Warning: Failed to cache dependencies: %v\n", err)
+	// Create a custom registry with all existing scanners plus the resolver-enabled Go scanner
+	registry := analysis.NewDependencyRegistry()
+
+	// Copy all existing scanners from the default registry
+	defaultRegistry := analysis.GetDefaultRegistry()
+	for _, lang := range defaultRegistry.List() {
+		if lang != "go" && lang != "helm" && lang != "docker" { // Skip go, helm, and docker, we'll add our enhanced versions
+			if existingScanner, ok := defaultRegistry.Get(lang); ok {
+				registry.Register(existingScanner)
 			}
 		}
 	}
 
-	// Display summary
-	fmt.Printf("Total dependencies found: %d\n", len(allDeps))
-	
-	// Display dependencies based on format
-	return displayDependencies(allDeps, depsFormat)
+	// Add our enhanced Go scanner with resolver
+	goScanner := analysis.NewGoDependencyScannerWithResolver(resolver)
+	registry.Register(goScanner)
+
+	// Add enhanced Helm scanner with resolver
+	helmScanner := dependencies.NewHelmDependencyScannerWithResolver(resolver)
+	registry.Register(helmScanner)
+
+	// Add enhanced Docker scanner with resolver
+	dockerScanner := dependencies.NewDockerDependencyScannerWithResolver(resolver)
+	registry.Register(dockerScanner)
+
+	// Create scanner with custom registry
+	scanner := dependencies.NewScannerWithRegistry(registry)
+
+	// Set git cache directory if depth > 0
+	if depsDepth > 0 {
+		scanner.SetupGitSupport(depsGitCacheDir)
+	}
+
+	// Create scan context with all configuration
+	scanCtx := analysis.NewScanContext(t, path).
+		WithDepth(depsDepth).
+		WithIndirect(depsIndirect)
+	// TODO: Apply filters in post-processing
+
+	// Phase 2: Scanning
+	if depsDepth > 0 {
+		t.Infof("Scanning dependencies with depth %d in %s", depsDepth, path)
+	} else {
+		t.Infof("Scanning local dependencies in %s", path)
+	}
+
+	// Use ScanWithContext method
+	result, err := scanner.ScanWithContext(scanCtx, path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan dependencies: %w", err)
+	}
+
+	// Ensure result is never nil
+	if result == nil {
+		result = &models.ScanResult{
+			Dependencies: []*models.Dependency{},
+			Conflicts:    []models.VersionConflict{},
+			Metadata: models.ScanMetadata{
+				ScanType:          "local",
+				MaxDepth:          depsDepth,
+				RepositoriesFound: 0,
+				TotalDependencies: 0,
+				ConflictsFound:    0,
+			},
+		}
+	}
+
+	// Mark task as successful
+	if t != nil {
+		t.Success()
+	}
+	return result, nil
 }
 
 func runDepsTree(cmd *cobra.Command, args []string) error {
@@ -168,241 +220,6 @@ func runDepsTree(cmd *cobra.Command, args []string) error {
 }
 
 func runDepsList(cmd *cobra.Command, args []string) error {
-	// Tree and list commands use the same implementation  
+	// Tree and list commands use the same implementation
 	return runDepsScan(cmd, args)
-}
-
-func runDepsTreeOld(cmd *cobra.Command, args []string) error {
-	path := "."
-	if len(args) > 0 {
-		path = args[0]
-	}
-
-	// Get dependencies from cache or scan
-	deps, err := getDependencies(path)
-	if err != nil {
-		return err
-	}
-
-	// Build and display tree
-	return displayDependencyTree(deps)
-}
-
-func runDepsList(cmd *cobra.Command, args []string) error {
-	path := "."
-	if len(args) > 0 {
-		path = args[0]
-	}
-
-	// Get dependencies from cache or scan
-	deps, err := getDependencies(path)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("DEBUG: runDepsList got %d dependencies\n", len(deps))
-	fmt.Printf("DEBUG: clicky.Flags.FormatOptions = %+v\n", clicky.Flags.FormatOptions)
-
-	// Use clicky.MustFormat to respect global format flags
-	fmt.Println(clicky.MustFormat(deps))
-	return nil
-}
-
-// findDependencyFiles finds all dependency files in the given path
-func findDependencyFiles(path string, language string) ([]string, error) {
-	var patterns []string
-	
-	if language != "" {
-		// Get patterns for specific language from registry
-		if scanner, ok := analysis.DefaultDependencyRegistry.Get(language); ok {
-			patterns = scanner.SupportedFiles()
-		} else {
-			return nil, fmt.Errorf("unsupported language: %s", language)
-		}
-	} else {
-		// Get all supported patterns from registry
-		patterns = analysis.DefaultDependencyRegistry.GetAllSupportedFiles()
-	}
-
-	var files []string
-	err := filepath.Walk(path, func(filePath string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip directories
-		if info.IsDir() {
-			// Skip common non-source directories
-			name := info.Name()
-			if name == ".git" || name == "node_modules" || name == "vendor" || 
-			   name == ".venv" || name == "venv" || name == "__pycache__" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		// Check if file matches any pattern
-		fileName := info.Name()
-		for _, pattern := range patterns {
-			matched, _ := filepath.Match(pattern, fileName)
-			if matched {
-				files = append(files, filePath)
-				break
-			}
-		}
-
-		return nil
-	})
-
-	return files, err
-}
-
-// getScanner returns the appropriate scanner for a file
-func getScanner(filepath string) analysis.DependencyScanner {
-	scanner, found := analysis.DefaultDependencyRegistry.GetScannerForFile(filepath)
-	if found {
-		return scanner
-	}
-	
-	return nil
-}
-
-// getDependencies retrieves dependencies from cache or performs a scan
-func getDependencies(path string) ([]*models.Dependency, error) {
-	if !depsNoCache {
-		// Try to get from cache first
-		astCache, err := cache.NewASTCache()
-		if err == nil {
-			defer astCache.Close()
-			deps, err := astCache.GetAllDependencies()
-			if err == nil && len(deps) > 0 {
-				return deps, nil
-			}
-		}
-	}
-
-	// Perform scan
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve path: %w", err)
-	}
-
-	depFiles, err := findDependencyFiles(absPath, depsLanguage)
-	if err != nil {
-		return nil, err
-	}
-
-	allDeps := make([]*models.Dependency, 0)
-	for _, depFile := range depFiles {
-		content, err := os.ReadFile(depFile)
-		if err != nil {
-			continue
-		}
-
-		scanner := getScanner(depFile)
-		if scanner == nil {
-			continue
-		}
-
-		deps, err := scanner.ScanFile(nil, depFile, content)
-		if err != nil {
-			continue
-		}
-
-		allDeps = append(allDeps, deps...)
-	}
-
-	return allDeps, nil
-}
-
-// displayDependencies displays dependencies in the specified format
-func displayDependencies(deps []*models.Dependency, format string) error {
-	switch format {
-	case "tree":
-		return displayDependencyTree(deps)
-	case "list", "table":
-		return displayDependenciesList(deps)
-	case "json":
-		// Simple JSON output
-		fmt.Println("[")
-		for i, dep := range deps {
-			fmt.Printf("  {\"name\": \"%s\", \"version\": \"%s\", \"type\": \"%s\"}", 
-				dep.Name, dep.Version, dep.Type)
-			if i < len(deps)-1 {
-				fmt.Println(",")
-			} else {
-				fmt.Println("")
-			}
-		}
-		fmt.Println("]")
-	case "yaml":
-		// Simple YAML output
-		for _, dep := range deps {
-			fmt.Printf("- name: %s\n  version: %s\n  type: %s\n", 
-				dep.Name, dep.Version, dep.Type)
-		}
-	default:
-		return fmt.Errorf("unsupported format: %s", format)
-	}
-	return nil
-}
-
-// displayDependencyTree displays dependencies in a tree format
-func displayDependencyTree(deps []*models.Dependency) error {
-	if len(deps) == 0 {
-		fmt.Println("No dependencies found")
-		return nil
-	}
-
-	// Group by type
-	byType := make(map[string][]*models.Dependency)
-	for _, dep := range deps {
-		byType[string(dep.Type)] = append(byType[string(dep.Type)], dep)
-	}
-
-	// Display each type
-	for depType, typeDeps := range byType {
-		color.New(color.FgCyan, color.Bold).Printf("\n%s Dependencies (%d)\n", strings.ToUpper(depType), len(typeDeps))
-		fmt.Println(strings.Repeat("─", 40))
-		
-		for _, dep := range typeDeps {
-			// Use Pretty method for consistent formatting
-			prettyDep := dep.Pretty()
-			fmt.Printf("  %s %s\n", 
-				color.GreenString("├──"),
-				prettyDep.Content)
-			
-			// Display additional info if available
-			if dep.Git != "" {
-				fmt.Printf("      %s %s\n", 
-					color.HiBlackString("└─ git:"),
-					color.HiBlackString(dep.Git))
-			}
-		}
-	}
-
-	return nil
-}
-
-// displayDependenciesList displays dependencies in a list format
-func displayDependenciesList(deps []*models.Dependency) error {
-	if len(deps) == 0 {
-		fmt.Println("No dependencies found")
-		return nil
-	}
-
-	// Print header
-	fmt.Printf("%-12s %-40s %-15s %s\n", "TYPE", "NAME", "VERSION", "LANGUAGE")
-	fmt.Println(strings.Repeat("-", 80))
-	
-	// Print dependencies
-	for _, dep := range deps {
-		prettyDep := dep.Pretty()
-		fmt.Printf("%-12s %-50s %s\n", 
-			string(dep.Type), 
-			prettyDep.Content,
-			dep.Language)
-	}
-	
-	return nil
 }

@@ -72,13 +72,13 @@ func (r *RunnerV2) Close() error {
 }
 
 // RunEnabledLinters runs all enabled linters with intelligent debouncing
-func (r *RunnerV2) RunEnabledLinters() ([]LinterResultV2, error) {
+func (r *RunnerV2) RunEnabledLinters() ([]LinterResult, error) {
 	return r.RunEnabledLintersOnFiles(nil, false)
 }
 
 // RunEnabledLintersOnFiles runs enabled linters on specific files
-func (r *RunnerV2) RunEnabledLintersOnFiles(specificFiles []string, fix bool) ([]LinterResultV2, error) {
-	var results []LinterResultV2
+func (r *RunnerV2) RunEnabledLintersOnFiles(specificFiles []string, fix bool) ([]LinterResult, error) {
+	var results []LinterResult
 
 	enabledLinters := r.config.GetEnabledLinters()
 	logger.Infof("Running %d enabled linters: %v", len(enabledLinters), enabledLinters)
@@ -89,7 +89,7 @@ func (r *RunnerV2) RunEnabledLintersOnFiles(specificFiles []string, fix bool) ([
 		result, err := r.RunWithIntelligentDebounce(ctx, linterName, specificFiles, fix)
 		if err != nil {
 			logger.Warnf("Failed to run linter %s: %v", linterName, err)
-			results = append(results, LinterResultV2{
+			results = append(results, LinterResult{
 				Linter:  linterName,
 				Success: false,
 				Error:   err.Error(),
@@ -104,7 +104,7 @@ func (r *RunnerV2) RunEnabledLintersOnFiles(specificFiles []string, fix bool) ([
 }
 
 // RunWithIntelligentDebounce executes a linter with intelligent debouncing
-func (r *RunnerV2) RunWithIntelligentDebounce(ctx context.Context, linterName string, files []string, fix bool) (*LinterResultV2, error) {
+func (r *RunnerV2) RunWithIntelligentDebounce(ctx context.Context, linterName string, files []string, fix bool) (*LinterResult, error) {
 	start := time.Now()
 
 	// Get linter from registry
@@ -161,7 +161,7 @@ func (r *RunnerV2) RunWithIntelligentDebounce(ctx context.Context, linterName st
 		r.updateTaskStatus(task, linterName, success, len(violations), err)
 	}
 
-	return &LinterResultV2{
+	return &LinterResult{
 		Linter:     linterName,
 		Success:    success,
 		Duration:   duration,
@@ -195,7 +195,7 @@ func (r *RunnerV2) buildCommandDisplay(linter Linter, config *models.LinterConfi
 }
 
 // loadCachedResult loads cached violations for debounced linters
-func (r *RunnerV2) loadCachedResult(linterName string, debounce time.Duration, task *clicky.Task, start time.Time) (*LinterResultV2, error) {
+func (r *RunnerV2) loadCachedResult(linterName string, debounce time.Duration, task *clicky.Task, start time.Time) (*LinterResult, error) {
 	logger.Debugf("Skipping linter %s (debounced for %v)", linterName, debounce)
 
 	var violations []models.Violation
@@ -213,15 +213,15 @@ func (r *RunnerV2) loadCachedResult(linterName string, debounce time.Duration, t
 	if task != nil {
 		violationCount := len(violations)
 		if violationCount > 0 {
-			task.SetStatus(fmt.Sprintf("%s (%d cached violations)", linterName, violationCount))
+			task.SetName(fmt.Sprintf("%s (%d cached violations)", linterName, violationCount))
 			task.Warning()
 		} else {
-			task.SetStatus(fmt.Sprintf("%s (skipped - debounced)", linterName))
+			task.SetName(fmt.Sprintf("%s (skipped - debounced)", linterName))
 			task.Success()
 		}
 	}
 
-	return &LinterResultV2{
+	return &LinterResult{
 		Linter:       linterName,
 		Success:      true,
 		Duration:     time.Since(start),
@@ -255,14 +255,14 @@ func (r *RunnerV2) cacheViolations(linterName string, violations []models.Violat
 func (r *RunnerV2) updateTaskStatus(task *clicky.Task, linterName string, success bool, violationCount int, err error) {
 	if success {
 		if violationCount > 0 {
-			task.SetStatus(fmt.Sprintf("%s (%d violations)", linterName, violationCount))
+			task.SetName(fmt.Sprintf("%s (%d violations)", linterName, violationCount))
 			task.Warning()
 		} else {
-			task.SetStatus(linterName)
+			task.SetName(linterName)
 			task.Success()
 		}
 	} else {
-		task.SetStatus(fmt.Sprintf("%s (failed)", linterName))
+		task.SetName(fmt.Sprintf("%s (failed)", linterName))
 		if err != nil {
 			task.Errorf("Error: %v", err)
 		}

@@ -258,7 +258,6 @@ func analyzePythonFilesWithCache(rootDir string, files []string, config *models.
 
 // outputConsolidatedResults outputs consolidated results from arch-unit and linters
 func outputConsolidatedResults(result *models.ConsolidatedResult) error {
-	globalFormatOpts := GetFormatOptions()
 	outputFormat := getOutputFormat()
 	
 	if outputFormat == "json" {
@@ -289,7 +288,7 @@ func outputConsolidatedResults(result *models.ConsolidatedResult) error {
 	}
 
 	// Print consolidated summary for table/pretty format
-	if outputFormat == "table" || (globalFormatOpts != nil && globalFormatOpts.Format == "pretty") {
+	if outputFormat == "table" || outputFormat == "pretty" {
 		printConsolidatedSummary(result)
 	}
 

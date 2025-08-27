@@ -1,3 +1,6 @@
+build: make build
+exec: arch-unit
+---
 # AST CLI Test Fixtures
 
 ## Basic CLI Commands

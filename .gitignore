@@ -53,3 +53,6 @@ test_*
 debug_*
 bin/
 hack/
+
+*.backup*
+.task

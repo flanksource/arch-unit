@@ -1,21 +1,20 @@
 module github.com/flanksource/arch-unit
 
-go 1.24.1
-
-toolchain go1.24.5
+go 1.24.5
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/charmbracelet/lipgloss v0.13.1
 	github.com/fatih/color v1.18.0
-	github.com/flanksource/clicky v0.1.0
-	github.com/flanksource/commons v1.41.0
+	github.com/flanksource/clicky v1.0.0
+	github.com/flanksource/commons v1.41.1
 	github.com/flanksource/gomplate/v3 v3.24.58
 	github.com/go-git/go-git/v5 v5.16.2
 	github.com/google/gops v0.3.28
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.38.0
 	github.com/pelletier/go-toml/v2 v2.2.2
+	github.com/samber/lo v1.49.1
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
@@ -115,7 +114,6 @@ require (
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
-	github.com/samber/lo v1.49.1 // indirect
 	github.com/samber/oops v1.17.0 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
@@ -172,6 +170,6 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-replace github.com/flanksource/clicky => /Users/moshe/work/omi/clicky
+// replace github.com/flanksource/clicky => /Users/moshe/work/omi/clicky
 
-replace github.com/flanksource/commons => /Users/moshe/go/src/github.com/flanksource/commons
+// replace github.com/flanksource/commons => /Users/moshe/go/src/github.com/flanksource/commons

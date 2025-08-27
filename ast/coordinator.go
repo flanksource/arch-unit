@@ -5,13 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sync"
 	"time"
 
 	"github.com/flanksource/arch-unit/analysis"
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/languages"
 	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/task"
+	flanksourceContext "github.com/flanksource/commons/context"
 )
 
 // Coordinator manages AST analysis with caching and parallelization
@@ -38,7 +39,7 @@ func NewCoordinator(cache *cache.ASTCache, workDir string, opts CoordinatorOptio
 	if maxWorkers <= 0 {
 		maxWorkers = runtime.NumCPU()
 	}
-	
+
 	return &Coordinator{
 		cache:      cache,
 		registry:   languages.GetRegistry(),
@@ -58,9 +59,8 @@ type FileJob struct {
 
 // LanguageTaskGroup tracks tasks for a specific language
 type LanguageTaskGroup struct {
+	task.TypedGroup[FileResult]
 	Language string
-	Tasks    []*TaskInfo
-	mu       sync.Mutex
 }
 
 // TaskInfo stores task along with its original filename
@@ -79,31 +79,31 @@ type FileResult struct {
 // AnalyzeDirectory analyzes all source files in a directory with parallelization
 func (c *Coordinator) AnalyzeDirectory(parentTask *clicky.Task, dir string) ([]FileResult, error) {
 	// Log initial status
-	parentTask.SetStatus("Starting AST Analysis")
-	
+	parentTask.SetName("Starting AST Analysis")
+
 	// Discovery phase
-	parentTask.SetStatus("Discovering files")
+	parentTask.SetName("Discovering files")
 	files, err := c.discoverFiles(dir)
 	if err != nil {
 		parentTask.Errorf("Failed to discover files: %v", err)
 		parentTask.Failed()
 		return nil, err
 	}
-	parentTask.Infof("Found %d files", len(files))
-	
+	parentTask.SetName(fmt.Sprintf("Found %d files", len(files)))
+
 	// Group files by language
-	parentTask.SetStatus("Detecting languages")
+	parentTask.SetName("Detecting languages")
 	filesByLang := c.groupByLanguage(files)
 	for lang, count := range filesByLang {
 		parentTask.Infof("%s: %d files", lang, len(count))
 	}
-	
+
 	// Filter files that need analysis
-	parentTask.SetStatus("Checking cache")
+	parentTask.SetName("Checking cache")
 	filesToAnalyze := c.filterFilesNeedingAnalysis(files)
 	cachedCount := len(files) - len(filesToAnalyze)
 	parentTask.Infof("%d files need analysis, %d cached", len(filesToAnalyze), cachedCount)
-	
+
 	// If no files need analysis, still return cached results
 	if len(filesToAnalyze) == 0 {
 		parentTask.Infof("All files are cached and up to date")
@@ -121,79 +121,55 @@ func (c *Coordinator) AnalyzeDirectory(parentTask *clicky.Task, dir string) ([]F
 		parentTask.Success()
 		return allResults, nil
 	}
-	
-	// Create channels for worker pool
-	jobs := make(chan FileJob, len(filesToAnalyze))
-	results := make(chan FileResult, len(filesToAnalyze))
-	
+
 	// Create language task groups - initialize for all possible languages
 	langGroups := make(map[string]*LanguageTaskGroup)
-	
-	// Start workers
-	var wg sync.WaitGroup
-	parentTask.Infof("Starting %d workers", c.maxWorkers)
-	
-	for i := 0; i < c.maxWorkers; i++ {
-		wg.Add(1)
-		go c.worker(i, jobs, results, &wg)
-	}
-	
+
 	// Create individual task for each file
-	parentTask.SetStatus("Analyzing files")
+	parentTask.SetName("Analyzing files")
 	for _, file := range filesToAnalyze {
 		lang := c.registry.DetectLanguage(file)
 		if lang == nil {
 			continue // Skip unsupported files
 		}
-		
-		// Use only the filename, not the full path
-		fileName := filepath.Base(file)
-		// Create a simple task for this file
-		fileTask := clicky.StartGlobalTask(fileName)
-		
+
 		// Add task to language group - create group if doesn't exist
 		if _, exists := langGroups[lang.Name]; !exists {
 			langGroups[lang.Name] = &LanguageTaskGroup{
-				Language: lang.Name,
-				Tasks:    []*TaskInfo{},
+				Language:   lang.Name,
+				TypedGroup: task.StartGroup[FileResult](lang.Name),
 			}
 		}
-		
+
+		// Use only the filename, not the full path
+		fileName := filepath.Base(file)
+
 		group := langGroups[lang.Name]
-		group.mu.Lock()
-		group.Tasks = append(group.Tasks, &TaskInfo{
-			Task:     fileTask,
-			FileName: fileName,
-		})
-		group.mu.Unlock()
-		
-		jobs <- FileJob{
-			Path:     file,
-			Language: lang,
-			Task:     fileTask,
-		}
+		group.Add(fileName, c.analyzeFile)
+
 	}
-	close(jobs)
-	
-	// Wait for completion
-	wg.Wait()
-	close(results)
-	
-	// Collect results
+
 	var allResults []FileResult
 	var successCount, errorCount int
 	var errors []error
-	
-	for result := range results {
-		if result.Error != nil {
-			errorCount++
-			errors = append(errors, result.Error)
-		} else {
-			successCount++
+	for _, group := range langGroups {
+		if err := group.WaitFor().Error; err != nil {
+			return nil, err
+
+		}
+		results, _ := group.GetResults()
+		for _, result := range results {
 			allResults = append(allResults, result)
+			if result.Error != nil {
+				errorCount++
+				errors = append(errors, result.Error)
+			} else {
+				successCount++
+				allResults = append(allResults, result)
+			}
 		}
 	}
-	
+
 	// Also include cached results for files not analyzed
 	for _, file := range files {
 		needsAnalysis := false
@@ -213,14 +189,13 @@ func (c *Coordinator) AnalyzeDirectory(parentTask *clicky.Task, dir string) ([]F
 			}
 		}
 	}
-	
+
 	// Display filtered task summary by language (only if we have language groups from analyzed files)
 	if len(langGroups) > 0 {
 		// Add a small delay to ensure all tasks have completed their status updates
 		time.Sleep(10 * time.Millisecond)
-		c.displayLanguageGroupSummary(parentTask, langGroups)
 	}
-	
+
 	// Report final status
 	if errorCount > 0 {
 		parentTask.Warnf("Completed: %d succeeded, %d failed", successCount, errorCount)
@@ -229,92 +204,72 @@ func (c *Coordinator) AnalyzeDirectory(parentTask *clicky.Task, dir string) ([]F
 		parentTask.Infof("Successfully analyzed %d files", successCount)
 		parentTask.Success()
 	}
-	
+
 	return allResults, nil
 }
 
-// worker processes file analysis jobs
-func (c *Coordinator) worker(id int, jobs <-chan FileJob, results chan<- FileResult, wg *sync.WaitGroup) {
-	defer wg.Done()
-	
-	for job := range jobs {
-		result := c.analyzeFile(job)
-		results <- result
-	}
-}
-
 // analyzeFile analyzes a single file
-func (c *Coordinator) analyzeFile(job FileJob) FileResult {
-	task := job.Task
-	result := FileResult{Path: job.Path}
-	
+func (c *Coordinator) analyzeFile(ctx flanksourceContext.Context, task *task.Task) (FileResult, error) {
+	result := FileResult{Path: task.Name()}
+
 	// Check cache
-	if !c.noCache && !c.shouldAnalyze(job.Path) {
-		cached, err := c.getCachedAnalysis(job.Path)
+	if !c.noCache && !c.shouldAnalyze(result.Path) {
+		cached, err := c.getCachedAnalysis(result.Path)
 		if err == nil && cached != nil {
 			// Debug: ("Using cached analysis")
 			// Don't overwrite the task name - keep showing the filename
 			// task.SetStatus("Cached")
 			task.Success()
 			result.Result = cached
-			return result
+			return result, nil
 		}
 	}
-	
-	// Check if analyzer is available
-	if job.Language.Analyzer == nil {
-		task.Warnf("No analyzer for %s (language: %+v)", job.Language.Name, job.Language)
+
+	// Detect language from file extension
+	lang := c.registry.DetectLanguage(result.Path)
+	if lang == nil || lang.Analyzer == nil {
+		task.Warnf("No analyzer for file %s", result.Path)
 		task.Warning()
-		return result
+		return result, nil
 	}
-	
-	// Read file
-	// Don't overwrite the task name - keep showing the filename
-	// task.SetStatus("Reading")
-	content, err := os.ReadFile(job.Path)
+
+	content, err := os.ReadFile(result.Path)
 	if err != nil {
 		task.Errorf("Failed to read: %v", err)
 		task.Failed()
 		result.Error = err
-		return result
+		return result, nil
 	}
-	
-	// Analyze
-	task.SetStatus("Analyzing")
-	task.Debugf("Language: %s", job.Language.Name)
-	
-	// Call the analyzer through the interface
-	analysisResult, err := job.Language.Analyzer.AnalyzeFile(task, job.Path, content)
+
+	analysisResult, err := lang.Analyzer.AnalyzeFile(task, result.Path, content)
 	if err != nil {
-		task.Errorf("Analysis failed: %v", err)
-		task.Failed()
-		result.Error = err
-		return result
+		task.FailedWithError(err)
+		return result, nil
 	}
-	
+
 	// Type assert the result
 	astResult, ok := analysisResult.(*analysis.ASTResult)
 	if !ok {
 		task.Errorf("Invalid analysis result type")
 		task.Failed()
 		result.Error = fmt.Errorf("invalid analysis result type")
-		return result
+		return result, result.Error
 	}
-	
+
 	// Store in cache
 	if !c.noCache {
 		// Don't overwrite the task name - keep showing the filename
 		// task.SetStatus("Caching")
-		if err := c.storeResults(job.Path, astResult); err != nil {
+		if err := c.storeResults(result.Path, astResult); err != nil {
 			task.Warnf("Failed to cache: %v", err)
 		}
 	}
-	
+
 	task.Infof("✓ %d nodes, %d relationships", len(astResult.Nodes), len(astResult.Relationships))
 	task.Success()
-	
+
 	result.Result = astResult
-	return result
+	return result, nil
 }
 
 // shouldAnalyze determines if a file needs analysis
@@ -322,13 +277,13 @@ func (c *Coordinator) shouldAnalyze(file string) bool {
 	if c.noCache {
 		return true
 	}
-	
+
 	// Check if file needs reanalysis based on modification time
 	needsAnalysis, err := c.cache.NeedsReanalysis(file)
 	if err != nil {
 		return true // Analyze if we can't determine
 	}
-	
+
 	if !needsAnalysis {
 		// Check TTL if configured
 		if c.cacheTTL > 0 {
@@ -337,61 +292,62 @@ func (c *Coordinator) shouldAnalyze(file string) bool {
 			if err != nil {
 				return true
 			}
-			
+
 			// For now, use modification time as a proxy for cache age
 			if time.Since(fileInfo.ModTime()) > c.cacheTTL {
 				return true // Consider cache expired
 			}
 		}
-		
+
 		return false // Cache is valid
 	}
-	
+
 	return true
 }
 
 // discoverFiles finds all source files in the directory
 func (c *Coordinator) discoverFiles(dir string) ([]string, error) {
 	var files []string
-	
+
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		
+
 		// Skip common directories
 		if info.IsDir() {
+			//FIXME support .gitignore
 			name := info.Name()
-			if name == ".git" || name == "vendor" || name == "node_modules" || 
-			   name == "__pycache__" || name == ".venv" || name == "venv" ||
-			   name == "target" || name == "dist" || name == "build" {
+			if name == ".git" || name == "vendor" || name == "node_modules" ||
+				name == "__pycache__" || name == ".venv" || name == "venv" ||
+				name == "target" || name == "dist" || name == "build" {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		
+
 		// Check if file has a supported extension
 		if c.registry.DetectLanguage(path) != nil {
 			files = append(files, path)
 		}
-		
+
 		return nil
 	})
-	
+
 	return files, err
 }
 
 // groupByLanguage groups files by their detected language
 func (c *Coordinator) groupByLanguage(files []string) map[string][]string {
 	groups := make(map[string][]string)
-	
+
 	for _, file := range files {
 		lang := c.registry.DetectLanguage(file)
 		if lang != nil {
 			groups[lang.Name] = append(groups[lang.Name], file)
 		}
 	}
-	
+
 	return groups
 }
 
@@ -400,15 +356,15 @@ func (c *Coordinator) filterFilesNeedingAnalysis(files []string) []string {
 	if c.noCache {
 		return files // All files need analysis
 	}
-	
+
 	var needAnalysis []string
-	
+
 	for _, file := range files {
 		if c.shouldAnalyze(file) {
 			needAnalysis = append(needAnalysis, file)
 		}
 	}
-	
+
 	return needAnalysis
 }
 
@@ -419,15 +375,15 @@ func (c *Coordinator) getCachedAnalysis(file string) (*analysis.ASTResult, error
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Convert to ASTResult
 	result := &analysis.ASTResult{
 		FilePath: file,
 		Nodes:    nodes,
 	}
-	
+
 	// TODO: Also retrieve relationships and libraries from cache
-	
+
 	return result, nil
 }
 
@@ -436,59 +392,4 @@ func (c *Coordinator) storeResults(file string, result *analysis.ASTResult) erro
 	// Use a single transaction for the entire operation to ensure atomicity
 	// This prevents concurrent operations from interfering with each other
 	return c.cache.StoreFileResults(file, result)
-}
-
-// displayLanguageGroupSummary displays a filtered summary of tasks grouped by language
-func (c *Coordinator) displayLanguageGroupSummary(parentTask *clicky.Task, langGroups map[string]*LanguageTaskGroup) {
-	for lang, group := range langGroups {
-		group.mu.Lock()
-		taskInfos := group.Tasks
-		group.mu.Unlock()
-		
-		if len(taskInfos) == 0 {
-			continue
-		}
-		
-		// Separate successful and failed tasks
-		var successfulTasks []*TaskInfo
-		var failedTasks []*TaskInfo
-		
-		for _, taskInfo := range taskInfos {
-			status := taskInfo.Task.Status()
-			
-			switch status {
-			case clicky.StatusSuccess:
-				successfulTasks = append(successfulTasks, taskInfo)
-			case clicky.StatusFailed, clicky.StatusWarning:
-				failedTasks = append(failedTasks, taskInfo)
-			}
-		}
-		
-		// Log language group summary
-		parentTask.Infof("[%s] Analyzed %d files: %d successful, %d failed", 
-			lang, len(taskInfos), len(successfulTasks), len(failedTasks))
-		
-		// Show up to 5 most recent successful tasks
-		displayCount := 5
-		if len(successfulTasks) < displayCount {
-			displayCount = len(successfulTasks)
-		}
-		
-		// Display most recent successful tasks (last 5)
-		if displayCount > 0 {
-			startIdx := len(successfulTasks) - displayCount
-			if startIdx < 0 {
-				startIdx = 0
-			}
-			for i := startIdx; i < len(successfulTasks); i++ {
-				taskInfo := successfulTasks[i]
-				parentTask.Debugf("  ✓ %s", taskInfo.FileName)
-			}
-		}
-		
-		// Display all failed tasks
-		for _, taskInfo := range failedTasks {
-			parentTask.Warnf("  ✗ %s", taskInfo.FileName)
-		}
-	}
 }

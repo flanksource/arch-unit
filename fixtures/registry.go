@@ -36,6 +36,8 @@ type RunOptions struct {
 type FixtureGroup struct {
 	Name     string
 	Children []FixtureResult `json:"children" pretty:"type:tree"`
+	Tests    []FixtureNode   `json:"tests"`
+	Summary  Stats           `json:"summary"`
 }
 
 // Registry manages fixture types

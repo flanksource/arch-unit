@@ -115,7 +115,7 @@ func (a *GoAnalyzer) AnalyzeFile(task *clicky.Task, filePath string, content []b
 	}
 	task.Debugf("Found %d library dependencies", len(libraries))
 
-	task.SetStatus("Analysis complete")
+	task.SetName("Analysis complete")
 	return result, nil
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -115,7 +114,8 @@ func (r *DefaultGitRepository) GetWorktree(version string) (string, error) {
 		if _, err := os.Stat(info.Path); err == nil {
 			info.LastUsed = time.Now()
 			r.worktrees[version] = info
-		return info.Path, nil
+			return info.Path, nil
+		}
 	}
 
 	worktreePath := r.getWorktreePath(version)
@@ -388,7 +388,7 @@ func (r *DefaultGitRepository) ensureCloned() error {
 		}
 	} else if _, err := os.Stat(filepath.Join(r.repoPath, "HEAD")); err == nil {
 		// Bare repository exists
-		repo, err := git.PlainOpenBare(r.repoPath)
+		repo, err := git.PlainOpen(r.repoPath)
 		if err != nil {
 			// Repository corrupted, remove and re-clone
 			os.RemoveAll(r.repoPath)

@@ -215,30 +215,3 @@ func RenderLibrary(value interface{}, field api.PrettyField, theme api.Theme) st
 	}
 }
 
-// RenderFixtureStatus renders fixture test status with color coding and icons
-func RenderFixtureStatus(value interface{}, field api.PrettyField, theme api.Theme) string {
-	status, ok := value.(string)
-	if !ok {
-		return fmt.Sprintf("%v", value)
-	}
-	
-	var style lipgloss.Style
-	var icon string
-	
-	switch status {
-	case "PASS":
-		style = lipgloss.NewStyle().Foreground(theme.Success).Bold(true)
-		icon = "✅ "
-	case "FAIL":
-		style = lipgloss.NewStyle().Foreground(theme.Error).Bold(true)
-		icon = "❌ "
-	case "SKIP":
-		style = lipgloss.NewStyle().Foreground(theme.Warning).Bold(true)
-		icon = "⏭️ "
-	default:
-		style = lipgloss.NewStyle().Foreground(theme.Muted)
-		icon = "🔍 "
-	}
-	
-	return icon + style.Render(status)
-}

@@ -10,17 +10,19 @@ import (
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/linters"
 	"github.com/flanksource/arch-unit/models"
+	"github.com/flanksource/clicky"
+	commonsCtx "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
 )
 
 // ArchUnit implements the Linter interface for arch-unit rules
 type ArchUnit struct {
-	WorkDir string
+	linters.RunOptions
 }
 
 // NewArchUnit creates a new arch-unit linter
 func NewArchUnit(workDir string) *ArchUnit {
-	return &ArchUnit{WorkDir: workDir}
+	return &ArchUnit{RunOptions: linters.RunOptions{WorkDir: workDir}}
 }
 
 // Name returns the linter name
@@ -68,6 +70,12 @@ func (a *ArchUnit) FixArgs() []string {
 func (a *ArchUnit) ValidateConfig(config *models.LinterConfig) error {
 	// arch-unit doesn't need specific validation
 	return nil
+}
+
+// Run executes the arch-unit analysis and returns violations
+func (a *ArchUnit) Start(ctx commonsCtx.Context, task *clicky.Task) ([]models.Violation, error) {
+	return a.Run(ctx, a.RunOptions)
+
 }
 
 // Run executes the arch-unit analysis and returns violations
@@ -124,7 +132,7 @@ func (a *ArchUnit) Run(ctx context.Context, opts linters.RunOptions) ([]models.V
 
 	// Analyze Go files
 	if len(goFiles) > 0 {
-		goResult, err := analyzeGoFilesWithCache(a.WorkDir, goFiles, archConfig, violationCache)
+		goResult, err := analyzeGoFilesWithCache(opts.WorkDir, goFiles, archConfig, violationCache)
 		if err != nil {
 			return nil, fmt.Errorf("failed to analyze Go files: %w", err)
 		}
@@ -133,7 +141,7 @@ func (a *ArchUnit) Run(ctx context.Context, opts linters.RunOptions) ([]models.V
 
 	// Analyze Python files
 	if len(pythonFiles) > 0 {
-		pyResult, err := analyzePythonFilesWithCache(a.WorkDir, pythonFiles, archConfig, violationCache)
+		pyResult, err := analyzePythonFilesWithCache(opts.WorkDir, pythonFiles, archConfig, violationCache)
 		if err != nil {
 			logger.Warnf("Failed to analyze Python files: %v", err)
 		} else {
