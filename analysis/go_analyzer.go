@@ -31,12 +31,12 @@ func NewGoAnalyzer() *GoAnalyzer {
 func (a *GoAnalyzer) AnalyzeFile(task *clicky.Task, filePath string, content []byte) (*ASTResult, error) {
 	// Create result container
 	result := NewASTResult(filePath, a.Language)
-	
+
 	// Check if this is a dependency file (go.mod or go.sum)
 	if strings.HasSuffix(filePath, "go.mod") || strings.HasSuffix(filePath, "go.sum") {
 		// Create scan context - use directory of the file as scan root
 		ctx := NewScanContext(task, filepath.Dir(filePath))
-		
+
 		// Scan dependencies
 		deps, err := a.depScanner.ScanFile(ctx, filePath, content)
 		if err != nil {
@@ -48,28 +48,28 @@ func (a *GoAnalyzer) AnalyzeFile(task *clicky.Task, filePath string, content []b
 			}
 			a.LogProgress(task, "Found %d dependencies in %s", len(deps), filePath)
 		}
-		
+
 		// For dependency files, we only extract dependencies, not AST
 		return result, nil
 	}
-	
+
 	// Parse the Go file for AST
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, filePath, content, parser.ParseComments)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse Go file: %w", err)
 	}
-	
+
 	// Extract package name
 	result.PackageName = file.Name.Name
 	// Debug: ("Package: %s", result.PackageName)
-	
+
 	// Extract imports
 	// Don't overwrite the task name - keep showing the filename
 	// task.SetStatus("Extracting imports")
 	imports := a.extractImports(file)
 	task.Debugf("Found %d imports", len(imports))
-	
+
 	// Extract types
 	// Don't overwrite the task name - keep showing the filename
 	// task.SetStatus("Extracting types")
@@ -78,7 +78,7 @@ func (a *GoAnalyzer) AnalyzeFile(task *clicky.Task, filePath string, content []b
 		result.AddNode(node)
 	}
 	task.Debugf("Found %d types", len(types))
-	
+
 	// Extract functions and methods
 	// Don't overwrite the task name - keep showing the filename
 	// task.SetStatus("Extracting functions")
@@ -87,7 +87,7 @@ func (a *GoAnalyzer) AnalyzeFile(task *clicky.Task, filePath string, content []b
 		result.AddNode(node)
 	}
 	task.Debugf("Found %d functions/methods", len(methods))
-	
+
 	// Extract package-level variables and constants
 	// Don't overwrite the task name - keep showing the filename
 	// task.SetStatus("Extracting variables")
@@ -96,7 +96,7 @@ func (a *GoAnalyzer) AnalyzeFile(task *clicky.Task, filePath string, content []b
 		result.AddNode(node)
 	}
 	task.Debugf("Found %d variables/constants", len(vars))
-	
+
 	// Extract relationships
 	// Don't overwrite the task name - keep showing the filename
 	// task.SetStatus("Analyzing relationships")
@@ -105,7 +105,7 @@ func (a *GoAnalyzer) AnalyzeFile(task *clicky.Task, filePath string, content []b
 		result.AddRelationship(rel)
 	}
 	task.Debugf("Found %d relationships", len(relationships))
-	
+
 	// Extract library dependencies
 	// Don't overwrite the task name - keep showing the filename
 	// task.SetStatus("Analyzing dependencies")
@@ -114,7 +114,7 @@ func (a *GoAnalyzer) AnalyzeFile(task *clicky.Task, filePath string, content []b
 		result.AddLibrary(lib)
 	}
 	task.Debugf("Found %d library dependencies", len(libraries))
-	
+
 	task.SetStatus("Analysis complete")
 	return result, nil
 }
@@ -122,11 +122,11 @@ func (a *GoAnalyzer) AnalyzeFile(task *clicky.Task, filePath string, content []b
 // extractImports extracts import statements from the file
 func (a *GoAnalyzer) extractImports(file *ast.File) map[string]string {
 	imports := make(map[string]string)
-	
+
 	for _, imp := range file.Imports {
 		path := strings.Trim(imp.Path.Value, "\"")
 		alias := ""
-		
+
 		if imp.Name != nil {
 			alias = imp.Name.Name
 		} else {
@@ -134,23 +134,23 @@ func (a *GoAnalyzer) extractImports(file *ast.File) map[string]string {
 			parts := strings.Split(path, "/")
 			alias = parts[len(parts)-1]
 		}
-		
+
 		imports[alias] = path
 	}
-	
+
 	return imports
 }
 
 // extractTypes extracts type declarations (structs, interfaces, type aliases)
 func (a *GoAnalyzer) extractTypes(task *clicky.Task, file *ast.File, filePath, packageName string, fset *token.FileSet) []*models.ASTNode {
 	var nodes []*models.ASTNode
-	
+
 	ast.Inspect(file, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.TypeSpec:
 			position := fset.Position(node.Pos())
 			endPosition := fset.Position(node.End())
-			
+
 			astNode := &models.ASTNode{
 				FilePath:     filePath,
 				PackageName:  packageName,
@@ -161,7 +161,7 @@ func (a *GoAnalyzer) extractTypes(task *clicky.Task, file *ast.File, filePath, p
 				LineCount:    endPosition.Line - position.Line + 1,
 				LastModified: time.Now(),
 			}
-			
+
 			// Determine specific type
 			switch t := node.Type.(type) {
 			case *ast.StructType:
@@ -171,7 +171,7 @@ func (a *GoAnalyzer) extractTypes(task *clicky.Task, file *ast.File, filePath, p
 						for _, name := range field.Names {
 							fieldPos := fset.Position(field.Pos())
 							fieldEndPos := fset.Position(field.End())
-							
+
 							fieldNode := &models.ASTNode{
 								FilePath:     filePath,
 								PackageName:  packageName,
@@ -191,24 +191,24 @@ func (a *GoAnalyzer) extractTypes(task *clicky.Task, file *ast.File, filePath, p
 				// Mark as interface
 				astNode.NodeType = models.NodeTypeType
 			}
-			
+
 			nodes = append(nodes, astNode)
 		}
 		return true
 	})
-	
+
 	return nodes
 }
 
 // extractFunctions extracts function and method declarations
 func (a *GoAnalyzer) extractFunctions(task *clicky.Task, file *ast.File, filePath, packageName string, fset *token.FileSet) []*models.ASTNode {
 	var nodes []*models.ASTNode
-	
+
 	for _, decl := range file.Decls {
 		if fn, ok := decl.(*ast.FuncDecl); ok {
 			position := fset.Position(fn.Pos())
 			endPosition := fset.Position(fn.End())
-			
+
 			node := &models.ASTNode{
 				FilePath:             filePath,
 				PackageName:          packageName,
@@ -220,14 +220,14 @@ func (a *GoAnalyzer) extractFunctions(task *clicky.Task, file *ast.File, filePat
 				CyclomaticComplexity: a.calculateComplexity(fn),
 				LastModified:         time.Now(),
 			}
-			
+
 			// If it's a method (has receiver), add type information
 			if fn.Recv != nil && len(fn.Recv.List) > 0 {
 				if t := a.extractReceiverType(fn.Recv.List[0].Type); t != "" {
 					node.TypeName = t
 				}
 			}
-			
+
 			// Extract parameters
 			if fn.Type.Params != nil {
 				for _, param := range fn.Type.Params.List {
@@ -239,7 +239,7 @@ func (a *GoAnalyzer) extractFunctions(task *clicky.Task, file *ast.File, filePat
 					}
 				}
 			}
-			
+
 			// Extract return values
 			if fn.Type.Results != nil {
 				for _, result := range fn.Type.Results.List {
@@ -258,18 +258,18 @@ func (a *GoAnalyzer) extractFunctions(task *clicky.Task, file *ast.File, filePat
 					}
 				}
 			}
-			
+
 			nodes = append(nodes, node)
 		}
 	}
-	
+
 	return nodes
 }
 
 // extractVariables extracts package-level variables and constants
 func (a *GoAnalyzer) extractVariables(task *clicky.Task, file *ast.File, filePath, packageName string, fset *token.FileSet) []*models.ASTNode {
 	var nodes []*models.ASTNode
-	
+
 	for _, decl := range file.Decls {
 		if gen, ok := decl.(*ast.GenDecl); ok {
 			for _, spec := range gen.Specs {
@@ -279,10 +279,10 @@ func (a *GoAnalyzer) extractVariables(task *clicky.Task, file *ast.File, filePat
 						if !ast.IsExported(name.Name) && name.Name != "_" {
 							continue
 						}
-						
+
 						position := fset.Position(val.Pos())
 						endPosition := fset.Position(val.End())
-						
+
 						node := &models.ASTNode{
 							FilePath:     filePath,
 							PackageName:  packageName,
@@ -293,21 +293,21 @@ func (a *GoAnalyzer) extractVariables(task *clicky.Task, file *ast.File, filePat
 							LineCount:    endPosition.Line - position.Line + 1,
 							LastModified: time.Now(),
 						}
-						
+
 						nodes = append(nodes, node)
 					}
 				}
 			}
 		}
 	}
-	
+
 	return nodes
 }
 
 // calculateComplexity calculates cyclomatic complexity for a function
 func (a *GoAnalyzer) calculateComplexity(fn *ast.FuncDecl) int {
 	complexity := 1 // Base complexity
-	
+
 	ast.Inspect(fn, func(n ast.Node) bool {
 		switch n.(type) {
 		case *ast.IfStmt, *ast.ForStmt, *ast.RangeStmt, *ast.SwitchStmt, *ast.TypeSwitchStmt:
@@ -317,7 +317,7 @@ func (a *GoAnalyzer) calculateComplexity(fn *ast.FuncDecl) int {
 		}
 		return true
 	})
-	
+
 	return complexity
 }
 
@@ -326,7 +326,7 @@ func (a *GoAnalyzer) countParameters(fn *ast.FuncDecl) int {
 	if fn.Type.Params == nil {
 		return 0
 	}
-	
+
 	count := 0
 	for _, param := range fn.Type.Params.List {
 		count += len(param.Names)
@@ -342,7 +342,7 @@ func (a *GoAnalyzer) countReturns(fn *ast.FuncDecl) int {
 	if fn.Type.Results == nil {
 		return 0
 	}
-	
+
 	count := 0
 	for _, result := range fn.Type.Results.List {
 		if len(result.Names) > 0 {
@@ -392,33 +392,33 @@ func (a *GoAnalyzer) typeToString(expr ast.Expr) string {
 // extractRelationships analyzes relationships between nodes
 func (a *GoAnalyzer) extractRelationships(task *clicky.Task, file *ast.File, nodes []*models.ASTNode, imports map[string]string) []*models.ASTRelationship {
 	var relationships []*models.ASTRelationship
-	
+
 	// TODO: Implement relationship extraction
 	// - Method calls
 	// - Type embedding
 	// - Interface implementation
 	// - Import usage
-	
+
 	return relationships
 }
 
 // extractLibraries identifies external library dependencies
 func (a *GoAnalyzer) extractLibraries(imports map[string]string, nodes []*models.ASTNode) []*models.LibraryRelationship {
 	var libraries []*models.LibraryRelationship
-	
+
 	for _, path := range imports {
 		// Skip standard library imports
 		if !strings.Contains(path, ".") && !strings.Contains(path, "/") {
 			continue
 		}
-		
+
 		// Create a library node for this import
 		libNode := &models.LibraryNode{
 			Package:  path,
 			NodeType: "package",
 			Language: "go",
 		}
-		
+
 		// Determine if it's a known framework
 		if strings.HasPrefix(path, "github.com/gin-gonic/gin") {
 			libNode.Framework = "gin"
@@ -427,15 +427,15 @@ func (a *GoAnalyzer) extractLibraries(imports map[string]string, nodes []*models
 		} else if strings.HasPrefix(path, "github.com/spf13/cobra") {
 			libNode.Framework = "cobra"
 		}
-		
+
 		lib := &models.LibraryRelationship{
 			RelationshipType: "import",
 			Text:             path,
 			LibraryNode:      libNode,
 		}
-		
+
 		libraries = append(libraries, lib)
 	}
-	
+
 	return libraries
 }

@@ -129,12 +129,12 @@ func (c *ViolationCache) migrateSchema() error {
 		var name, dataType string
 		var notNull, pk int
 		var defaultValue sql.NullString
-		
+
 		err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk)
 		if err != nil {
 			continue
 		}
-		
+
 		if name == "stored_at" {
 			hasStoredAt = true
 			break
@@ -149,13 +149,13 @@ func (c *ViolationCache) migrateSchema() error {
 		if err != nil {
 			return fmt.Errorf("failed to add stored_at column: %w", err)
 		}
-		
+
 		// Update all existing records to current timestamp
 		_, err = c.db.Exec("UPDATE violations SET stored_at = strftime('%s', 'now') WHERE stored_at = 0")
 		if err != nil {
 			return fmt.Errorf("failed to update stored_at values: %w", err)
 		}
-		
+
 		// Create index
 		_, err = c.db.Exec("CREATE INDEX IF NOT EXISTS idx_violations_stored_at ON violations(stored_at)")
 		if err != nil {
@@ -186,8 +186,8 @@ func (c *ViolationCache) NeedsRescan(filePath string) (bool, error) {
 	var lastScan, fileModTime int64
 	var storedHash string
 	err = c.db.QueryRow(`
-		SELECT last_scan_time, file_mod_time, file_hash 
-		FROM file_scans 
+		SELECT last_scan_time, file_mod_time, file_hash
+		FROM file_scans
 		WHERE file_path = ?
 	`, filePath).Scan(&lastScan, &fileModTime, &storedHash)
 
@@ -215,7 +215,7 @@ func (c *ViolationCache) NeedsRescan(filePath string) (bool, error) {
 // GetCachedViolations retrieves cached violations for a file
 func (c *ViolationCache) GetCachedViolations(filePath string) ([]models.Violation, error) {
 	rows, err := c.db.Query(`
-		SELECT line, column, source, message, rule_json, 
+		SELECT line, column, source, message, rule_json,
 		       caller_package, caller_method, called_package, called_method
 		FROM violations
 		WHERE file_path = ?
@@ -260,7 +260,7 @@ func (c *ViolationCache) GetCachedViolations(filePath string) ([]models.Violatio
 // GetAllViolations retrieves all violations from the cache
 func (c *ViolationCache) GetAllViolations() ([]models.Violation, error) {
 	rows, err := c.db.Query(`
-		SELECT file_path, line, column, source, message, rule_json, 
+		SELECT file_path, line, column, source, message, rule_json,
 		       caller_package, caller_method, called_package, called_method,
 		       fixable, fix_applicability, stored_at
 		FROM violations
@@ -310,7 +310,7 @@ func (c *ViolationCache) GetAllViolations() ([]models.Violation, error) {
 // GetViolationsBySource retrieves violations filtered by source
 func (c *ViolationCache) GetViolationsBySource(source string) ([]models.Violation, error) {
 	rows, err := c.db.Query(`
-		SELECT file_path, line, column, source, message, rule_json, 
+		SELECT file_path, line, column, source, message, rule_json,
 		       caller_package, caller_method, called_package, called_method,
 		       fixable, fix_applicability
 		FROM violations
@@ -369,7 +369,7 @@ func (c *ViolationCache) GetViolationsBySources(sources []string) ([]models.Viol
 	}
 
 	query := fmt.Sprintf(`
-		SELECT file_path, line, column, source, message, rule_json, 
+		SELECT file_path, line, column, source, message, rule_json,
 		       caller_package, caller_method, called_package, called_method,
 		       fixable, fix_applicability, stored_at
 		FROM violations
@@ -459,7 +459,7 @@ func (c *ViolationCache) StoreViolations(filePath string, violations []models.Vi
 	stmt, err := tx.Prepare(`
 		INSERT INTO violations (
 			file_path, line, column, source, message, rule_json,
-			caller_package, caller_method, called_package, called_method, 
+			caller_package, caller_method, called_package, called_method,
 			fixable, fix_applicability, stored_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
@@ -584,13 +584,13 @@ func (c *ViolationCache) ClearViolations(olderThan time.Time, pathPattern string
 	var query string
 	var args []interface{}
 	conditions := []string{}
-	
+
 	// Build conditions based on filters
 	if !olderThan.IsZero() {
 		conditions = append(conditions, "stored_at < ?")
 		args = append(args, olderThan.Unix())
 	}
-	
+
 	if pathPattern != "" {
 		// For glob patterns, we'll filter in Go after fetching
 		// This is simpler than implementing glob matching in SQL
@@ -599,23 +599,23 @@ func (c *ViolationCache) ClearViolations(olderThan time.Time, pathPattern string
 		if err != nil {
 			return 0, err
 		}
-		
+
 		fileSet := make(map[string]bool)
 		for _, v := range allViolations {
 			matched := false
-			
+
 			// Use doublestar for proper glob matching with ** support
 			if match, err := doublestar.Match(pathPattern, v.File); err == nil && match {
 				matched = true
 			}
-			
+
 			// Try matching against basename if full path didn't match
 			if !matched {
 				if match, err := doublestar.Match(pathPattern, filepath.Base(v.File)); err == nil && match {
 					matched = true
 				}
 			}
-			
+
 			// For relative patterns, try matching against relative path
 			if !matched && !filepath.IsAbs(pathPattern) {
 				if relPath, err := filepath.Rel(filepath.Dir(v.File), v.File); err == nil {
@@ -624,25 +624,25 @@ func (c *ViolationCache) ClearViolations(olderThan time.Time, pathPattern string
 					}
 				}
 			}
-			
+
 			if matched {
 				fileSet[v.File] = true
 			}
 		}
-		
+
 		if len(fileSet) == 0 {
 			return 0, nil
 		}
-		
+
 		var filesToDelete []string
 		for file := range fileSet {
 			filesToDelete = append(filesToDelete, file)
 		}
-		
+
 		if len(filesToDelete) == 0 {
 			return 0, nil
 		}
-		
+
 		// Build IN clause for file paths
 		placeholders := make([]string, len(filesToDelete))
 		for i := range placeholders {
@@ -653,7 +653,7 @@ func (c *ViolationCache) ClearViolations(olderThan time.Time, pathPattern string
 			args = append(args, file)
 		}
 	}
-	
+
 	// Build the DELETE query
 	if len(conditions) > 0 {
 		query = "DELETE FROM violations WHERE " + strings.Join(conditions, " AND ")
@@ -661,13 +661,13 @@ func (c *ViolationCache) ClearViolations(olderThan time.Time, pathPattern string
 		// Clear all violations
 		query = "DELETE FROM violations"
 	}
-	
+
 	// Execute the deletion
 	result, err := c.db.Exec(query, args...)
 	if err != nil {
 		return 0, err
 	}
-	
+
 	// Also clean up file_scans entries for deleted violations
 	if pathPattern != "" && len(conditions) > 0 {
 		// Clean up file_scans for matching files
@@ -680,6 +680,6 @@ func (c *ViolationCache) ClearViolations(olderThan time.Time, pathPattern string
 		// Clear all file_scans if clearing all violations
 		c.db.Exec("DELETE FROM file_scans")
 	}
-	
+
 	return result.RowsAffected()
 }

@@ -1,17 +1,24 @@
 package models
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 type Violation struct {
-	File          string
-	Line          int
-	Column        int
-	CallerPackage string
-	CallerMethod  string
-	CalledPackage string
-	CalledMethod  string
-	Rule          *Rule
-	Message       string
+	File             string
+	Line             int
+	Column           int
+	CallerPackage    string
+	CallerMethod     string
+	CalledPackage    string
+	CalledMethod     string
+	Rule             *Rule
+	Message          string
+	Fixable          bool
+	FixApplicability string // e.g., "safe", "manual"
+	Source           string // e.g., "arch-unit", "golangci-lint"
+	CreatedAt        time.Time
 }
 
 func (v Violation) String() string {
@@ -20,12 +27,12 @@ func (v Violation) String() string {
 	if v.CalledMethod == "" {
 		call = v.CalledPackage
 	}
-	
+
 	ruleInfo := ""
 	if v.Rule != nil {
 		ruleInfo = fmt.Sprintf(" (rule: %s in %s:%d)", v.Rule.OriginalLine, v.Rule.SourceFile, v.Rule.LineNumber)
 	}
-	
+
 	return fmt.Sprintf("%s: %s calls forbidden %s%s", location, v.CallerMethod, call, ruleInfo)
 }
 

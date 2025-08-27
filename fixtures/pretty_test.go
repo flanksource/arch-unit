@@ -3,6 +3,8 @@ package fixtures
 import (
 	"strings"
 	"testing"
+
+	"github.com/flanksource/clicky"
 )
 
 func TestFixtureTestResultPretty(t *testing.T) {
@@ -57,7 +59,7 @@ func TestFixtureTestResultPretty(t *testing.T) {
 			if err != nil {
 				t.Fatalf("formatting failed: %v", err)
 			}
-			
+
 			// Basic check that output contains the test name
 			if !strings.Contains(output, tt.result.Name) {
 				t.Errorf("expected output to contain test name %q, got %q", tt.result.Name, output)
@@ -141,7 +143,7 @@ func TestFixtureNodePretty(t *testing.T) {
 			if err != nil {
 				t.Fatalf("formatting failed: %v", err)
 			}
-			
+
 			// Basic check that output contains the node name
 			if !strings.Contains(output, tt.node.Name) {
 				t.Errorf("expected output to contain node name %q, got %q", tt.node.Name, output)

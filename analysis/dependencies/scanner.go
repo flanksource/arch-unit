@@ -17,109 +17,135 @@ import (
 
 // Scanner orchestrates dependency scanning across multiple languages
 type Scanner struct {
-	Registry        *analysis.DependencyRegistry
-	NameFilters     []string
-	GitFilters      []string
-	ShowIndirect    bool // Whether to include indirect dependencies
-	MaxDepth        int  // Maximum depth to traverse (-1 for unlimited)
-	
-	// Optional depth manager for advanced scanning
-	depthManager    *DepthManager
-	gitManager      git.GitRepositoryManager
+	Registry   *analysis.DependencyRegistry
+	gitManager git.GitRepositoryManager
+
+	// Tracking for two-phase scanning
+	visited        map[string]*git.VisitedDep
+	repoVisited    map[string]bool
+	discoveredDeps map[string][]*models.Dependency // Map of parent -> dependencies
+	mutex          sync.RWMutex
+	discoveryGroup task.TypedGroup[[]*models.Dependency]
 }
 
 // NewScanner creates a new dependency scanner
 func NewScanner() *Scanner {
 	return &Scanner{
-		Registry:     analysis.DefaultDependencyRegistry,
-		ShowIndirect: true,  // Default to showing all dependencies
-		MaxDepth:     -1,    // Default to unlimited depth
+		Registry:       analysis.DefaultDependencyRegistry,
+		visited:        make(map[string]*git.VisitedDep),
+		repoVisited:    make(map[string]bool),
+		discoveredDeps: make(map[string][]*models.Dependency),
 	}
 }
 
 // NewScannerWithRegistry creates a new dependency scanner with a custom registry
 func NewScannerWithRegistry(registry *analysis.DependencyRegistry) *Scanner {
 	return &Scanner{
-		Registry:     registry,
-		ShowIndirect: true,  // Default to showing all dependencies
-		MaxDepth:     -1,    // Default to unlimited depth
+		Registry:       registry,
+		visited:        make(map[string]*git.VisitedDep),
+		repoVisited:    make(map[string]bool),
+		discoveredDeps: make(map[string][]*models.Dependency),
 	}
 }
 
 // ScanPath scans a path (local directory or git URL) for dependencies with optional depth traversal
 func (s *Scanner) ScanPath(task *clicky.Task, pathOrURL string, maxDepth int) (*models.ScanResult, error) {
-	if maxDepth < 0 {
-		maxDepth = 0 // Default to no depth traversal
+	// Create a scan context with the provided configuration
+	ctx := analysis.NewScanContext(task, pathOrURL).WithDepth(maxDepth)
+	return s.ScanWithContext(ctx, pathOrURL)
+}
+
+// ScanWithContext performs scanning with a configured context
+func (s *Scanner) ScanWithContext(ctx *analysis.ScanContext, pathOrURL string) (*models.ScanResult, error) {
+	if ctx.MaxDepth < 0 {
+		ctx.MaxDepth = 0 // Default to no depth traversal
 	}
-	
+
 	// Parse path to determine if it's local or git
 	gitURL, version, isGit := s.parseGitURL(pathOrURL)
-	
+
 	var deps []*models.Dependency
 	var conflicts []models.VersionConflict
 	var scanType string
 	var repoCount int
 	var err error
-	
+
 	if !isGit {
 		// Phase 1: Local directory scanning
-		clicky.UpdateGlobalPhaseProgress(fmt.Sprintf("Scanning local dependencies in %s", pathOrURL))
+		ctx.Debugf("Scanning local dependencies in %s", pathOrURL)
 		scanType = "local"
-		deps, err = s.scanDirectory(task, pathOrURL)
-		if err != nil {
-			return nil, err
-		}
-		
-		// Phase 2: Apply depth traversal if requested for local scan
-		if maxDepth > 0 {
-			clicky.UpdateGlobalPhaseProgress(fmt.Sprintf("Processing git repositories at depth %d", maxDepth))
-			deps, conflicts, err = s.scanWithDepthTraversal(task, pathOrURL, maxDepth)
+
+		if ctx.MaxDepth > 0 {
+			// Ensure git support is set up for depth traversal
+			if s.gitManager == nil {
+				s.SetupGitSupport(".cache/arch-unit/repositories")
+			}
+			// Use two-phase scanning for depth traversal
+			tree, err := s.scanWithTwoPhases(ctx, pathOrURL)
 			if err != nil {
 				return nil, err
 			}
+			deps, conflicts = s.treeToLists(tree)
 			scanType = "mixed"
-			repoCount = len(conflicts) // Approximation based on conflicts found
+			repoCount = len(tree.Dependencies)
+		} else {
+			// Simple local scan without depth
+			deps, err = s.scanDirectoryWithContext(ctx, pathOrURL)
+			if err != nil {
+				return nil, err
+			}
+			// Filtering is already applied in scanDirectoryWithContext
 		}
 	} else {
 		// Phase 1: Git repository scanning
-		if maxDepth == 0 {
-			maxDepth = 1 // For git URLs, default to at least depth 1
+		if ctx.MaxDepth == 0 {
+			ctx.MaxDepth = 1 // For git URLs, default to at least depth 1
 		}
-		clicky.UpdateGlobalPhaseProgress(fmt.Sprintf("Scanning git repository %s@%s", gitURL, version))
+		ctx.Infof("Scanning git repository %s@%s", gitURL, version)
 		scanType = "git"
-		deps, conflicts, err = s.scanGitRepositoryWithDepth(task, gitURL, version, maxDepth)
+
+		// Ensure git support is set up
+		if s.gitManager == nil {
+			s.SetupGitSupport(".cache/arch-unit/repositories")
+		}
+
+		// Checkout and scan the repository
+		worktreePath, err := s.gitManager.GetWorktreePath(gitURL, version)
+		if err != nil {
+			return nil, fmt.Errorf("failed to checkout %s@%s: %w", gitURL, version, err)
+		}
+
+		// Update context with the worktree path
+		ctx.ScanRoot = worktreePath
+		tree, err := s.scanWithTwoPhases(ctx, worktreePath)
 		if err != nil {
 			return nil, err
 		}
-		repoCount = 1 + len(conflicts) // Original repo + any repos found in conflicts
+		deps, conflicts = s.treeToLists(tree)
+		repoCount = 1 + len(tree.Dependencies)
 	}
-	
-	// Phase 3: Analyzing results
-	if len(conflicts) > 0 {
-		clicky.UpdateGlobalPhaseProgress("Detecting version conflicts")
-	}
-	
+
 	// Build metadata
 	metadata := models.ScanMetadata{
 		ScanType:          scanType,
-		MaxDepth:          maxDepth,
+		MaxDepth:          ctx.MaxDepth,
 		RepositoriesFound: repoCount,
 		TotalDependencies: len(deps),
 		ConflictsFound:    len(conflicts),
 	}
-	
+
 	if s.gitManager != nil {
-		// Get git cache dir if available - need to access through interface method or add to interface
+		// Get git cache dir if available
 		metadata.GitCacheDir = ".cache/arch-unit/repositories" // Default cache dir
 	}
-	
+
 	// Final phase update
 	if len(conflicts) > 0 {
-		clicky.UpdateGlobalPhaseProgress(fmt.Sprintf("Found %d dependencies with %d conflicts", len(deps), len(conflicts)))
+		ctx.Debugf("Found %d dependencies with %d conflicts", len(deps), len(conflicts))
 	} else {
-		clicky.UpdateGlobalPhaseProgress(fmt.Sprintf("Found %d dependencies", len(deps)))
+		ctx.Debugf("Found %d dependencies", len(deps))
 	}
-	
+
 	return &models.ScanResult{
 		Dependencies: deps,
 		Conflicts:    conflicts,
@@ -144,60 +170,58 @@ func (s *Scanner) ScanDirectory(task *clicky.Task, dir string) ([]*models.Depend
 }
 
 // scanWithScanner scans for dependencies using a specific scanner
-func (s *Scanner) scanWithScanner(task *clicky.Task, dir string, scanner analysis.DependencyScanner) ([]*models.Dependency, error) {
+func (s *Scanner) scanWithScanner(ctx *analysis.ScanContext, dir string, scanner analysis.DependencyScanner) ([]*models.Dependency, error) {
 	var allDeps []*models.Dependency
-	
-	// Create scan context with the root directory
-	ctx := analysis.NewScanContext(task, dir)
-	
+
 	// Walk the directory tree
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // Skip errors
 		}
-		
+
 		// Skip directories
 		if info.IsDir() {
 			// Skip common directories that shouldn't be scanned
 			name := info.Name()
-			if name == ".git" || name == "node_modules" || name == "vendor" || 
-			   name == ".venv" || name == "venv" || name == "__pycache__" {
+			if name == ".git" || name == "node_modules" || name == "vendor" ||
+				name == ".venv" || name == "venv" || name == "__pycache__" {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		
+
 		// Check if this file matches the scanner's patterns
 		if !s.matchesScanner(scanner, path) {
 			return nil
 		}
-		
+
 		// Read file content
 		content, err := os.ReadFile(path)
 		if err != nil {
-			if task != nil {
-				task.Warnf("Error reading %s: %v", path, err)
+			if ctx.Task != nil {
+				ctx.Task.Warnf("Error reading %s: %v", path, err)
 			}
 			return nil
 		}
-		
+
 		// Scan the file
 		deps, err := scanner.ScanFile(ctx, path, content)
 		if err != nil {
-			if task != nil {
-				task.Warnf("Error scanning %s: %v", path, err)
+			if ctx.Task != nil {
+				ctx.Task.Warnf("Error scanning %s: %v", path, err)
 			}
 			return nil
 		}
-		
+		deps = ctx.FilterDeps(deps)
+
 		allDeps = append(allDeps, deps...)
 		return nil
 	})
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("error walking directory: %w", err)
 	}
-	
+
 	return allDeps, nil
 }
 
@@ -205,14 +229,14 @@ func (s *Scanner) scanWithScanner(task *clicky.Task, dir string, scanner analysi
 func (s *Scanner) matchesScanner(scanner analysis.DependencyScanner, filePath string) bool {
 	fileName := filepath.Base(filePath)
 	patterns := scanner.SupportedFiles()
-	
+
 	for _, pattern := range patterns {
 		matched, _ := filepath.Match(pattern, fileName)
 		if matched {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -222,135 +246,41 @@ func (s *Scanner) getDependencyKey(dep *models.Dependency) string {
 	return fmt.Sprintf("%s:%s", dep.Name, dep.Type)
 }
 
-// applyFilters applies the configured filters to the dependencies
+// applyFilters applies filtering from a context (deprecated - use ctx.FilterDeps directly)
 func (s *Scanner) applyFilters(deps []*models.Dependency) []*models.Dependency {
-	var filtered []*models.Dependency
-	
-	for _, dep := range deps {
-		// Filter out indirect dependencies if not showing them
-		if !s.ShowIndirect && dep.Indirect {
-			continue
-		}
-		
-		// Apply depth filter
-		if s.MaxDepth >= 0 && dep.Depth > s.MaxDepth {
-			continue
-		}
-		
-		// Apply filters - a dependency passes if it matches name OR git filters
-		// Name filters check both Name and Git fields for better usability
-		if len(s.NameFilters) > 0 || len(s.GitFilters) > 0 {
-			matched := false
-			
-			// Check name filters against both Name and Git fields
-			if len(s.NameFilters) > 0 {
-				if collections.MatchItems(dep.Name, s.NameFilters...) {
-					matched = true
-				} else if dep.Git != "" && collections.MatchItems(dep.Git, s.NameFilters...) {
-					matched = true
-				}
-			}
-			
-			// Check git filters (only against Git field)
-			if !matched && len(s.GitFilters) > 0 && dep.Git != "" {
-				if collections.MatchItems(dep.Git, s.GitFilters...) {
-					matched = true
-				}
-			}
-			
-			// If no filters matched, skip this dependency
-			if !matched && (len(s.NameFilters) > 0 || len(s.GitFilters) > 0) {
-				continue
-			}
-		}
-		
-		// Recursively filter children
-		if len(dep.Children) > 0 {
-			dep.Children = s.applyFiltersToChildren(dep.Children)
-		}
-		
-		filtered = append(filtered, dep)
+	// Create a default context just for filtering
+	ctx := &analysis.ScanContext{
+		ShowIndirect: true,
 	}
-	
-	return filtered
+	return ctx.FilterDeps(deps)
 }
 
-// applyFiltersToChildren recursively applies filters to child dependencies
-func (s *Scanner) applyFiltersToChildren(children []models.Dependency) []models.Dependency {
-	var filtered []models.Dependency
-	
-	for _, child := range children {
-		// Create a pointer to apply filters
-		childCopy := child
-		childDeps := []*models.Dependency{&childCopy}
-		filteredDeps := s.applyFilters(childDeps)
-		
-		if len(filteredDeps) > 0 {
-			filtered = append(filtered, *filteredDeps[0])
-		}
-	}
-	
-	return filtered
-}
-
-
-
-// ParseFilters parses filter strings into separate filter slices
-// Filters can be:
-// - Git filters: contain "/" or start with "github.com", "gitlab.com", etc.
-// - Language filters: match known language names (go, python, javascript, etc.)
-// - Name filters: everything else
+// ParseFilters combines multiple filter strings into a single filter expression
 // Filters support wildcards (*) and negation (!)
-func ParseFilters(filters []string) (nameFilters, gitFilters []string) {
-	knownLanguages := map[string]bool{
-		"go": true, "golang": true,
-		"python": true, "py": true,
-		"javascript": true, "js": true, "typescript": true, "ts": true,
-		"java": true,
-		"rust": true,
-		"ruby": true,
-		"php": true,
-		"c": true, "cpp": true, "c++": true,
-		"helm": true,
-		"docker": true,
+func ParseFilters(filters []string) string {
+	if len(filters) == 0 {
+		return ""
 	}
-	
+
+	// Join all non-empty filters with space
+	var cleanFilters []string
 	for _, filter := range filters {
 		filter = strings.TrimSpace(filter)
-		if filter == "" {
-			continue
-		}
-		
-		// Check for legacy prefixes and strip them
-		if strings.HasPrefix(filter, "-name ") {
-			filter = strings.TrimPrefix(filter, "-name ")
-		} else if strings.HasPrefix(filter, "-git ") {
-			filter = strings.TrimPrefix(filter, "-git ")
-			gitFilters = append(gitFilters, filter)
-			continue
-		} else if strings.HasPrefix(filter, "-language ") || strings.HasPrefix(filter, "-lang ") {
-			// Skip language filters as we're removing language field
-			continue
-		}
-		
-		// Auto-detect filter type
-		lowerFilter := strings.ToLower(strings.TrimPrefix(filter, "!"))
-		
-		// Check if it's a git filter (contains "/" or known git domains)
-		if strings.Contains(filter, "/") || 
-		   strings.Contains(lowerFilter, "github.com") ||
-		   strings.Contains(lowerFilter, "gitlab.com") ||
-		   strings.Contains(lowerFilter, "bitbucket.org") {
-			gitFilters = append(gitFilters, filter)
-		} else if knownLanguages[lowerFilter] {
-			// Skip language filters as we're removing language field
-			continue
-		} else {
-			// Default to name filter
-			nameFilters = append(nameFilters, filter)
+		if filter != "" {
+			// Remove legacy prefixes if present
+			if strings.HasPrefix(filter, "-name ") {
+				filter = strings.TrimPrefix(filter, "-name ")
+			} else if strings.HasPrefix(filter, "-git ") {
+				filter = strings.TrimPrefix(filter, "-git ")
+			} else if strings.HasPrefix(filter, "-language ") || strings.HasPrefix(filter, "-lang ") {
+				// Skip language filters as we're removing language field
+				continue
+			}
+			cleanFilters = append(cleanFilters, filter)
 		}
 	}
-	return
+
+	return strings.Join(cleanFilters, " ")
 }
 
 // SetupGitSupport initializes git support for depth-based scanning
@@ -366,15 +296,55 @@ func (s *Scanner) ScanWithDepth(task *clicky.Task, dir string, maxDepth int) (*g
 	if s.gitManager == nil {
 		s.SetupGitSupport(".cache/arch-unit/repositories")
 	}
-	
-	// Use UnifiedScanner for two-phase scanning
-	unifiedScanner := NewUnifiedScanner(s, s.gitManager, maxDepth)
-	
+
 	// Create scan context
-	ctx := analysis.NewScanContext(task, dir)
-	
+	ctx := analysis.NewScanContext(task, dir).WithDepth(maxDepth)
+
 	// Perform two-phase scan
-	return unifiedScanner.ScanWithTwoPhases(ctx, dir)
+	return s.scanWithTwoPhases(ctx, dir)
+}
+
+// scanWithTwoPhases performs two-phase dependency scanning
+func (s *Scanner) scanWithTwoPhases(ctx *analysis.ScanContext, rootPath string) (*git.DependencyTree, error) {
+	// Reset tracking state for new scan
+	s.mutex.Lock()
+	s.visited = make(map[string]*git.VisitedDep)
+	s.repoVisited = make(map[string]bool)
+	s.discoveredDeps = make(map[string][]*models.Dependency)
+	s.mutex.Unlock()
+
+	// Discover initial files first
+	initialFiles, err := s.discoverScanFiles(rootPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover files in %s: %w", rootPath, err)
+	}
+
+	// Only create task group if we have files to scan
+	if len(initialFiles) > 0 {
+		// Create task group for discovery phase
+		s.discoveryGroup = task.StartGroup[[]*models.Dependency]("Dependency Discovery")
+
+		// Queue all initial file scans
+		for _, fileJob := range initialFiles {
+			fileJob.Depth = 0
+			fileJob.Parent = "root"
+			s.queueSimpleTask(ctx, fileJob)
+		}
+
+		// Wait for all tasks to complete
+		result := s.discoveryGroup.WaitFor()
+		if result.Error != nil {
+			// Log the error but continue with the dependencies that were successfully discovered
+			ctx.Warnf("Some dependency scans failed: %v", result.Error)
+			// Continue processing with whatever dependencies we did manage to collect
+		}
+	}
+
+	tree := s.buildDependencyTree()
+	s.detectVersionConflicts(tree)
+
+	ctx.Debugf("Completed: Found %d dependencies", len(tree.Dependencies))
+	return tree, nil
 }
 
 // ScanGitRepository scans a specific git repository at a given version
@@ -383,13 +353,13 @@ func (s *Scanner) ScanGitRepository(task *clicky.Task, gitURL, version string, m
 	if s.gitManager == nil {
 		s.SetupGitSupport(".cache/arch-unit/repositories")
 	}
-	
+
 	// Get worktree path for this repository/version
 	worktreePath, err := s.gitManager.GetWorktreePath(gitURL, version)
 	if err != nil {
 		return nil, fmt.Errorf("failed to checkout %s@%s: %w", gitURL, version, err)
 	}
-	
+
 	// Scan the checked out repository with depth
 	return s.ScanWithDepth(task, worktreePath, maxDepth)
 }
@@ -417,7 +387,7 @@ func (s *Scanner) parseGitURL(pathOrURL string) (gitURL, version string, isGit b
 		if len(parts) == 2 {
 			candidateURL := parts[0]
 			version = parts[1]
-			
+
 			// Check if it looks like a git URL
 			if strings.Contains(candidateURL, "github.com") ||
 				strings.Contains(candidateURL, "gitlab.com") ||
@@ -429,7 +399,7 @@ func (s *Scanner) parseGitURL(pathOrURL string) (gitURL, version string, isGit b
 			}
 		}
 	}
-	
+
 	// Check for URLs without version (default to HEAD)
 	if strings.HasPrefix(pathOrURL, "https://") ||
 		strings.HasPrefix(pathOrURL, "git@") ||
@@ -437,19 +407,26 @@ func (s *Scanner) parseGitURL(pathOrURL string) (gitURL, version string, isGit b
 		(strings.Contains(pathOrURL, "gitlab.com") && !strings.HasPrefix(pathOrURL, "/")) {
 		return pathOrURL, "HEAD", true
 	}
-	
+
 	return pathOrURL, "", false
 }
 
 // scanDirectory is the renamed original ScanDirectory method for internal use
 func (s *Scanner) scanDirectory(task *clicky.Task, dir string) ([]*models.Dependency, error) {
-	if task != nil {
-		task.Infof("Scanning dependencies in %s", dir)
+	// Create a default context for backward compatibility
+	ctx := analysis.NewScanContext(task, dir).WithIndirect(true)
+	return s.scanDirectoryWithContext(ctx, dir)
+}
+
+// scanDirectoryWithContext scans a directory using the provided context
+func (s *Scanner) scanDirectoryWithContext(ctx *analysis.ScanContext, dir string) ([]*models.Dependency, error) {
+	if ctx.Task != nil {
+		ctx.Task.Infof("Scanning dependencies in %s", dir)
 	}
-	
+
 	var allDeps []*models.Dependency
 	depMap := make(map[string]*models.Dependency)
-	
+
 	// Get all registered scanners
 	languages := s.Registry.List()
 	for _, lang := range languages {
@@ -457,19 +434,19 @@ func (s *Scanner) scanDirectory(task *clicky.Task, dir string) ([]*models.Depend
 		if scanner == nil {
 			continue
 		}
-		
-		if task != nil {
-			task.Infof("Scanning %s dependencies", scanner.Language())
+
+		if ctx.Task != nil {
+			ctx.Task.Infof("Scanning %s dependencies", scanner.Language())
 		}
-		
-		deps, err := s.scanWithScanner(task, dir, scanner)
+
+		deps, err := s.scanWithScanner(ctx, dir, scanner)
 		if err != nil {
-			if task != nil {
-				task.Warnf("Error scanning %s: %v", scanner.Language(), err)
+			if ctx.Task != nil {
+				ctx.Task.Warnf("Error scanning %s: %v", scanner.Language(), err)
 			}
 			continue
 		}
-		
+
 		// Deduplicate dependencies
 		for _, dep := range deps {
 			key := s.getDependencyKey(dep)
@@ -492,17 +469,17 @@ func (s *Scanner) scanDirectory(task *clicky.Task, dir string) ([]*models.Depend
 			}
 		}
 	}
-	
+
 	// Convert map to slice
 	for _, dep := range depMap {
 		allDeps = append(allDeps, dep)
 	}
-	
-	// Apply filters
-	allDeps = s.applyFilters(allDeps)
-	
-	if task != nil {
-		task.Infof("Found %d unique dependencies", len(allDeps))
+
+	// Apply filters from the context
+	allDeps = ctx.FilterDeps(allDeps)
+
+	if ctx.Task != nil {
+		ctx.Task.Infof("Found %d unique dependencies", len(allDeps))
 	}
 	return allDeps, nil
 }
@@ -513,13 +490,13 @@ func (s *Scanner) scanWithDepthTraversal(task *clicky.Task, dir string, maxDepth
 	if !s.HasGitSupport() {
 		s.SetupGitSupport(".cache/arch-unit/repositories")
 	}
-	
+
 	// Use existing ScanWithDepth method
 	depTree, err := s.ScanWithDepth(task, dir, maxDepth)
 	if err != nil {
 		return nil, nil, err
 	}
-	
+
 	// Convert git types to models types
 	return s.convertDepTreeToModels(depTree)
 }
@@ -530,13 +507,13 @@ func (s *Scanner) scanGitRepositoryWithDepth(task *clicky.Task, gitURL, version 
 	if !s.HasGitSupport() {
 		s.SetupGitSupport(".cache/arch-unit/repositories")
 	}
-	
+
 	// Use existing ScanGitRepository method
 	depTree, err := s.ScanGitRepository(task, gitURL, version, maxDepth)
 	if err != nil {
 		return nil, nil, err
 	}
-	
+
 	// Convert git types to models types
 	return s.convertDepTreeToModels(depTree)
 }
@@ -545,7 +522,7 @@ func (s *Scanner) scanGitRepositoryWithDepth(task *clicky.Task, gitURL, version 
 func (s *Scanner) convertDepTreeToModels(depTree *git.DependencyTree) ([]*models.Dependency, []models.VersionConflict, error) {
 	var deps []*models.Dependency
 	var conflicts []models.VersionConflict
-	
+
 	// Convert dependencies
 	for _, rootRef := range depTree.Root {
 		if visitedDep, exists := depTree.Dependencies[s.getRefKey(rootRef)]; exists {
@@ -553,14 +530,14 @@ func (s *Scanner) convertDepTreeToModels(depTree *git.DependencyTree) ([]*models
 			deps = append(deps, dep)
 		}
 	}
-	
+
 	// Convert conflicts
 	for _, gitConflict := range depTree.Conflicts {
 		conflict := models.VersionConflict{
 			DependencyName:     gitConflict.DependencyName,
 			ResolutionStrategy: gitConflict.ResolutionStrategy,
 		}
-		
+
 		for _, gitVersionInfo := range gitConflict.Versions {
 			versionInfo := models.VersionInfo{
 				Version:    gitVersionInfo.Version,
@@ -569,10 +546,10 @@ func (s *Scanner) convertDepTreeToModels(depTree *git.DependencyTree) ([]*models
 			}
 			conflict.Versions = append(conflict.Versions, versionInfo)
 		}
-		
+
 		conflicts = append(conflicts, conflict)
 	}
-	
+
 	return deps, conflicts, nil
 }
 
@@ -585,7 +562,7 @@ func (s *Scanner) convertRefToModel(ref *git.DependencyRef, visited *git.Visited
 		Type:    models.DependencyType(ref.Type),
 		Depth:   visited.FirstSeen,
 	}
-	
+
 	// Set resolved from if we have version instances with different original versions
 	if len(visited.Versions) > 0 {
 		firstVersion := visited.Versions[0]
@@ -593,7 +570,7 @@ func (s *Scanner) convertRefToModel(ref *git.DependencyRef, visited *git.Visited
 			dep.ResolvedFrom = firstVersion.Version // The original alias
 		}
 	}
-	
+
 	return dep
 }
 
@@ -605,7 +582,8 @@ func (s *Scanner) getRefKey(ref *git.DependencyRef) string {
 // discoverScanFiles discovers all scannable files in a directory
 func (s *Scanner) discoverScanFiles(dir string) ([]git.ScanJob, error) {
 	var scanJobs []git.ScanJob
-	
+	processedGoMod := make(map[string]bool)
+
 	// Get all registered scanners
 	languages := s.Registry.List()
 	for _, lang := range languages {
@@ -613,7 +591,7 @@ func (s *Scanner) discoverScanFiles(dir string) ([]git.ScanJob, error) {
 		if !ok || scanner == nil {
 			continue
 		}
-		
+
 		// Check each supported file pattern for this scanner
 		supportedFiles := scanner.SupportedFiles()
 		for _, pattern := range supportedFiles {
@@ -621,26 +599,57 @@ func (s *Scanner) discoverScanFiles(dir string) ([]git.ScanJob, error) {
 			if err != nil {
 				continue // Skip patterns that fail to glob
 			}
-			
+
 			for _, match := range matches {
 				// Get relative path from the directory
 				relPath, err := filepath.Rel(dir, match)
 				if err != nil {
 					continue
 				}
-				
-				// Create a scan job for this specific file
-				scanJob := git.ScanJob{
-					Path:        dir,
-					FilePath:    relPath,
-					ScannerType: lang,
-					IsLocal:     true,
+
+				// Special handling for Go files: combine go.mod and go.sum
+				if lang == "go" {
+					baseName := filepath.Base(relPath)
+					dirName := filepath.Dir(match)
+
+					// If this is go.sum, skip it - it will be handled with go.mod
+					if baseName == "go.sum" {
+						continue
+					}
+
+					// If this is go.mod, check if we already processed it
+					if baseName == "go.mod" {
+						if processedGoMod[dirName] {
+							continue
+						}
+						processedGoMod[dirName] = true
+
+						// Create a combined scan job for go.mod (which will also scan go.sum)
+						scanJob := git.ScanJob{
+							Path:        dir,
+							FilePath:    relPath, // Just use go.mod path, scanner will handle go.sum
+							ScannerType: lang,
+							IsLocal:     true,
+						}
+						scanJobs = append(scanJobs, scanJob)
+						continue
+					}
 				}
-				scanJobs = append(scanJobs, scanJob)
+
+				// For non-Go files or non-module files, create normal scan job
+				if lang != "go" || (!strings.HasSuffix(relPath, "go.mod") && !strings.HasSuffix(relPath, "go.sum")) {
+					scanJob := git.ScanJob{
+						Path:        dir,
+						FilePath:    relPath,
+						ScannerType: lang,
+						IsLocal:     true,
+					}
+					scanJobs = append(scanJobs, scanJob)
+				}
 			}
 		}
 	}
-	
+
 	return scanJobs, nil
 }
 
@@ -657,7 +666,6 @@ func (s *Scanner) queueSimpleTask(ctx *analysis.ScanContext, job git.ScanJob) {
 	taskName := s.getJobIdentifier(job)
 
 	s.discoveryGroup.Add(taskName, func(taskCtx commonsCtx.Context, t *clicky.Task) ([]*models.Dependency, error) {
-		t.Debugf("Processing job %s at depth %d (max depth: %d)", taskName, job.Depth, ctx.MaxDepth)
 		// Check depth limit
 		if job.Depth > ctx.MaxDepth {
 			return []*models.Dependency{}, nil
@@ -684,25 +692,27 @@ func (s *Scanner) queueSimpleTask(ctx *analysis.ScanContext, job git.ScanJob) {
 			return []*models.Dependency{}, nil
 		}
 
-		// Store ALL discovered dependencies unfiltered for traversal
+		// Apply filtering immediately after scanning
+		deps = ctx.FilterDeps(deps)
+
+		t.SetName(taskName + fmt.Sprintf(" (%d deps, depth: %d)", len(deps), job.Depth))
+
+		// Store discovered dependencies
 		s.mutex.Lock()
 		s.discoveredDeps[job.Parent] = append(s.discoveredDeps[job.Parent], deps...)
 		s.mutex.Unlock()
 
-		// Process ALL dependencies for deeper levels (unfiltered)
+		// Process discovered dependencies for deeper levels
 		for _, dep := range deps {
 			// Track this dependency
 			s.trackDependency(dep, job.Depth, job.Parent)
 
 			// For deeper levels, check if we should scan deeper
-			// Check filter here - only traverse dependencies that match filter
-			if job.Depth < ctx.MaxDepth && dep.Git != "" && dep.Matches(ctx.Filter) {
+			if job.Depth < ctx.MaxDepth && dep.Git != "" {
+				// Log at info level to ensure it shows
 				s.processDeepDependency(ctx, dep, job.Depth+1)
 			}
 		}
-
-		// Return filtered deps for task result
-		filteredDeps := ctx.FilterDeps(deps)
 
 		return deps, nil
 	})
@@ -720,67 +730,41 @@ func (s *Scanner) processDeepDependency(ctx *analysis.ScanContext, dep *models.D
 	}
 
 	// For local replacements, use the local path directly
+	var worktreePath string
+	var err error
 	if strings.HasPrefix(version, "local:") {
-		worktreePath := strings.TrimPrefix(version, "local:")
+		worktreePath = strings.TrimPrefix(version, "local:")
 		// No need to checkout, just use the local path
-		// Discover scannable files in the repository
-		discoveredFiles, err := s.discoverScanFiles(worktreePath)
+	} else {
+		// Checkout and discover files synchronously
+		worktreePath, err = s.checkoutDependency(dep.Git, version)
 		if err != nil {
-			ctx.Warnf("Failed to discover files in %s: %v", worktreePath, err)
+			ctx.Warnf("Failed to checkout %s@%s: %v", dep.Git, version, err)
 			return
 		}
+	}
 
-		// Queue individual scan jobs directly
-		for _, fileJob := range discoveredFiles {
-			job := git.ScanJob{
-				Path:        worktreePath,
-				FilePath:    fileJob.FilePath,
-				GitURL:      dep.Git,
-				Version:     version,
-				Depth:       nextDepth,
-				IsLocal:     false,
-				Parent:      dep.Name,
-				ScannerType: fileJob.ScannerType,
-			}
-			s.queueSimpleTask(ctx, job)
-		}
+	// Discover scannable files in the repository
+	discoveredFiles, err := s.discoverScanFiles(worktreePath)
+	if err != nil {
+		ctx.Warnf("Failed to discover files in %s: %v", worktreePath, err)
 		return
 	}
 
-	// Create a checkout task for non-local dependencies
-	checkoutName := fmt.Sprintf("Checkout %s@%s", dep.Git, version)
-	s.discoveryGroup.Add(checkoutName, func(taskCtx commonsCtx.Context, t *clicky.Task) ([]*models.Dependency, error) {
-		// Perform the checkout
-		worktreePath, err := s.checkoutDependency(dep.Git, version)
-		if err != nil {
-			t.Errorf("Failed to checkout: %v", err)
-			return nil, err
+	// Queue individual scan jobs directly
+	for _, fileJob := range discoveredFiles {
+		job := git.ScanJob{
+			Path:        worktreePath,
+			FilePath:    fileJob.FilePath,
+			GitURL:      dep.Git,
+			Version:     version,
+			Depth:       nextDepth,
+			IsLocal:     false,
+			Parent:      dep.Name,
+			ScannerType: fileJob.ScannerType,
 		}
-		t.Success()
-
-		// Discover scannable files in the repository
-		discoveredFiles, err := s.discoverScanFiles(worktreePath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to discover files: %w", err)
-		}
-
-		// Queue individual scan jobs for discovered files
-		for _, fileJob := range discoveredFiles {
-			job := git.ScanJob{
-				Path:        worktreePath,
-				FilePath:    fileJob.FilePath,
-				GitURL:      dep.Git,
-				Version:     version,
-				Depth:       nextDepth,
-				IsLocal:     false,
-				Parent:      dep.Name,
-				ScannerType: fileJob.ScannerType,
-			}
-			s.queueSimpleTask(ctx, job)
-		}
-
-		return []*models.Dependency{}, nil
-	})
+		s.queueSimpleTask(ctx, job)
+	}
 }
 
 // scanCurrentLevel scans dependencies at the current level
@@ -976,7 +960,7 @@ func (s *Scanner) treeToLists(tree *git.DependencyTree) ([]*models.Dependency, [
 	// We use discoveredDeps because those are the actual filtered results
 	// Use a map to deduplicate
 	depMap := make(map[string]*models.Dependency)
-	
+
 	s.mutex.RLock()
 	for _, depList := range s.discoveredDeps {
 		for _, dep := range depList {

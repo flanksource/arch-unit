@@ -51,23 +51,23 @@ func (r *RunnerV2) SetTaskManager(tm *clicky.TaskManager) {
 // Close closes any resources held by the runner
 func (r *RunnerV2) Close() error {
 	var errs []error
-	
+
 	if r.violationCache != nil {
 		if err := r.violationCache.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("violation cache close error: %w", err))
 		}
 	}
-	
+
 	if r.linterStats != nil {
 		if err := r.linterStats.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("linter stats close error: %w", err))
 		}
 	}
-	
+
 	if len(errs) > 0 {
 		return fmt.Errorf("close errors: %v", errs)
 	}
-	
+
 	return nil
 }
 
@@ -79,12 +79,12 @@ func (r *RunnerV2) RunEnabledLinters() ([]LinterResultV2, error) {
 // RunEnabledLintersOnFiles runs enabled linters on specific files
 func (r *RunnerV2) RunEnabledLintersOnFiles(specificFiles []string, fix bool) ([]LinterResultV2, error) {
 	var results []LinterResultV2
-	
+
 	enabledLinters := r.config.GetEnabledLinters()
 	logger.Infof("Running %d enabled linters: %v", len(enabledLinters), enabledLinters)
-	
+
 	ctx := context.Background()
-	
+
 	for _, linterName := range enabledLinters {
 		result, err := r.RunWithIntelligentDebounce(ctx, linterName, specificFiles, fix)
 		if err != nil {
@@ -96,32 +96,32 @@ func (r *RunnerV2) RunEnabledLintersOnFiles(specificFiles []string, fix bool) ([
 			})
 			continue
 		}
-		
+
 		results = append(results, *result)
 	}
-	
+
 	return results, nil
 }
 
 // RunWithIntelligentDebounce executes a linter with intelligent debouncing
 func (r *RunnerV2) RunWithIntelligentDebounce(ctx context.Context, linterName string, files []string, fix bool) (*LinterResultV2, error) {
 	start := time.Now()
-	
+
 	// Get linter from registry
 	linter, ok := r.registry.Get(linterName)
 	if !ok {
 		return nil, fmt.Errorf("unknown linter: %s", linterName)
 	}
-	
+
 	// Get configuration
 	config := r.config.GetLinterConfig(linterName, r.workDir)
-	
+
 	// Start task tracking
 	var task *clicky.Task
 	if r.taskManager != nil {
 		task = r.taskManager.Start(r.buildCommandDisplay(linter, config, files))
 	}
-	
+
 	// Check intelligent debounce
 	shouldSkip, actualDebounce, err := r.linterStats.ShouldSkipLinter(linterName, r.workDir, config.Debounce)
 	if err != nil {
@@ -130,37 +130,37 @@ func (r *RunnerV2) RunWithIntelligentDebounce(ctx context.Context, linterName st
 		// Load cached violations and return
 		return r.loadCachedResult(linterName, actualDebounce, task, start)
 	}
-	
+
 	// Execute linter
 	violations, err := linter.Run(ctx, RunOptions{
 		WorkDir:    r.workDir,
 		Files:      files,
 		Config:     config,
-		ArchConfig: r.config,  // Pass full config for all_language_excludes macro
+		ArchConfig: r.config, // Pass full config for all_language_excludes macro
 		ForceJSON:  config.OutputFormat == "json" || config.OutputFormat == "",
 		Fix:        fix,
 	})
-	
+
 	duration := time.Since(start)
 	success := err == nil
-	
+
 	// Record execution stats
 	if r.linterStats != nil {
 		if statsErr := r.linterStats.RecordExecution(linterName, r.workDir, duration, len(violations), success); statsErr != nil {
 			logger.Warnf("Failed to record execution stats for %s: %v", linterName, statsErr)
 		}
 	}
-	
+
 	// Cache violations if successful
 	if success && len(violations) > 0 && r.violationCache != nil {
 		r.cacheViolations(linterName, violations)
 	}
-	
+
 	// Update task status
 	if task != nil {
 		r.updateTaskStatus(task, linterName, success, len(violations), err)
 	}
-	
+
 	return &LinterResultV2{
 		Linter:     linterName,
 		Success:    success,
@@ -173,7 +173,7 @@ func (r *RunnerV2) RunWithIntelligentDebounce(ctx context.Context, linterName st
 // buildCommandDisplay builds a user-friendly command display
 func (r *RunnerV2) buildCommandDisplay(linter Linter, config *models.LinterConfig, files []string) string {
 	args := append([]string{}, config.Args...)
-	
+
 	// Add JSON args if supported and enabled
 	if (config.OutputFormat == "json" || config.OutputFormat == "") && linter.SupportsJSON() {
 		jsonArgs := linter.JSONArgs()
@@ -183,21 +183,21 @@ func (r *RunnerV2) buildCommandDisplay(linter Linter, config *models.LinterConfi
 			}
 		}
 	}
-	
+
 	// Add files or default includes
 	if len(files) > 0 {
 		args = append(args, files...)
 	} else if !r.hasPathArg(args) {
 		args = append(args, ".")
 	}
-	
+
 	return fmt.Sprintf("%s %s", linter.Name(), strings.Join(args, " "))
 }
 
 // loadCachedResult loads cached violations for debounced linters
 func (r *RunnerV2) loadCachedResult(linterName string, debounce time.Duration, task *clicky.Task, start time.Time) (*LinterResultV2, error) {
 	logger.Debugf("Skipping linter %s (debounced for %v)", linterName, debounce)
-	
+
 	var violations []models.Violation
 	if r.violationCache != nil {
 		cachedViolations, err := r.violationCache.GetViolationsBySource(linterName)
@@ -208,7 +208,7 @@ func (r *RunnerV2) loadCachedResult(linterName string, debounce time.Duration, t
 			logger.Debugf("Loaded %d cached violations for %s", len(violations), linterName)
 		}
 	}
-	
+
 	// Update task status for debounced linter
 	if task != nil {
 		violationCount := len(violations)
@@ -220,7 +220,7 @@ func (r *RunnerV2) loadCachedResult(linterName string, debounce time.Duration, t
 			task.Success()
 		}
 	}
-	
+
 	return &LinterResultV2{
 		Linter:       linterName,
 		Success:      true,
@@ -236,13 +236,13 @@ func (r *RunnerV2) cacheViolations(linterName string, violations []models.Violat
 	if r.violationCache == nil {
 		return
 	}
-	
+
 	// Group violations by file
 	fileViolations := make(map[string][]models.Violation)
 	for _, v := range violations {
 		fileViolations[v.File] = append(fileViolations[v.File], v)
 	}
-	
+
 	// Store each file's violations
 	for file, vList := range fileViolations {
 		if err := r.violationCache.StoreViolations(file, vList); err != nil {

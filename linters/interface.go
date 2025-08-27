@@ -2,9 +2,11 @@ package linters
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/flanksource/arch-unit/models"
+	"github.com/flanksource/clicky/api"
 )
 
 // Linter represents a generic linter that can analyze files
@@ -40,14 +42,14 @@ type Linter interface {
 // LinterWithLanguageSupport extends Linter to provide language-aware file filtering
 type LinterWithLanguageSupport interface {
 	Linter
-	
+
 	// GetSupportedLanguages returns the languages this linter can process
 	GetSupportedLanguages() []string
-	
+
 	// GetEffectiveExcludes returns the complete list of exclusion patterns
 	// using the all_language_excludes macro for the given language and config
 	GetEffectiveExcludes(language string, config *models.Config) []string
-	
+
 	// GetEffectiveIncludes returns the complete list of inclusion patterns
 	// for the given language and config
 	GetEffectiveIncludes(language string, config *models.Config) []string
@@ -58,10 +60,10 @@ type RunOptions struct {
 	WorkDir    string
 	Files      []string
 	Config     *models.LinterConfig
-	ArchConfig *models.Config      // Full arch-unit config for all_language_excludes macro
+	ArchConfig *models.Config // Full arch-unit config for all_language_excludes macro
 	ForceJSON  bool
-	Fix        bool                // Enable auto-fixing mode
-	NoCache    bool                // Disable caching
+	Fix        bool // Enable auto-fixing mode
+	NoCache    bool // Disable caching
 	ExtraArgs  []string
 }
 
@@ -113,14 +115,14 @@ var DefaultRegistry = NewRegistry()
 
 // LinterResult represents the result of running a linter
 type LinterResult struct {
-	Linter     string              `json:"linter"`
-	Success    bool                `json:"success"`
-	Duration   time.Duration       `json:"duration"`
-	Violations []models.Violation  `json:"violations"`
-	RawOutput  string              `json:"raw_output,omitempty"`
-	Error      string              `json:"error,omitempty"`
-	Debounced  bool                `json:"debounced,omitempty"`
-	DebounceUsed time.Duration     `json:"debounce_used,omitempty"`
+	Linter       string             `json:"linter"`
+	Success      bool               `json:"success"`
+	Duration     time.Duration      `json:"duration"`
+	Violations   []models.Violation `json:"violations"`
+	RawOutput    string             `json:"raw_output,omitempty"`
+	Error        string             `json:"error,omitempty"`
+	Debounced    bool               `json:"debounced,omitempty"`
+	DebounceUsed time.Duration      `json:"debounce_used,omitempty"`
 }
 
 // GetViolationCount returns the number of violations found
@@ -142,7 +144,7 @@ func (lr *LinterResult) IsSuccessWithViolations() bool {
 func (lr *LinterResult) Pretty() api.Text {
 	var status string
 	var style string
-	
+
 	if lr.Success {
 		if lr.HasViolations() {
 			status = "⚠️"
@@ -155,17 +157,17 @@ func (lr *LinterResult) Pretty() api.Text {
 		status = "❌"
 		style = "text-red-600"
 	}
-	
+
 	text := fmt.Sprintf("%s %s", status, lr.Linter)
 	if lr.Debounced {
 		text += fmt.Sprintf(" (cached, %v)", lr.DebounceUsed)
 	} else {
 		text += fmt.Sprintf(" (%d violations, %v)", len(lr.Violations), lr.Duration)
 	}
-	
+
 	if lr.Error != "" {
 		text += fmt.Sprintf(" - Error: %s", lr.Error)
 	}
-	
+
 	return api.Text{Content: text, Style: style}
 }

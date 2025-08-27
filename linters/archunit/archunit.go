@@ -15,12 +15,12 @@ import (
 
 // ArchUnit implements the Linter interface for arch-unit rules
 type ArchUnit struct {
-	workDir string
+	WorkDir string
 }
 
 // NewArchUnit creates a new arch-unit linter
 func NewArchUnit(workDir string) *ArchUnit {
-	return &ArchUnit{workDir: workDir}
+	return &ArchUnit{WorkDir: workDir}
 }
 
 // Name returns the linter name
@@ -74,7 +74,7 @@ func (a *ArchUnit) ValidateConfig(config *models.LinterConfig) error {
 func (a *ArchUnit) Run(ctx context.Context, opts linters.RunOptions) ([]models.Violation, error) {
 	// If specific files are provided, filter for Go and Python files
 	var goFiles, pythonFiles []string
-	
+
 	if len(opts.Files) > 0 {
 		for _, file := range opts.Files {
 			ext := filepath.Ext(file)
@@ -190,7 +190,7 @@ func analyzeGoFilesWithCache(rootDir string, files []string, config *models.Conf
 		if err != nil {
 			return nil, fmt.Errorf("failed to get rules for file %s: %w", file, err)
 		}
-		
+
 		if rules != nil {
 			result.RuleCount += len(rules.Rules)
 		}
@@ -257,7 +257,7 @@ func analyzePythonFilesWithCache(rootDir string, files []string, config *models.
 		if err != nil {
 			return nil, fmt.Errorf("failed to get rules for file %s: %w", file, err)
 		}
-		
+
 		if rules != nil {
 			result.RuleCount += len(rules.Rules)
 		}

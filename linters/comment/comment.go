@@ -61,23 +61,23 @@ func (c *CommentAnalysisLinter) Name() string {
 // Run executes the comment analysis linter
 func (c *CommentAnalysisLinter) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Violation, error) {
 	logger.Debugf("Running comment analysis on %d files", len(c.Files))
-	
+
 	var violations []models.Violation
-	
+
 	// Create AST analyzer to get comment data
 	astCache, err := cache.NewASTCache()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AST cache: %w", err)
 	}
 	defer astCache.Close()
-	
+
 	analyzer := ast.NewAnalyzer(astCache, c.WorkDir)
-	
+
 	// Ensure files are analyzed
 	if err := analyzer.AnalyzeFiles(); err != nil {
 		return nil, fmt.Errorf("failed to analyze files: %w", err)
 	}
-	
+
 	// Process each file
 	for _, filePath := range c.Files {
 		fileViolations, err := c.analyzeFile(ctx, filePath, analyzer)
@@ -87,7 +87,7 @@ func (c *CommentAnalysisLinter) Run(ctx commonsContext.Context, task *clicky.Tas
 		}
 		violations = append(violations, fileViolations...)
 	}
-	
+
 	logger.Infof("Found %d comment quality issues", len(violations))
 	return violations, nil
 }
@@ -98,16 +98,16 @@ func (c *CommentAnalysisLinter) analyzeFile(ctx commonsContext.Context, filePath
 	if err != nil {
 		relPath = filePath
 	}
-	
+
 	logger.Debugf("Analyzing comments in %s", relPath)
-	
+
 	// Get all nodes for this file
 	pattern := fmt.Sprintf("*")
 	allNodes, err := analyzer.QueryPattern(pattern)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query AST nodes: %w", err)
 	}
-	
+
 	// Filter to nodes in this file
 	var fileNodes []*models.ASTNode
 	for _, node := range allNodes {
@@ -115,9 +115,9 @@ func (c *CommentAnalysisLinter) analyzeFile(ctx commonsContext.Context, filePath
 			fileNodes = append(fileNodes, node)
 		}
 	}
-	
+
 	var violations []models.Violation
-	
+
 	// Analyze comments for each node
 	for _, node := range fileNodes {
 		nodeViolations, err := c.analyzeNodeComments(node)
@@ -127,7 +127,7 @@ func (c *CommentAnalysisLinter) analyzeFile(ctx commonsContext.Context, filePath
 		}
 		violations = append(violations, nodeViolations...)
 	}
-	
+
 	return violations, nil
 }
 
@@ -136,23 +136,23 @@ func (c *CommentAnalysisLinter) analyzeNodeComments(node *models.ASTNode) ([]mod
 	// For now, we'll create mock comments since we don't have comment extraction in the current AST
 	// In a real implementation, the AST analyzer would extract comments
 	mockComments := c.createMockComments(node)
-	
+
 	var violations []models.Violation
-	
+
 	for _, comment := range mockComments {
 		// Analyze comment using heuristics
 		results, err := c.heuristics.AnalyzeComment(comment, node)
 		if err != nil {
 			continue
 		}
-		
+
 		// Convert heuristic results to violations
 		for _, result := range results {
 			violation := c.createViolation(node, comment, result)
 			violations = append(violations, violation)
 		}
 	}
-	
+
 	return violations, nil
 }
 
@@ -160,7 +160,7 @@ func (c *CommentAnalysisLinter) analyzeNodeComments(node *models.ASTNode) ([]mod
 // In a real implementation, this would come from AST parsing
 func (c *CommentAnalysisLinter) createMockComments(node *models.ASTNode) []*models.Comment {
 	var comments []*models.Comment
-	
+
 	// Create some example comments based on node type
 	switch node.NodeType {
 	case models.NodeTypeMethod:
@@ -195,7 +195,7 @@ func (c *CommentAnalysisLinter) createMockComments(node *models.ASTNode) []*mode
 			Context:   node.TypeName,
 		})
 	}
-	
+
 	return comments
 }
 
@@ -205,7 +205,7 @@ func (c *CommentAnalysisLinter) createViolation(node *models.ASTNode, comment *m
 	if err != nil {
 		relPath = node.FilePath
 	}
-	
+
 	// Create a rule for this comment issue
 	rule := &models.Rule{
 		Type:         models.RuleTypeCommentQuality,
@@ -214,7 +214,7 @@ func (c *CommentAnalysisLinter) createViolation(node *models.ASTNode, comment *m
 		SourceFile:   "comment-analysis",
 		LineNumber:   comment.StartLine,
 	}
-	
+
 	violation := models.Violation{
 		File:             relPath,
 		Line:             comment.StartLine,
@@ -225,7 +225,7 @@ func (c *CommentAnalysisLinter) createViolation(node *models.ASTNode, comment *m
 		Fixable:          result.AutoFixable,
 		FixApplicability: "safe", // Comment fixes are generally safe
 	}
-	
+
 	return violation
 }
 
@@ -284,7 +284,7 @@ func (c *CommentAnalysisLinter) ValidateConfig(config *models.LinterConfig) erro
 // ApplyFixes applies comment fixes to files (used in fix mode)
 func (c *CommentAnalysisLinter) ApplyFixes(violations []models.Violation, workDir string, createBackup bool) error {
 	logger.Infof("Applying %d comment fixes", len(violations))
-	
+
 	// Group violations by file
 	fileViolations := make(map[string][]models.Violation)
 	for _, violation := range violations {
@@ -293,26 +293,26 @@ func (c *CommentAnalysisLinter) ApplyFixes(violations []models.Violation, workDi
 			fileViolations[filePath] = append(fileViolations[filePath], violation)
 		}
 	}
-	
+
 	// Apply fixes to each file
 	for filePath, violations := range fileViolations {
 		if err := c.applyFixesToFile(filePath, violations, createBackup); err != nil {
 			logger.Warnf("Failed to apply fixes to %s: %v", filePath, err)
 		}
 	}
-	
+
 	return nil
 }
 
 // applyFixesToFile applies comment fixes to a single file
 func (c *CommentAnalysisLinter) applyFixesToFile(filePath string, violations []models.Violation, createBackup bool) error {
 	logger.Debugf("Applying %d fixes to %s", len(violations), filePath)
-	
+
 	// For now, just log what would be done
 	// In a real implementation, this would modify the actual file
 	for _, violation := range violations {
 		logger.Infof("Would apply fix at %s:%d: %s", filePath, violation.Line, violation.Message)
 	}
-	
+
 	return nil
 }

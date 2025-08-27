@@ -10,48 +10,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flanksource/clicky"
-	"github.com/flanksource/clicky/api"
 	"gopkg.in/yaml.v3"
 )
 
 // FixtureTest represents a single test case from the markdown table
 type FixtureTest struct {
-	Name      string
-	CWD       string
-	SourceDir string // Directory containing the fixture file
-	Query     string
-	CLI       string
-	CLIArgs   string
-	Expected  ExpectedResult
-	CEL       string
-	Build     string                 // Build command from front-matter
-	Exec      string                 // Exec command from front-matter
-	Env       map[string]string      // Environment variables from front-matter
-	Metadata  map[string]interface{} // Additional metadata from front-matter
-}
-
-func (fixture FixtureTest) String() string {
-	if fixture.Exec != "" {
-		if fixture.CLIArgs != "" {
-			return fmt.Sprintf("%s %s", fixture.Exec, fixture.CLIArgs)
-		}
-		return fixture.Exec
-	}
-	if fixture.CLI != "" {
-		return fixture.CLI
-	}
-	if fixture.CLIArgs != "" {
-		return fixture.CLIArgs
-	}
-	if fixture.Query != "" {
-		return fmt.Sprintf("query: %s", fixture.Query)
-	}
-	return "unknown command"
-}
-
-func (f FixtureTest) Pretty() api.Text {
-	return clicky.Text(f.Name).Append(fmt.Sprintf(" (%s)", f.String()), "text-gray-500")
+	Name     string
+	CWD      string
+	Query    string
+	CLI      string
+	CLIArgs  string
+	Expected ExpectedResult
+	CEL      string
+	Build    string                 // Build command from front-matter
+	Exec     string                 // Exec command from front-matter
+	Env      map[string]string      // Environment variables from front-matter
+	Metadata map[string]interface{} // Additional metadata from front-matter
 }
 
 // FrontMatter represents the YAML front-matter in markdown files
@@ -76,15 +50,12 @@ type ExpectedResult struct {
 }
 
 // ParseMarkdownFixtures parses markdown files containing test fixtures
-func ParseMarkdownFixtures(fixtureFilePath string) ([]FixtureNode, error) {
-	file, err := os.Open(fixtureFilePath)
+func ParseMarkdownFixtures(filepath string) ([]FixtureNode, error) {
+	file, err := os.Open(filepath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open fixture file: %w", err)
 	}
 	defer file.Close()
-
-	// Get the directory containing the fixture file
-	sourceDir := filepath.Dir(fixtureFilePath)
 
 	// Parse front-matter if present
 	frontMatter, content, err := parseFrontMatter(file)
@@ -94,13 +65,7 @@ func ParseMarkdownFixtures(fixtureFilePath string) ([]FixtureNode, error) {
 
 	// If we have content after front-matter, parse that
 	if content != "" {
-		nodes, err := parseMarkdownContent(content, frontMatter)
-		if err != nil {
-			return nil, err
-		}
-		// Set SourceDir on all fixture tests
-		setSourceDirOnNodes(nodes, sourceDir)
-		return nodes, nil
+		return parseMarkdownContent(content, frontMatter)
 	}
 
 	// No front-matter found, read the entire file
@@ -115,13 +80,7 @@ func ParseMarkdownFixtures(fixtureFilePath string) ([]FixtureNode, error) {
 	}
 
 	fullContent := strings.Join(lines, "\n")
-	nodes, err := parseMarkdownContent(fullContent, nil)
-	if err != nil {
-		return nil, err
-	}
-	// Set SourceDir on all fixture tests
-	setSourceDirOnNodes(nodes, sourceDir)
-	return nodes, nil
+	return parseMarkdownContent(fullContent, nil)
 }
 
 // splitTableRow splits a markdown table row into cells
@@ -497,17 +456,11 @@ func parseMarkdownContentWithSections(content string, fileNode *FixtureNode, fix
 			if fixtureIndex < len(fixtures) {
 				fixture := fixtures[fixtureIndex]
 
-				// Skip if fixture doesn't have a test
-				if fixture.Test == nil {
-					fixtureIndex++
-					continue
-				}
-
 				// Create test node
 				testNode := &FixtureNode{
-					Name:     fixture.Test.Name,
+					Name:     fixture.Name,
 					Type:     TestNode,
-					Test:     fixture.Test,
+					Test:     &fixture,
 					Children: make([]*FixtureNode, 0),
 				}
 
@@ -526,17 +479,10 @@ func parseMarkdownContentWithSections(content string, fileNode *FixtureNode, fix
 	// If there are remaining fixtures not assigned to sections, add them to the file
 	for fixtureIndex < len(fixtures) {
 		fixture := fixtures[fixtureIndex]
-
-		// Skip if fixture doesn't have a test
-		if fixture.Test == nil {
-			fixtureIndex++
-			continue
-		}
-
 		testNode := &FixtureNode{
-			Name:     fixture.Test.Name,
+			Name:     fixture.Name,
 			Type:     TestNode,
-			Test:     fixture.Test,
+			Test:     &fixture,
 			Children: make([]*FixtureNode, 0),
 		}
 		fileNode.AddChild(testNode)
@@ -571,22 +517,5 @@ func adjustSectionStack(stack *[]*FixtureNode, targetLevel int) {
 
 	if len(*stack) > targetLevel {
 		*stack = (*stack)[:targetLevel]
-	}
-}
-
-// setSourceDirOnNodes recursively sets the SourceDir on all fixture tests in the node tree
-func setSourceDirOnNodes(nodes []FixtureNode, sourceDir string) {
-	for i := range nodes {
-		setSourceDirOnNode(&nodes[i], sourceDir)
-	}
-}
-
-// setSourceDirOnNode recursively sets SourceDir on a node and its children
-func setSourceDirOnNode(node *FixtureNode, sourceDir string) {
-	if node.Test != nil {
-		node.Test.SourceDir = sourceDir
-	}
-	for _, child := range node.Children {
-		setSourceDirOnNode(child, sourceDir)
 	}
 }

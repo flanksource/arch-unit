@@ -16,18 +16,18 @@ type Analyzer interface {
 type ASTResult struct {
 	// AST nodes found in the file
 	Nodes []*models.ASTNode
-	
+
 	// Relationships between nodes (calls, inherits, etc.)
 	Relationships []*models.ASTRelationship
-	
+
 	// External library dependencies
 	Libraries []*models.LibraryRelationship
-	
+
 	// File metadata
 	FilePath    string
 	Language    string
 	PackageName string
-	
+
 	// Analysis statistics
 	NodeCount         int
 	RelationshipCount int
@@ -70,11 +70,11 @@ func (r *ASTResult) Merge(other *ASTResult) {
 	if other == nil {
 		return
 	}
-	
+
 	r.Nodes = append(r.Nodes, other.Nodes...)
 	r.Relationships = append(r.Relationships, other.Relationships...)
 	r.Libraries = append(r.Libraries, other.Libraries...)
-	
+
 	r.NodeCount += other.NodeCount
 	r.RelationshipCount += other.RelationshipCount
 	r.LibraryCount += other.LibraryCount
