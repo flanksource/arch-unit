@@ -67,7 +67,7 @@ var _ = Describe("arch-unit CLI", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				Eventually(session, 10*time.Second).Should(gexec.Exit(0))
-				
+
 				configFile := filepath.Join(tempDir, "arch-unit.yaml")
 				Expect(configFile).To(BeAnExistingFile())
 			})
@@ -312,14 +312,14 @@ func Function` + string(rune('A'+i)) + `() {
 			It("should process files concurrently", func() {
 				cmd := exec.Command(archUnitPath, "ast", "--format", "json")
 				cmd.Dir = tempDir
-				
+
 				start := time.Now()
 				session, err = gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
 				Expect(err).NotTo(HaveOccurred())
 
 				Eventually(session, 10*time.Second).Should(gexec.Exit(0))
 				duration := time.Since(start)
-				
+
 				// Should complete reasonably quickly due to concurrency
 				Expect(duration).To(BeNumerically("<", 5*time.Second))
 			})

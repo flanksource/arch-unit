@@ -200,7 +200,7 @@ func TestParsePattern_MetricDetection(t *testing.T) {
 		assert.Equal(t, metric, result.Metric)
 		assert.Equal(t, "*", result.Package)
 	}
-	
+
 	// Test metrics with package/path patterns
 	packagePatterns := []string{"internal/service", "controllers", "models"}
 	for _, pkg := range packagePatterns {
@@ -225,9 +225,9 @@ func TestParsePattern_MetricDetection(t *testing.T) {
 
 func TestParsePattern_Heuristics(t *testing.T) {
 	tests := []struct {
-		name        string
-		pattern     string
-		expectType  string
+		name         string
+		pattern      string
+		expectType   string
 		expectMethod string
 	}{
 		// Method-like patterns
@@ -235,17 +235,17 @@ func TestParsePattern_Heuristics(t *testing.T) {
 		{"Create prefix", "CreateProduct", "*", "CreateProduct"},
 		{"lowercase start", "processData", "*", "processData"},
 		{"Test prefix", "TestFunction", "*", "TestFunction"},
-		
+
 		// Type-like patterns
 		{"Controller suffix", "UserController", "UserController", ""},
 		{"Service suffix", "EmailService", "EmailService", ""},
 		{"Repository suffix", "UserRepository", "UserRepository", ""},
-		
+
 		// Wildcards
 		{"Method wildcard", "Get*", "*", "Get*"},
 		{"Type wildcard", "*Controller", "*Controller", ""},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := ParsePattern(tt.pattern)

@@ -45,12 +45,12 @@ func TestCache_ShouldSkip(t *testing.T) {
 	cache := &Cache{baseDir: tempDir}
 
 	testPath := "/tmp/test-project"
-	
+
 	tests := []struct {
-		name           string
-		setupLastRun   *time.Time
-		debounceDur    time.Duration
-		expectedSkip   bool
+		name         string
+		setupLastRun *time.Time
+		debounceDur  time.Duration
+		expectedSkip bool
 	}{
 		{
 			name:         "no_previous_run",

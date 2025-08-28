@@ -48,11 +48,11 @@ func (r *Ruff) DefaultIncludes() []string {
 // handled by the all_language_excludes macro. This only returns Ruff-specific excludes.
 func (r *Ruff) DefaultExcludes() []string {
 	return []string{
-		"*.pyc",           // Compiled Python files
-		"*.pyo",           // Optimized Python files  
-		"*.egg-info/**",   // Python package metadata
-		"venv/**",         // Virtual environments (legacy pattern)
-		"env/**",          // Virtual environments (legacy pattern)
+		"*.pyc",         // Compiled Python files
+		"*.pyo",         // Optimized Python files
+		"*.egg-info/**", // Python package metadata
+		"venv/**",       // Virtual environments (legacy pattern)
+		"env/**",        // Virtual environments (legacy pattern)
 	}
 }
 
@@ -68,7 +68,7 @@ func (r *Ruff) GetEffectiveExcludes(language string, config *models.Config) []st
 		// Fallback to default excludes if no config
 		return r.DefaultExcludes()
 	}
-	
+
 	// Use the all_language_excludes macro
 	return config.GetAllLanguageExcludes(language, r.DefaultExcludes())
 }
@@ -80,7 +80,7 @@ func (r *Ruff) GetEffectiveIncludes(language string, config *models.Config) []st
 		// Fallback to default includes if no config
 		return r.DefaultIncludes()
 	}
-	
+
 	// Use the combined includes system
 	return config.GetAllLanguageIncludes(language, r.DefaultIncludes())
 }
@@ -116,41 +116,41 @@ func (r *Ruff) ValidateConfig(config *models.LinterConfig) error {
 // Run executes ruff and returns violations
 func (r *Ruff) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Violation, error) {
 	args := []string{"check"}
-	
+
 	// Add configured args
 	if r.Config != nil {
 		args = append(args, r.Config.Args...)
 	}
-	
+
 	// Add JSON format if requested and not already present
 	if r.ForceJSON && !r.hasFormatArg(args, "--output-format") {
 		args = append(args, "--output-format=json")
 	}
-	
+
 	// Add fix flag if requested
 	if r.Fix && r.SupportsFix() && !r.hasArg(args, "--fix") {
 		fixArgs := r.FixArgs()
 		args = append(args, fixArgs...)
 	}
-	
+
 	// Add extra args
 	args = append(args, r.ExtraArgs...)
-	
+
 	// Add files or default to current directory
 	if len(r.Files) > 0 {
 		args = append(args, r.Files...)
 	} else if !r.hasPathArg(args) {
 		args = append(args, ".")
 	}
-	
+
 	// Execute command
 	cmd := exec.CommandContext(ctx, "ruff", args...)
 	cmd.Dir = r.WorkDir
-	
+
 	logger.Infof("Executing: ruff %s", strings.Join(args, " "))
-	
+
 	output, err := cmd.CombinedOutput()
-	
+
 	// Handle ruff exit codes
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
@@ -161,16 +161,16 @@ func (r *Ruff) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Viol
 			}
 		}
 	}
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("ruff execution failed: %w\nOutput:\n%s", err, string(output))
 	}
-	
+
 	// Parse JSON output if we have any
 	if len(output) == 0 {
 		return []models.Violation{}, nil
 	}
-	
+
 	return r.parseViolations(output)
 }
 
@@ -212,15 +212,15 @@ func (r *Ruff) parseViolations(output []byte) ([]models.Violation, error) {
 		logger.Debugf("Failed to parse ruff JSON output: %v\nOutput: %s", err, string(output))
 		return nil, fmt.Errorf("failed to parse ruff JSON output: %w", err)
 	}
-	
+
 	var violations []models.Violation
 	for _, issue := range issues {
 		violation := issue.ToViolation(r.WorkDir)
-		logger.Debugf("Ruff violation: %s, fixable: %v, applicability: %s", 
+		logger.Debugf("Ruff violation: %s, fixable: %v, applicability: %s",
 			violation.Message, violation.Fixable, violation.FixApplicability)
 		violations = append(violations, violation)
 	}
-	
+
 	return violations, nil
 }
 
@@ -242,12 +242,12 @@ type RuffIssue struct {
 // ToViolation converts a RuffIssue to a generic Violation
 func (issue *RuffIssue) ToViolation(workDir string) models.Violation {
 	filename := issue.Filename
-	
+
 	// Make filename absolute if it's relative
 	if !filepath.IsAbs(filename) {
 		filename = filepath.Join(workDir, filename)
 	}
-	
+
 	// Determine if this issue is fixable
 	fixable := false
 	fixApplicability := ""
@@ -255,7 +255,7 @@ func (issue *RuffIssue) ToViolation(workDir string) models.Violation {
 		fixable = true
 		fixApplicability = issue.Fix.Applicability
 	}
-	
+
 	return models.Violation{
 		File:             filename,
 		Line:             issue.Location.Row,

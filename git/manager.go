@@ -12,10 +12,10 @@ import (
 
 // DefaultGitRepositoryManager implements GitRepositoryManager
 type DefaultGitRepositoryManager struct {
-	cacheDir      string
-	repositories  map[string]*repositoryEntry
-	versionCache  map[string]*CacheEntry // "repo:alias" -> resolved_version
-	mutex         sync.RWMutex
+	cacheDir        string
+	repositories    map[string]*repositoryEntry
+	versionCache    map[string]*CacheEntry // "repo:alias" -> resolved_version
+	mutex           sync.RWMutex
 	worktreeManager WorktreeManager
 	versionResolver VersionResolver
 }
@@ -31,16 +31,16 @@ func NewGitRepositoryManager(cacheDir string) GitRepositoryManager {
 	if cacheDir == "" {
 		cacheDir = ".cache/arch-unit/repositories"
 	}
-	
+
 	manager := &DefaultGitRepositoryManager{
 		cacheDir:     cacheDir,
 		repositories: make(map[string]*repositoryEntry),
 		versionCache: make(map[string]*CacheEntry),
 	}
-	
+
 	manager.worktreeManager = NewWorktreeManager()
 	manager.versionResolver = NewVersionResolver(manager)
-	
+
 	return manager
 }
 
@@ -55,11 +55,11 @@ func (gm *DefaultGitRepositoryManager) GetRepository(gitURL string) (GitReposito
 		return entry.repository, nil
 	}
 	gm.mutex.RUnlock()
-	
+
 	// Create new repository
 	gm.mutex.Lock()
 	defer gm.mutex.Unlock()
-	
+
 	// Double-check after acquiring write lock
 	if entry, exists := gm.repositories[gitURL]; exists {
 		entry.mutex.Lock()
@@ -67,17 +67,17 @@ func (gm *DefaultGitRepositoryManager) GetRepository(gitURL string) (GitReposito
 		entry.mutex.Unlock()
 		return entry.repository, nil
 	}
-	
+
 	repo, err := gm.createRepository(gitURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository for %s: %w", gitURL, err)
 	}
-	
+
 	gm.repositories[gitURL] = &repositoryEntry{
 		repository: repo,
 		lastAccess: time.Now(),
 	}
-	
+
 	return repo, nil
 }
 
@@ -87,7 +87,7 @@ func (gm *DefaultGitRepositoryManager) GetWorktreePath(gitURL, version string) (
 	if err != nil {
 		return "", err
 	}
-	
+
 	return repo.GetWorktree(version)
 }
 
@@ -108,10 +108,10 @@ func (gm *DefaultGitRepositoryManager) ResolveVersionAlias(gitURL, alias string)
 		}
 	}
 	gm.mutex.RUnlock()
-	
+
 	// Resolve version
 	resolved, err := gm.versionResolver.ResolveVersion(context.Background(), gitURL, alias)
-	
+
 	// Cache result
 	gm.mutex.Lock()
 	gm.versionCache[cacheKey] = &CacheEntry{
@@ -121,7 +121,7 @@ func (gm *DefaultGitRepositoryManager) ResolveVersionAlias(gitURL, alias string)
 		Error:      err,
 	}
 	gm.mutex.Unlock()
-	
+
 	return resolved, err
 }
 
@@ -134,10 +134,10 @@ func (gm *DefaultGitRepositoryManager) GetCacheDir() string {
 func (gm *DefaultGitRepositoryManager) CleanupUnused(maxAge time.Duration) error {
 	gm.mutex.Lock()
 	defer gm.mutex.Unlock()
-	
+
 	var toRemove []string
 	cutoff := time.Now().Add(-maxAge)
-	
+
 	for url, entry := range gm.repositories {
 		entry.mutex.RLock()
 		if entry.lastAccess.Before(cutoff) {
@@ -145,7 +145,7 @@ func (gm *DefaultGitRepositoryManager) CleanupUnused(maxAge time.Duration) error
 		}
 		entry.mutex.RUnlock()
 	}
-	
+
 	// Remove unused repositories
 	for _, url := range toRemove {
 		if entry, exists := gm.repositories[url]; exists {
@@ -156,26 +156,24 @@ func (gm *DefaultGitRepositoryManager) CleanupUnused(maxAge time.Duration) error
 					entry.repository.CleanupWorktree(wt.Version)
 				}
 			}
-			
+
 			// Remove repository directory
 			repoPath := entry.repository.GetRepoPath()
 			os.RemoveAll(repoPath)
-			
+
 			delete(gm.repositories, url)
 		}
 	}
-	
+
 	// Clean version cache
 	for key, entry := range gm.versionCache {
 		if entry.AccessedAt.Before(cutoff) {
 			delete(gm.versionCache, key)
 		}
 	}
-	
+
 	return nil
 }
-
-
 
 // SetCacheDir sets the base cache directory
 func (gm *DefaultGitRepositoryManager) SetCacheDir(dir string) {
@@ -188,7 +186,7 @@ func (gm *DefaultGitRepositoryManager) SetCacheDir(dir string) {
 func (gm *DefaultGitRepositoryManager) ListRepositories() []string {
 	gm.mutex.RLock()
 	defer gm.mutex.RUnlock()
-	
+
 	var repos []string
 	for url := range gm.repositories {
 		repos = append(repos, url)
@@ -200,7 +198,7 @@ func (gm *DefaultGitRepositoryManager) ListRepositories() []string {
 func (gm *DefaultGitRepositoryManager) Close() error {
 	gm.mutex.Lock()
 	defer gm.mutex.Unlock()
-	
+
 	// Clean up all worktrees for each repository
 	for _, entry := range gm.repositories {
 		if entry.repository != nil {
@@ -215,15 +213,15 @@ func (gm *DefaultGitRepositoryManager) Close() error {
 			}
 		}
 	}
-	
+
 	// Clear the repository and cache maps
 	gm.repositories = make(map[string]*repositoryEntry)
 	gm.versionCache = make(map[string]*CacheEntry)
-	
+
 	// Optionally clean up the entire cache directory if it's temporary
 	// This is commented out as it might be too aggressive
 	// os.RemoveAll(gm.cacheDir)
-	
+
 	return nil
 }
 
@@ -233,7 +231,7 @@ func (gm *DefaultGitRepositoryManager) createRepository(gitURL string) (GitRepos
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return NewDefaultGitRepository(gitURL, repoPath, gm.worktreeManager)
 }
 
@@ -244,9 +242,9 @@ func (gm *DefaultGitRepositoryManager) getRepositoryPath(gitURL string) (string,
 	if len(parts) < 2 {
 		return "", fmt.Errorf("invalid GitHub repository URL: %s", gitURL)
 	}
-	
+
 	org := parts[0]
 	repo := strings.TrimSuffix(parts[1], ".git")
-	
+
 	return filepath.Join(gm.cacheDir, "github.com", org, repo), nil
 }

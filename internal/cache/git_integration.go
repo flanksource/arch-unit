@@ -14,7 +14,7 @@ func NewGitIntegration() (*GitIntegration, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize git cache: %w", err)
 	}
-	
+
 	return &GitIntegration{
 		cache: cache,
 	}, nil
@@ -30,7 +30,7 @@ func (gi *GitIntegration) PrepareRepository(path string) (string, error) {
 	if gi.isRemoteRepo(path) {
 		return gi.cache.CloneOrUpdate(path, "")
 	}
-	
+
 	return path, nil
 }
 
@@ -38,7 +38,7 @@ func (gi *GitIntegration) PrepareRepositoryWithRef(path, ref string) (string, er
 	if gi.isRemoteRepo(path) {
 		return gi.cache.CloneOrUpdate(path, ref)
 	}
-	
+
 	return path, nil
 }
 
@@ -56,7 +56,7 @@ func (gi *GitIntegration) GetCachedPath(repoURL string) (string, error) {
 	if !gi.isRemoteRepo(repoURL) {
 		return repoURL, nil
 	}
-	
+
 	return gi.cache.GetCachedPath(repoURL)
 }
 
@@ -64,7 +64,7 @@ func (gi *GitIntegration) IsCached(repoURL string) bool {
 	if !gi.isRemoteRepo(repoURL) {
 		return true
 	}
-	
+
 	return gi.cache.IsCached(repoURL)
 }
 
@@ -80,6 +80,6 @@ func (gi *GitIntegration) CleanRepoCache(repoURL string) error {
 	if !gi.isRemoteRepo(repoURL) {
 		return nil
 	}
-	
+
 	return gi.cache.CleanRepo(repoURL)
 }

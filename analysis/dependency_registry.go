@@ -57,9 +57,9 @@ func (r *DependencyRegistry) Has(language string) bool {
 func (r *DependencyRegistry) GetScannerForFile(filePath string) (DependencyScanner, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	filename := filepath.Base(filePath)
-	
+
 	for _, scanner := range r.scanners {
 		for _, pattern := range scanner.SupportedFiles() {
 			if matched, _ := filepath.Match(pattern, filename); matched {
@@ -67,7 +67,7 @@ func (r *DependencyRegistry) GetScannerForFile(filePath string) (DependencyScann
 			}
 		}
 	}
-	
+
 	return nil, false
 }
 
@@ -75,10 +75,10 @@ func (r *DependencyRegistry) GetScannerForFile(filePath string) (DependencyScann
 func (r *DependencyRegistry) GetAllSupportedFiles() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	var patterns []string
 	seen := make(map[string]bool)
-	
+
 	for _, scanner := range r.scanners {
 		for _, pattern := range scanner.SupportedFiles() {
 			if !seen[pattern] {
@@ -87,7 +87,7 @@ func (r *DependencyRegistry) GetAllSupportedFiles() []string {
 			}
 		}
 	}
-	
+
 	return patterns
 }
 
@@ -95,16 +95,16 @@ func (r *DependencyRegistry) GetAllSupportedFiles() []string {
 func (r *DependencyRegistry) GetScannersForLanguage(language string) []DependencyScanner {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	var scanners []DependencyScanner
 	normalizedLang := strings.ToLower(language)
-	
+
 	for _, scanner := range r.scanners {
 		if strings.ToLower(scanner.Language()) == normalizedLang {
 			scanners = append(scanners, scanner)
 		}
 	}
-	
+
 	return scanners
 }
 

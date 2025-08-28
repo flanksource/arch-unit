@@ -6,19 +6,19 @@ import (
 )
 
 type Violation struct {
-	File              string    `json:"file,omitempty"`
-	Line              int       `json:"line,omitempty"`
-	Column            int       `json:"column,omitempty"`
-	CallerPackage     string    `json:"caller_package,omitempty"`
-	CallerMethod      string    `json:"caller_method,omitempty"`
-	CalledPackage     string    `json:"called_package,omitempty"`
-	CalledMethod      string    `json:"called_method,omitempty"`
-	Rule              *Rule     `json:"rule,omitempty"`
-	Message           string    `json:"message,omitempty"`
-	Source            string    `json:"source,omitempty"` // Source tool that reported the violation (e.g., arch-unit, golangci-lint)
-	Fixable           bool      `json:"fixable,omitempty"`
-	FixApplicability  string    `json:"fix_applicability,omitempty"`
-	CreatedAt         time.Time `json:"created_at,omitempty"`
+	File             string    `json:"file,omitempty"`
+	Line             int       `json:"line,omitempty"`
+	Column           int       `json:"column,omitempty"`
+	CallerPackage    string    `json:"caller_package,omitempty"`
+	CallerMethod     string    `json:"caller_method,omitempty"`
+	CalledPackage    string    `json:"called_package,omitempty"`
+	CalledMethod     string    `json:"called_method,omitempty"`
+	Rule             *Rule     `json:"rule,omitempty"`
+	Message          string    `json:"message,omitempty"`
+	Source           string    `json:"source,omitempty"` // Source tool that reported the violation (e.g., arch-unit, golangci-lint)
+	Fixable          bool      `json:"fixable,omitempty"`
+	FixApplicability string    `json:"fix_applicability,omitempty"`
+	CreatedAt        time.Time `json:"created_at,omitempty"`
 }
 
 func (v Violation) String() string {

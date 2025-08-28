@@ -39,11 +39,11 @@ func main() {
 	}
 
 	tests := []struct {
-		name            string
-		debounceFlag    string
-		expectError     bool
-		expectSkip      bool
-		runTwice        bool
+		name             string
+		debounceFlag     string
+		expectError      bool
+		expectSkip       bool
+		runTwice         bool
 		delayBetweenRuns time.Duration
 	}{
 		{

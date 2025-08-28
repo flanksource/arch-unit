@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
 	"gopkg.in/yaml.v3"
@@ -17,18 +18,19 @@ import (
 
 // FixtureTest represents a single test case from the markdown table
 type FixtureTest struct {
-	Name      string
-	CWD       string
-	SourceDir string // Directory containing the fixture file
-	Query     string
-	CLI       string
-	CLIArgs   string
-	Expected  ExpectedResult
-	CEL       string
-	Build     string                 // Build command from front-matter
-	Exec      string                 // Exec command from front-matter
-	Env       map[string]string      // Environment variables from front-matter
-	Metadata  map[string]interface{} // Additional metadata from front-matter
+	Name         string
+	CWD          string
+	SourceDir    string                 // Directory containing the fixture file
+	Query        string
+	CLI          string
+	CLIArgs      string
+	Expected     ExpectedResult
+	CEL          string
+	Build        string                 // Build command from front-matter
+	Exec         string                 // Exec command from front-matter
+	Env          map[string]string      // Environment variables from front-matter
+	Metadata     map[string]interface{} // Additional metadata from front-matter
+	TemplateVars map[string]string      // Template variables (.file, .filename, .dir)
 }
 
 func (fixture FixtureTest) String() string {
@@ -61,6 +63,7 @@ type FrontMatter struct {
 	BaseExec string                 `yaml:"base_exec"`
 	Args     []string               `yaml:"args"`
 	Env      map[string]string      `yaml:"env"`
+	Files    string                 `yaml:"files"`    // Glob pattern to match files
 	Timeout  *time.Duration         `yaml:"timeout,omitempty"`
 	Metadata map[string]interface{} `yaml:",inline"`
 }
@@ -98,6 +101,11 @@ func ParseMarkdownFixtures(fixtureFilePath string) ([]FixtureNode, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Expand fixtures for file patterns if specified
+		nodes, err = expandFixturesForFiles(nodes, frontMatter, sourceDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to expand fixtures for files: %w", err)
+		}
 		// Set SourceDir on all fixture tests
 		setSourceDirOnNodes(nodes, sourceDir)
 		return nodes, nil
@@ -119,6 +127,7 @@ func ParseMarkdownFixtures(fixtureFilePath string) ([]FixtureNode, error) {
 	if err != nil {
 		return nil, err
 	}
+	// No file expansion without frontmatter
 	// Set SourceDir on all fixture tests
 	setSourceDirOnNodes(nodes, sourceDir)
 	return nodes, nil
@@ -589,4 +598,101 @@ func setSourceDirOnNode(node *FixtureNode, sourceDir string) {
 	for _, child := range node.Children {
 		setSourceDirOnNode(child, sourceDir)
 	}
+}
+
+// expandFixturesForFiles expands a fixture into multiple fixtures based on file glob pattern
+func expandFixturesForFiles(fixtures []FixtureNode, frontMatter *FrontMatter, sourceDir string) ([]FixtureNode, error) {
+	// If no files pattern specified, return fixtures as-is
+	if frontMatter == nil || frontMatter.Files == "" {
+		return fixtures, nil
+	}
+
+	var expandedFixtures []FixtureNode
+
+	// Find files matching the glob pattern
+	// Start search from the source directory (where the fixture file is located)
+	searchPath := sourceDir
+	pattern := frontMatter.Files
+
+	// If pattern is absolute, use it directly
+	if filepath.IsAbs(pattern) {
+		searchPath = "/"
+	} else {
+		// Make pattern relative to search path
+		pattern = filepath.Join(searchPath, pattern)
+	}
+
+	// Use doublestar to find matching files
+	matches, err := doublestar.FilepathGlob(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("invalid glob pattern '%s': %w", frontMatter.Files, err)
+	}
+
+	// If no matches found, return original fixtures
+	if len(matches) == 0 {
+		return fixtures, nil
+	}
+
+	// For each matched file, create a copy of each fixture with template variables
+	for _, matchedFile := range matches {
+		// Get file info
+		absFile, err := filepath.Abs(matchedFile)
+		if err != nil {
+			continue
+		}
+
+		fileInfo, err := os.Stat(absFile)
+		if err != nil || fileInfo.IsDir() {
+			continue // Skip directories
+		}
+
+		// Calculate template variables
+		fileDir := filepath.Dir(absFile)
+		fileName := filepath.Base(absFile)
+		fileNameNoExt := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+
+		// Make paths relative to source directory if possible
+		relFile, _ := filepath.Rel(sourceDir, absFile)
+		relDir, _ := filepath.Rel(sourceDir, fileDir)
+		
+		// Create template variables map
+		templateVars := map[string]string{
+			"file":     relFile,                     // Relative path to file
+			"filename": fileNameNoExt,               // Filename without extension
+			"dir":      relDir,                      // Directory containing the file
+			"absfile":  absFile,                     // Absolute path to file
+			"absdir":   fileDir,                     // Absolute directory
+			"basename": fileName,                    // Full filename with extension
+			"ext":      filepath.Ext(fileName),      // File extension
+		}
+
+		// Create a copy of each fixture with the template variables
+		for _, fixture := range fixtures {
+			// Deep copy the fixture
+			expandedFixture := fixture
+			if expandedFixture.Test != nil {
+				// Create a new test copy
+				testCopy := *expandedFixture.Test
+				
+				// Update the test name to include the file
+				if testCopy.Name != "" {
+					testCopy.Name = fmt.Sprintf("%s [%s]", testCopy.Name, relFile)
+				}
+				
+				// Set template variables
+				testCopy.TemplateVars = templateVars
+				
+				expandedFixture.Test = &testCopy
+			}
+			
+			expandedFixtures = append(expandedFixtures, expandedFixture)
+		}
+	}
+
+	// If we expanded fixtures, return the expanded list; otherwise return original
+	if len(expandedFixtures) > 0 {
+		return expandedFixtures, nil
+	}
+	
+	return fixtures, nil
 }

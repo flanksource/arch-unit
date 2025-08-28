@@ -96,14 +96,14 @@ type BatchItem struct {
 
 // Profile represents extended user profile information
 type Profile struct {
-	UserID      string   `json:"user_id" db:"user_id"`
-	FirstName   string   `json:"first_name" db:"first_name"`
-	LastName    string   `json:"last_name" db:"last_name"`
-	PhoneNumber string   `json:"phone_number" db:"phone_number"`
-	Address     *Address `json:"address,omitempty"`
+	UserID      string           `json:"user_id" db:"user_id"`
+	FirstName   string           `json:"first_name" db:"first_name"`
+	LastName    string           `json:"last_name" db:"last_name"`
+	PhoneNumber string           `json:"phone_number" db:"phone_number"`
+	Address     *Address         `json:"address,omitempty"`
 	Preferences *UserPreferences `json:"preferences,omitempty"`
-	CreatedAt   int64    `json:"created_at" db:"created_at"`
-	UpdatedAt   int64    `json:"updated_at" db:"updated_at"`
+	CreatedAt   int64            `json:"created_at" db:"created_at"`
+	UpdatedAt   int64            `json:"updated_at" db:"updated_at"`
 }
 
 // Address represents a user's address
@@ -117,12 +117,12 @@ type Address struct {
 
 // UserPreferences represents user preferences and settings
 type UserPreferences struct {
-	Language         string            `json:"language" db:"language"`
-	Timezone         string            `json:"timezone" db:"timezone"`
+	Language           string          `json:"language" db:"language"`
+	Timezone           string          `json:"timezone" db:"timezone"`
 	EmailNotifications bool            `json:"email_notifications" db:"email_notifications"`
 	SMSNotifications   bool            `json:"sms_notifications" db:"sms_notifications"`
-	Theme            string            `json:"theme" db:"theme"`
-	NotificationTypes map[string]bool  `json:"notification_types,omitempty"`
+	Theme              string          `json:"theme" db:"theme"`
+	NotificationTypes  map[string]bool `json:"notification_types,omitempty"`
 }
 
 // Role represents a user role
@@ -155,14 +155,14 @@ type UserRole struct {
 
 // Session represents a user session
 type Session struct {
-	ID        string `json:"id" db:"id"`
-	UserID    string `json:"user_id" db:"user_id"`
-	Token     string `json:"token" db:"token"`
-	IPAddress string `json:"ip_address" db:"ip_address"`
-	UserAgent string `json:"user_agent" db:"user_agent"`
-	CreatedAt int64  `json:"created_at" db:"created_at"`
-	ExpiresAt int64  `json:"expires_at" db:"expires_at"`
-	LastUsedAt int64 `json:"last_used_at" db:"last_used_at"`
+	ID         string `json:"id" db:"id"`
+	UserID     string `json:"user_id" db:"user_id"`
+	Token      string `json:"token" db:"token"`
+	IPAddress  string `json:"ip_address" db:"ip_address"`
+	UserAgent  string `json:"user_agent" db:"user_agent"`
+	CreatedAt  int64  `json:"created_at" db:"created_at"`
+	ExpiresAt  int64  `json:"expires_at" db:"expires_at"`
+	LastUsedAt int64  `json:"last_used_at" db:"last_used_at"`
 }
 
 // AuditLog represents an audit log entry
@@ -179,11 +179,11 @@ type AuditLog struct {
 
 // LoginAttempt represents a login attempt
 type LoginAttempt struct {
-	ID          string `json:"id" db:"id"`
-	Email       string `json:"email" db:"email"`
-	IPAddress   string `json:"ip_address" db:"ip_address"`
-	UserAgent   string `json:"user_agent" db:"user_agent"`
-	Success     bool   `json:"success" db:"success"`
+	ID            string `json:"id" db:"id"`
+	Email         string `json:"email" db:"email"`
+	IPAddress     string `json:"ip_address" db:"ip_address"`
+	UserAgent     string `json:"user_agent" db:"user_agent"`
+	Success       bool   `json:"success" db:"success"`
 	FailureReason string `json:"failure_reason,omitempty" db:"failure_reason"`
 	AttemptedAt   int64  `json:"attempted_at" db:"attempted_at"`
 }

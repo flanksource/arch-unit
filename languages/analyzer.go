@@ -70,7 +70,7 @@ func DetectLanguage(filePath string) string {
 	if len(filePath) < 3 {
 		return "unknown"
 	}
-	
+
 	// Simple extension-based detection
 	switch {
 	case filePath[len(filePath)-3:] == ".go":

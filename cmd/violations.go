@@ -11,6 +11,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
+	"github.com/flanksource/commons/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -81,11 +82,11 @@ func init() {
 	rootCmd.AddCommand(violationsCmd)
 	violationsCmd.AddCommand(violationsListCmd)
 	violationsCmd.AddCommand(violationsClearCmd)
-	
+
 	// List command flags
 	violationsListCmd.Flags().StringVar(&violationsSince, "since", "", "Show violations from the last duration (e.g., '5m', '2h', '7d')")
 	violationsListCmd.Flags().StringVar(&violationsPath, "path", "", "Filter violations by file path pattern (glob)")
-	
+
 	// Clear command flags
 	violationsClearCmd.Flags().StringVar(&violationsOlder, "older", "", "Clear violations older than duration (e.g., '7d', '12h')")
 	violationsClearCmd.Flags().StringVar(&violationsPath, "path", "", "Filter violations by file path pattern (glob)")
@@ -98,24 +99,24 @@ func runViolationsList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to open violation cache: %w", err)
 	}
 	defer violationCache.Close()
-	
+
 	// Get all violations
 	allViolations, err := violationCache.GetAllViolations()
 	if err != nil {
 		return fmt.Errorf("failed to get violations: %w", err)
 	}
-	
+
 	// Filter violations
 	violations := filterViolations(allViolations, violationsSince, violationsPath)
-	
+
 	if len(violations) == 0 {
-		fmt.Println("No violations found matching the criteria")
+		logger.Infof("No violations found matching the criteria")
 		return nil
 	}
-	
+
 	// Display violations
 	displayViolationsList(violations)
-	
+
 	return nil
 }
 
@@ -126,7 +127,7 @@ func runViolationsClear(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to open violation cache: %w", err)
 	}
 	defer violationCache.Close()
-	
+
 	// Parse older duration if provided
 	var olderThan time.Time
 	if violationsOlder != "" {
@@ -136,35 +137,35 @@ func runViolationsClear(cmd *cobra.Command, args []string) error {
 		}
 		olderThan = time.Now().Add(-duration)
 	}
-	
+
 	// Clear violations based on filters
 	count, err := violationCache.ClearViolations(olderThan, violationsPath)
 	if err != nil {
 		return fmt.Errorf("failed to clear violations: %w", err)
 	}
-	
+
 	// Display result
 	if count == 0 {
-		fmt.Println("No violations cleared")
+		logger.Infof("No violations cleared")
 	} else {
-		fmt.Printf("%s Cleared %d violation(s)\n", 
+		logger.Infof("%s Cleared %d violation(s)",
 			color.GreenString("✓"),
 			count)
-		
+
 		if violationsOlder != "" {
-			fmt.Printf("  Older than: %s\n", violationsOlder)
+			logger.Infof("  Older than: %s", violationsOlder)
 		}
 		if violationsPath != "" {
-			fmt.Printf("  Path pattern: %s\n", violationsPath)
+			logger.Infof("  Path pattern: %s", violationsPath)
 		}
 	}
-	
+
 	return nil
 }
 
 func filterViolations(violations []models.Violation, since string, pathPattern string) []models.Violation {
 	var filtered []models.Violation
-	
+
 	// Parse since duration if provided
 	var sinceTime time.Time
 	if since != "" {
@@ -173,29 +174,29 @@ func filterViolations(violations []models.Violation, since string, pathPattern s
 			sinceTime = time.Now().Add(-duration)
 		}
 	}
-	
+
 	for _, v := range violations {
 		// Filter by time if since is provided
 		if !sinceTime.IsZero() && v.CreatedAt.Before(sinceTime) {
 			continue
 		}
-		
+
 		// Filter by path pattern if provided
 		if pathPattern != "" {
 			matched := false
-			
+
 			// Use doublestar for proper glob matching with ** support
 			if match, err := doublestar.Match(pathPattern, v.File); err == nil && match {
 				matched = true
 			}
-			
+
 			// Try matching against basename if full path didn't match
 			if !matched {
 				if match, err := doublestar.Match(pathPattern, filepath.Base(v.File)); err == nil && match {
 					matched = true
 				}
 			}
-			
+
 			// For relative patterns, try matching against relative path from working directory
 			if !matched && !filepath.IsAbs(pathPattern) {
 				if cwd, err := GetWorkingDir(); err == nil {
@@ -206,15 +207,15 @@ func filterViolations(violations []models.Violation, since string, pathPattern s
 					}
 				}
 			}
-			
+
 			if !matched {
 				continue
 			}
 		}
-		
+
 		filtered = append(filtered, v)
 	}
-	
+
 	return filtered
 }
 
@@ -224,22 +225,22 @@ func displayViolationsList(violations []models.Violation) {
 	for _, v := range violations {
 		fileMap[v.File] = append(fileMap[v.File], v)
 	}
-	
+
 	// Sort files for consistent output
 	var files []string
 	for file := range fileMap {
 		files = append(files, file)
 	}
 	sort.Strings(files)
-	
+
 	fmt.Printf("📋 %s\n", color.New(color.Bold).Sprint("Cached Violations"))
 	fmt.Println(strings.Repeat("─", 80))
-	
+
 	totalCount := 0
 	for i, file := range files {
 		violations := fileMap[file]
 		totalCount += len(violations)
-		
+
 		// Get relative path for display
 		relPath := file
 		if cwd, err := GetWorkingDir(); err == nil {
@@ -247,19 +248,19 @@ func displayViolationsList(violations []models.Violation) {
 				relPath = rel
 			}
 		}
-		
+
 		// File header with violation count
 		isLast := i == len(files)-1
 		if isLast {
-			fmt.Printf("└── %s (%d violations)\n", 
-				color.New(color.FgCyan, color.Bold).Sprint(relPath), 
+			fmt.Printf("└── %s (%d violations)\n",
+				color.New(color.FgCyan, color.Bold).Sprint(relPath),
 				len(violations))
 		} else {
-			fmt.Printf("├── %s (%d violations)\n", 
-				color.New(color.FgCyan, color.Bold).Sprint(relPath), 
+			fmt.Printf("├── %s (%d violations)\n",
+				color.New(color.FgCyan, color.Bold).Sprint(relPath),
 				len(violations))
 		}
-		
+
 		// Group violations by source
 		sourceMap := make(map[string][]models.Violation)
 		for _, v := range violations {
@@ -269,44 +270,44 @@ func displayViolationsList(violations []models.Violation) {
 			}
 			sourceMap[source] = append(sourceMap[source], v)
 		}
-		
+
 		// Sort sources for consistent output
 		var sources []string
 		for source := range sourceMap {
 			sources = append(sources, source)
 		}
 		sort.Strings(sources)
-		
+
 		prefix := "│   "
 		if isLast {
 			prefix = "    "
 		}
-		
+
 		for j, source := range sources {
 			sourceViolations := sourceMap[source]
 			isLastSource := j == len(sources)-1
-			
+
 			// Source header
 			sourceColor := color.FgYellow
 			if source == "arch-unit" {
 				sourceColor = color.FgMagenta
 			}
-			
+
 			if isLastSource {
 				fmt.Printf("%s└── %s\n", prefix, color.New(sourceColor).Sprint(source))
 			} else {
 				fmt.Printf("%s├── %s\n", prefix, color.New(sourceColor).Sprint(source))
 			}
-			
+
 			sourcePrefix := prefix + "│   "
 			if isLastSource {
 				sourcePrefix = prefix + "    "
 			}
-			
+
 			// Display violations for this source
 			for k, v := range sourceViolations {
 				isLastViolation := k == len(sourceViolations)-1
-				
+
 				// Format violation message
 				var violationMsg string
 				if v.Message != "" {
@@ -316,23 +317,23 @@ func displayViolationsList(violations []models.Violation) {
 				} else {
 					violationMsg = fmt.Sprintf("%s.%s", v.CalledPackage, v.CalledMethod)
 				}
-				
+
 				// Truncate long messages
 				if len(violationMsg) > 60 {
 					violationMsg = violationMsg[:57] + "..."
 				}
-				
+
 				lineInfo := fmt.Sprintf("line %d", v.Line)
 				if v.Column > 0 {
 					lineInfo = fmt.Sprintf("line %d:%d", v.Line, v.Column)
 				}
-				
+
 				// Add timestamp if available
 				timeInfo := ""
 				if !v.CreatedAt.IsZero() {
 					timeInfo = fmt.Sprintf(" [%s]", formatTimeAgo(v.CreatedAt))
 				}
-				
+
 				if isLastViolation {
 					fmt.Printf("%s└── %s %s%s\n",
 						sourcePrefix,
@@ -348,20 +349,20 @@ func displayViolationsList(violations []models.Violation) {
 				}
 			}
 		}
-		
+
 		if !isLast {
 			fmt.Println("│")
 		}
 	}
-	
+
 	fmt.Println(strings.Repeat("─", 80))
-	
+
 	// Print summary
-	fmt.Printf("\n%s Found %d total violation(s) in %d file(s)\n", 
+	fmt.Printf("\n%s Found %d total violation(s) in %d file(s)\n",
 		color.YellowString("⚠"),
 		totalCount,
 		len(files))
-	
+
 	if violationsSince != "" {
 		fmt.Printf("  Since: %s ago\n", violationsSince)
 	}
@@ -380,7 +381,7 @@ func parseDuration(s string) (time.Duration, error) {
 		}
 		return time.Duration(d) * 24 * time.Hour, nil
 	}
-	
+
 	// Handle weeks
 	if strings.HasSuffix(s, "w") {
 		weeks := strings.TrimSuffix(s, "w")
@@ -390,16 +391,14 @@ func parseDuration(s string) (time.Duration, error) {
 		}
 		return time.Duration(w) * 7 * 24 * time.Hour, nil
 	}
-	
+
 	// Standard Go duration parsing
 	return time.ParseDuration(s)
 }
 
-
-
 func formatTimeAgo(t time.Time) string {
 	duration := time.Since(t)
-	
+
 	if duration < time.Minute {
 		return fmt.Sprintf("%ds ago", int(duration.Seconds()))
 	} else if duration < time.Hour {

@@ -24,12 +24,12 @@ func NewWorktreeManager() WorktreeManager {
 	manager := &DefaultWorktreeManager{
 		activeWorktrees: make(map[string]string),
 	}
-	
+
 	// Register cleanup hook
 	shutdown.AddHookWithPriority("cleanup git worktrees", shutdown.PriorityWorkers, func() {
 		manager.CleanupAll()
 	})
-	
+
 	return manager
 }
 
@@ -53,44 +53,44 @@ func (wm *DefaultWorktreeManager) CreateWorktree(repoPath, version, worktreePath
 			return fmt.Errorf("failed to create worktree directory: %w", err)
 		}
 	}
-	
+
 	// Resolve the version to a commit hash
 	commitHash, err := wm.resolveVersion(repoPath, version)
 	if err != nil {
 		os.RemoveAll(worktreePath)
 		return fmt.Errorf("failed to resolve version %s: %w", version, err)
 	}
-	
+
 	// Create worktree using git command
 	cmd := exec.Command("git", "worktree", "add", worktreePath, commitHash)
 	cmd.Dir = repoPath
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// Check if worktree already exists
 		if strings.Contains(string(output), "already exists") {
 			// Try to remove the old worktree first
 			wm.removeWorktreeFromGit(repoPath, worktreePath)
-			
+
 			// Retry creation
 			cmd = exec.Command("git", "worktree", "add", worktreePath, commitHash)
 			cmd.Dir = repoPath
 			output, err = cmd.CombinedOutput()
 		}
-		
+
 		if err != nil {
 			os.RemoveAll(worktreePath)
 			return fmt.Errorf("failed to create worktree: %w\nOutput: %s", err, string(output))
 		}
 	}
-	
+
 	// Track the worktree for cleanup
 	wm.mu.Lock()
 	wm.activeWorktrees[worktreePath] = repoPath
 	wm.mu.Unlock()
-	
+
 	logger.Debugf("Created worktree at %s for %s@%s", worktreePath, repoPath, version)
-	
+
 	return nil
 }
 
@@ -102,22 +102,22 @@ func (wm *DefaultWorktreeManager) RemoveWorktree(worktreePath string) error {
 		delete(wm.activeWorktrees, worktreePath)
 	}
 	wm.mu.Unlock()
-	
+
 	if !exists {
 		// Not tracked, just remove the directory
 		return os.RemoveAll(worktreePath)
 	}
-	
+
 	// Remove from git's worktree list
 	if err := wm.removeWorktreeFromGit(repoPath, worktreePath); err != nil {
 		logger.Warnf("Failed to remove worktree from git: %v", err)
 	}
-	
+
 	// Remove the directory
 	if err := os.RemoveAll(worktreePath); err != nil {
 		return fmt.Errorf("failed to remove worktree directory %s: %w", worktreePath, err)
 	}
-	
+
 	logger.Debugf("Removed worktree at %s", worktreePath)
 	return nil
 }
@@ -127,7 +127,7 @@ func (wm *DefaultWorktreeManager) removeWorktreeFromGit(repoPath, worktreePath s
 	// First try to remove with force
 	cmd := exec.Command("git", "worktree", "remove", "--force", worktreePath)
 	cmd.Dir = repoPath
-	
+
 	if output, err := cmd.CombinedOutput(); err != nil {
 		// If that fails, try pruning
 		pruneCmd := exec.Command("git", "worktree", "prune")
@@ -136,7 +136,7 @@ func (wm *DefaultWorktreeManager) removeWorktreeFromGit(repoPath, worktreePath s
 			return fmt.Errorf("failed to remove/prune worktree: %w\nOutput: %s", err, string(output))
 		}
 	}
-	
+
 	return nil
 }
 
@@ -144,15 +144,15 @@ func (wm *DefaultWorktreeManager) removeWorktreeFromGit(repoPath, worktreePath s
 func (wm *DefaultWorktreeManager) ListWorktrees(repoPath string) ([]WorktreeInfo, error) {
 	cmd := exec.Command("git", "worktree", "list", "--porcelain")
 	cmd.Dir = repoPath
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list worktrees: %w", err)
 	}
-	
+
 	var worktrees []WorktreeInfo
 	lines := strings.Split(string(output), "\n")
-	
+
 	var current WorktreeInfo
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -162,7 +162,7 @@ func (wm *DefaultWorktreeManager) ListWorktrees(repoPath string) ([]WorktreeInfo
 			current = WorktreeInfo{}
 			continue
 		}
-		
+
 		if strings.HasPrefix(line, "worktree ") {
 			current.Path = strings.TrimPrefix(line, "worktree ")
 		} else if strings.HasPrefix(line, "HEAD ") {
@@ -174,12 +174,12 @@ func (wm *DefaultWorktreeManager) ListWorktrees(repoPath string) ([]WorktreeInfo
 			}
 		}
 	}
-	
+
 	// Add last worktree if exists
 	if current.Path != "" {
 		worktrees = append(worktrees, current)
 	}
-	
+
 	// Set timestamps based on directory info (approximation)
 	for i := range worktrees {
 		if info, err := os.Stat(worktrees[i].Path); err == nil {
@@ -187,7 +187,7 @@ func (wm *DefaultWorktreeManager) ListWorktrees(repoPath string) ([]WorktreeInfo
 			worktrees[i].LastUsed = info.ModTime()
 		}
 	}
-	
+
 	return worktrees, nil
 }
 
@@ -197,29 +197,29 @@ func (wm *DefaultWorktreeManager) CleanupStaleWorktrees(repoPath string, maxAge 
 	if err != nil {
 		return err
 	}
-	
+
 	cutoff := time.Now().Add(-maxAge)
-	
+
 	for _, worktree := range worktrees {
 		// Skip the main worktree (which has the same path as the repo)
 		if worktree.Path == repoPath {
 			continue
 		}
-		
+
 		if worktree.LastUsed.Before(cutoff) {
 			if err := wm.RemoveWorktree(worktree.Path); err != nil {
 				logger.Warnf("Failed to cleanup stale worktree %s: %v", worktree.Path, err)
 			}
 		}
 	}
-	
+
 	// Also run git worktree prune to clean up any broken references
 	cmd := exec.Command("git", "worktree", "prune")
 	cmd.Dir = repoPath
 	if _, err := cmd.CombinedOutput(); err != nil {
 		logger.Warnf("Failed to prune worktrees: %v", err)
 	}
-	
+
 	return nil
 }
 
@@ -231,13 +231,13 @@ func (wm *DefaultWorktreeManager) CleanupAll() {
 		worktrees[path] = repo
 	}
 	wm.mu.RUnlock()
-	
+
 	for worktreePath := range worktrees {
 		if err := wm.RemoveWorktree(worktreePath); err != nil {
 			logger.Warnf("Failed to cleanup worktree %s: %v", worktreePath, err)
 		}
 	}
-	
+
 	logger.Infof("Cleaned up %d worktrees", len(worktrees))
 }
 
@@ -246,23 +246,23 @@ func (wm *DefaultWorktreeManager) ensureRepoFetched(repoPath string) error {
 	// Check if repository exists (bare or regular)
 	gitDir := filepath.Join(repoPath, ".git")
 	bareHead := filepath.Join(repoPath, "HEAD")
-	
+
 	if _, err := os.Stat(gitDir); err != nil {
 		if _, err := os.Stat(bareHead); err != nil {
 			return fmt.Errorf("repository does not exist at %s", repoPath)
 		}
 		// It's a bare repository, which is fine
 	}
-	
+
 	// Fetch latest changes
 	cmd := exec.Command("git", "fetch", "--all", "--tags")
 	cmd.Dir = repoPath
-	
+
 	if output, err := cmd.CombinedOutput(); err != nil {
 		// Don't fail if fetch fails (might be offline), just warn
 		logger.Warnf("Failed to fetch updates for %s: %v\nOutput: %s", repoPath, err, string(output))
 	}
-	
+
 	return nil
 }
 
@@ -270,18 +270,18 @@ func (wm *DefaultWorktreeManager) ensureRepoFetched(repoPath string) error {
 func (wm *DefaultWorktreeManager) resolveVersion(repoPath, version string) (string, error) {
 	// Try different formats to resolve the version
 	candidates := []string{
-		version,                     // As-is
-		"v" + version,              // With v prefix
-		"origin/" + version,        // Remote branch
-		"refs/tags/" + version,     // Tag ref
-		"refs/tags/v" + version,    // Tag ref with v
+		version,                          // As-is
+		"v" + version,                    // With v prefix
+		"origin/" + version,              // Remote branch
+		"refs/tags/" + version,           // Tag ref
+		"refs/tags/v" + version,          // Tag ref with v
 		"refs/remotes/origin/" + version, // Remote ref
 	}
-	
+
 	for _, candidate := range candidates {
 		cmd := exec.Command("git", "rev-parse", candidate)
 		cmd.Dir = repoPath
-		
+
 		if output, err := cmd.Output(); err == nil {
 			hash := strings.TrimSpace(string(output))
 			if hash != "" {
@@ -289,7 +289,7 @@ func (wm *DefaultWorktreeManager) resolveVersion(repoPath, version string) (stri
 			}
 		}
 	}
-	
+
 	// If nothing worked, try as a partial commit hash
 	cmd := exec.Command("git", "rev-parse", version)
 	cmd.Dir = repoPath
@@ -299,6 +299,6 @@ func (wm *DefaultWorktreeManager) resolveVersion(repoPath, version string) (stri
 			return hash, nil
 		}
 	}
-	
+
 	return "", fmt.Errorf("failed to resolve version %s in repository %s", version, repoPath)
 }

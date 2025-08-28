@@ -14,10 +14,10 @@ func NewServer() *Server {
 
 func (s *Server) Start() {
 	// service initialization would be here
-	
+
 	// This is fine - using logger
 	log.Println("API server starting...")
-	
+
 	// Start HTTP server
 	s.setupRoutes()
 }

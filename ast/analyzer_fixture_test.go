@@ -23,7 +23,7 @@ var _ = Describe("Analyzer with Fixtures", func() {
 		var err error
 		evaluator, err = fixtures.NewCELEvaluator()
 		Expect(err).NotTo(HaveOccurred())
-		
+
 		tmpDir = GinkgoT().TempDir()
 	})
 
@@ -77,7 +77,7 @@ func (u *User) SetName(name string) {
 }`,
 				},
 				`nodes.exists(n, n.type_name == "User") && nodes.exists(n, n.method_name == "GetID")`),
-			
+
 			Entry("Go service with complexity",
 				map[string]string{
 					"service.go": `package service
@@ -102,7 +102,7 @@ func (s *OrderService) ProcessOrder(order *Order) error {
 }`,
 				},
 				`nodes.exists(n, n.type_name == "OrderService" && n.cyclomatic_complexity > 1)`),
-			
+
 			Entry("Python class",
 				map[string]string{
 					"calculator.py": `
@@ -128,16 +128,16 @@ class Calculator:
 type UserController struct{}
 func (c *UserController) GetUser(id string) {}
 func (c *UserController) CreateUser(name string) {}`,
-				
+
 				"order_controller.go": `package controllers
 type OrderController struct{}
 func (c *OrderController) GetOrder(id string) {}`,
-				
+
 				"user_service.go": `package services
 type UserService struct{}
 func (s *UserService) FindUser(id string) {}`,
 			}
-			
+
 			for filename, content := range files {
 				err := os.WriteFile(filepath.Join(tmpDir, filename), []byte(content), 0644)
 				Expect(err).NotTo(HaveOccurred())
@@ -152,7 +152,7 @@ func (s *UserService) FindUser(id string) {}`,
 				defer astCache.Close()
 
 				analyzer := ast.NewAnalyzer(astCache, tmpDir)
-				
+
 				// Analyze files
 				err = analyzer.AnalyzeFiles()
 				Expect(err).NotTo(HaveOccurred())
@@ -160,10 +160,10 @@ func (s *UserService) FindUser(id string) {}`,
 				// Query with pattern
 				nodes, err := analyzer.QueryPattern(pattern)
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				// Check count
 				Expect(nodes).To(HaveLen(expectedCount))
-				
+
 				// Validate with CEL
 				if celValidation != "" && celValidation != "true" {
 					valid, err := evaluator.EvaluateNodes(celValidation, nodes)
@@ -171,7 +171,7 @@ func (s *UserService) FindUser(id string) {}`,
 					Expect(valid).To(BeTrue())
 				}
 			},
-			Entry("All controllers", "*Controller*", 2, 
+			Entry("All controllers", "*Controller*", 2,
 				`nodes.all(n, n.type_name.endsWith("Controller"))`),
 			Entry("All services", "*Service*", 1,
 				`nodes.all(n, n.type_name.endsWith("Service"))`),
@@ -190,7 +190,7 @@ func (s *UserService) FindUser(id string) {}`,
 			files := map[string]string{
 				"simple.go": `package main
 func simple() { return }`,
-				
+
 				"complex.go": `package main
 func complex(x, y, z int) int {
 	if x > 0 {
@@ -206,13 +206,13 @@ func complex(x, y, z int) int {
 	}
 	return -1
 }`,
-				
+
 				"large.go": `package main
 func large() {
 ` + strings.Repeat("\t// Line\n", 150) + `
 }`,
 			}
-			
+
 			for filename, content := range files {
 				err := os.WriteFile(filepath.Join(tmpDir, filename), []byte(content), 0644)
 				Expect(err).NotTo(HaveOccurred())
@@ -227,7 +227,7 @@ func large() {
 				defer astCache.Close()
 
 				analyzer := ast.NewAnalyzer(astCache, tmpDir)
-				
+
 				// Analyze files
 				err = analyzer.AnalyzeFiles()
 				Expect(err).NotTo(HaveOccurred())
@@ -235,10 +235,10 @@ func large() {
 				// Execute AQL query
 				nodes, err := analyzer.ExecuteAQLQuery(query)
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				// Check count
 				Expect(nodes).To(HaveLen(expectedCount))
-				
+
 				// Validate with CEL
 				if celValidation != "" && celValidation != "true" {
 					valid, err := evaluator.EvaluateNodes(celValidation, nodes)
@@ -257,4 +257,3 @@ func large() {
 		)
 	})
 })
-

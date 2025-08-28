@@ -40,14 +40,14 @@ type ManagedRepository struct {
 
 // ScanJob represents a scanning task for a specific file at a specific depth
 type ScanJob struct {
-	Path         string // Directory path containing the file
-	FilePath     string // Specific file to scan (e.g., "go.mod", "Chart.yaml")
-	GitURL       string
-	Version      string
-	Depth        int
-	IsLocal      bool
-	Parent       string
-	ScannerType  string // Type of scanner needed ("go", "helm", "npm", etc.)
+	Path        string // Directory path containing the file
+	FilePath    string // Specific file to scan (e.g., "go.mod", "Chart.yaml")
+	GitURL      string
+	Version     string
+	Depth       int
+	IsLocal     bool
+	Parent      string
+	ScannerType string // Type of scanner needed ("go", "helm", "npm", etc.)
 }
 
 // VisitedDep tracks a dependency seen during depth traversal

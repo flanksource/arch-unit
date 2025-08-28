@@ -29,7 +29,7 @@ func RenderComplexity(value interface{}, field api.PrettyField, theme api.Theme)
 	default:
 		return fmt.Sprintf("%v", value)
 	}
-	
+
 	// Color based on complexity thresholds
 	style := lipgloss.NewStyle()
 	switch {
@@ -44,7 +44,7 @@ func RenderComplexity(value interface{}, field api.PrettyField, theme api.Theme)
 	default:
 		style = style.Foreground(theme.Muted)
 	}
-	
+
 	return style.Render(fmt.Sprintf("%d", complexity))
 }
 
@@ -55,7 +55,7 @@ func RenderMembers(value interface{}, field api.PrettyField, theme api.Theme) st
 		if len(v) == 0 {
 			return ""
 		}
-		
+
 		var items []string
 		for _, member := range v {
 			item := fmt.Sprintf("%s:%d", member.Name, member.Line)
@@ -74,7 +74,7 @@ func RenderMembers(value interface{}, field api.PrettyField, theme api.Theme) st
 			}
 			items = append(items, item)
 		}
-		
+
 		// Join with comma and space
 		result := ""
 		for i, item := range items {
@@ -84,7 +84,7 @@ func RenderMembers(value interface{}, field api.PrettyField, theme api.Theme) st
 			result += item
 		}
 		return result
-		
+
 	case []interface{}:
 		// Handle generic slice
 		var items []string
@@ -99,7 +99,7 @@ func RenderMembers(value interface{}, field api.PrettyField, theme api.Theme) st
 				if c, ok := m["complexity"].(int); ok {
 					complexity = c
 				}
-				
+
 				itemStr := fmt.Sprintf("%s:%d", name, line)
 				if complexity > 0 {
 					itemStr += fmt.Sprintf("(c:%d)", complexity)
@@ -109,7 +109,7 @@ func RenderMembers(value interface{}, field api.PrettyField, theme api.Theme) st
 				items = append(items, fmt.Sprintf("%v", item))
 			}
 		}
-		
+
 		result := ""
 		for i, item := range items {
 			if i > 0 {
@@ -118,7 +118,7 @@ func RenderMembers(value interface{}, field api.PrettyField, theme api.Theme) st
 			result += item
 		}
 		return result
-		
+
 	default:
 		return fmt.Sprintf("%v", value)
 	}
@@ -130,10 +130,10 @@ func RenderFixtureStatus(value interface{}, field api.PrettyField, theme api.The
 	if !ok {
 		return fmt.Sprintf("%v", value)
 	}
-	
+
 	var style lipgloss.Style
 	var icon string
-	
+
 	switch status {
 	case "PASS":
 		style = lipgloss.NewStyle().Foreground(theme.Success).Bold(true)
@@ -148,7 +148,7 @@ func RenderFixtureStatus(value interface{}, field api.PrettyField, theme api.The
 		style = lipgloss.NewStyle().Foreground(theme.Muted)
 		icon = "🔍 "
 	}
-	
+
 	return icon + style.Render(status)
 }
 
@@ -165,7 +165,7 @@ func RenderRelationship(value interface{}, field api.PrettyField, theme api.Them
 		if t, ok := v["type"].(string); ok {
 			relType = t
 		}
-		
+
 		// Format with arrow and line number
 		arrow := "→"
 		if relType == "implements" {
@@ -173,13 +173,13 @@ func RenderRelationship(value interface{}, field api.PrettyField, theme api.Them
 		} else if relType == "inherits" {
 			arrow = "↗"
 		}
-		
+
 		style := lipgloss.NewStyle().Foreground(theme.Info)
 		return fmt.Sprintf("%s %s (line %d)", arrow, style.Render(target), line)
-		
+
 	case string:
 		return v
-		
+
 	default:
 		return fmt.Sprintf("%v", value)
 	}
@@ -194,24 +194,23 @@ func RenderLibrary(value interface{}, field api.PrettyField, theme api.Theme) st
 		if c, ok := v["count"].(int); ok {
 			count = c
 		}
-		
+
 		// Style library name
 		style := lipgloss.NewStyle().Foreground(theme.Secondary).Italic(true)
 		result := style.Render(lib)
-		
+
 		if count > 0 {
 			countStyle := lipgloss.NewStyle().Foreground(theme.Muted)
 			result += countStyle.Render(fmt.Sprintf(" (%d calls)", count))
 		}
-		
+
 		return result
-		
+
 	case string:
 		style := lipgloss.NewStyle().Foreground(theme.Secondary).Italic(true)
 		return style.Render(v)
-		
+
 	default:
 		return fmt.Sprintf("%v", value)
 	}
 }
-

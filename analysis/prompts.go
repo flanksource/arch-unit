@@ -155,7 +155,7 @@ var PredefinedPrompts = map[string]PromptTemplate{
 		Description: "Analyzes code comments for quality, verbosity, and descriptiveness",
 	},
 	"name-analysis": {
-		Name:        "name-analysis", 
+		Name:        "name-analysis",
 		Template:    NameAnalysisPrompt,
 		Description: "Analyzes identifier names for clarity and appropriateness",
 	},
@@ -209,10 +209,10 @@ func (cpb *CustomPromptBuilder) AddAssessment(assessment string) *CustomPromptBu
 // Build constructs the final prompt
 func (cpb *CustomPromptBuilder) Build() string {
 	var prompt strings.Builder
-	
+
 	prompt.WriteString(cpb.basePrompt)
 	prompt.WriteString("\n\n")
-	
+
 	if len(cpb.context) > 0 {
 		prompt.WriteString("Context:\n")
 		for key, value := range cpb.context {
@@ -220,7 +220,7 @@ func (cpb *CustomPromptBuilder) Build() string {
 		}
 		prompt.WriteString("\n")
 	}
-	
+
 	if len(cpb.guidelines) > 0 {
 		prompt.WriteString("Guidelines:\n")
 		for _, guideline := range cpb.guidelines {
@@ -228,7 +228,7 @@ func (cpb *CustomPromptBuilder) Build() string {
 		}
 		prompt.WriteString("\n")
 	}
-	
+
 	if len(cpb.assessments) > 0 {
 		prompt.WriteString("Please assess for:\n")
 		for i, assessment := range cpb.assessments {
@@ -236,9 +236,9 @@ func (cpb *CustomPromptBuilder) Build() string {
 		}
 		prompt.WriteString("\n")
 	}
-	
+
 	prompt.WriteString("Respond in valid JSON format with your analysis.")
-	
+
 	return prompt.String()
 }
 

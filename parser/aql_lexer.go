@@ -26,22 +26,22 @@ const (
 	TokenAllow
 
 	// Operators
-	TokenGT     // >
-	TokenLT     // <
-	TokenGTE    // >=
-	TokenLTE    // <=
-	TokenEQ     // ==
-	TokenNE     // !=
-	TokenArrow  // ->
+	TokenGT    // >
+	TokenLT    // <
+	TokenGTE   // >=
+	TokenLTE   // <=
+	TokenEQ    // ==
+	TokenNE    // !=
+	TokenArrow // ->
 
 	// Delimiters
-	TokenLBrace   // {
-	TokenRBrace   // }
-	TokenLParen   // (
-	TokenRParen   // )
-	TokenComma    // ,
-	TokenDot      // .
-	TokenColon    // :
+	TokenLBrace // {
+	TokenRBrace // }
+	TokenLParen // (
+	TokenRParen // )
+	TokenComma  // ,
+	TokenDot    // .
+	TokenColon  // :
 )
 
 // Token represents a lexical token
@@ -165,7 +165,7 @@ func (l *Lexer) skipComment() {
 		// Multi-line comment
 		l.readChar() // skip '/'
 		l.readChar() // skip '*'
-		
+
 		for {
 			if l.current == 0 {
 				break
@@ -194,7 +194,7 @@ func (l *Lexer) readString() (string, error) {
 	var result strings.Builder
 	quote := l.current
 	l.readChar() // skip opening quote
-	
+
 	for l.current != quote && l.current != 0 {
 		if l.current == '\\' {
 			l.readChar()
@@ -219,11 +219,11 @@ func (l *Lexer) readString() (string, error) {
 		}
 		l.readChar()
 	}
-	
+
 	if l.current != quote {
 		return "", fmt.Errorf("unterminated string")
 	}
-	
+
 	l.readChar() // skip closing quote
 	return result.String(), nil
 }
@@ -234,7 +234,7 @@ func (l *Lexer) readNumber() string {
 	for unicode.IsDigit(l.current) {
 		l.readChar()
 	}
-	
+
 	// Check for decimal point
 	if l.current == '.' && unicode.IsDigit(l.peekChar()) {
 		l.readChar() // skip '.'
@@ -242,24 +242,24 @@ func (l *Lexer) readNumber() string {
 			l.readChar()
 		}
 	}
-	
+
 	return l.input[start : l.position-1]
 }
 
 // NextToken returns the next token
 func (l *Lexer) NextToken() Token {
 	l.skipWhitespace()
-	
+
 	// Skip comments
 	for l.current == '/' && (l.peekChar() == '/' || l.peekChar() == '*') {
 		l.skipComment()
 		l.skipWhitespace()
 	}
-	
+
 	l.start = l.position - 1
 	startLine := l.line
 	startColumn := l.column
-	
+
 	switch l.current {
 	case 0:
 		return Token{TokenEOF, "", startLine, startColumn, l.start}
@@ -339,12 +339,12 @@ func (l *Lexer) NextToken() Token {
 			}
 			return Token{tokenType, ident, startLine, startColumn, l.start}
 		}
-		
+
 		if unicode.IsDigit(l.current) {
 			num := l.readNumber()
 			return Token{TokenNumber, num, startLine, startColumn, l.start}
 		}
-		
+
 		char := l.current
 		l.readChar()
 		return Token{TokenError, fmt.Sprintf("unexpected character: %c", char), startLine, startColumn, l.start}
@@ -354,7 +354,7 @@ func (l *Lexer) NextToken() Token {
 // TokenizeAll returns all tokens from the input
 func (l *Lexer) TokenizeAll() []Token {
 	var tokens []Token
-	
+
 	for {
 		token := l.NextToken()
 		tokens = append(tokens, token)
@@ -362,6 +362,6 @@ func (l *Lexer) TokenizeAll() []Token {
 			break
 		}
 	}
-	
+
 	return tokens
 }

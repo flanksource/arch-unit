@@ -39,7 +39,7 @@ func (e *CELEvaluator) EvaluateNodes(expression string, nodes []*models.ASTNode)
 
 	// Use gomplate to evaluate the CEL expression with access to its function library
 	tmpl := gomplate.Template{
-		Expr: expression,
+		Template: expression,
 	}
 
 	result, err := gomplate.RunTemplate(templateData, tmpl)
@@ -48,18 +48,14 @@ func (e *CELEvaluator) EvaluateNodes(expression string, nodes []*models.ASTNode)
 	}
 
 	// Parse the result as boolean
-	switch v := strings.TrimSpace(result).(type) {
-	case string:
-		switch strings.ToLower(v) {
-		case "true":
-			return true, nil
-		case "false":
-			return false, nil
-		default:
-			return false, fmt.Errorf("CEL expression did not return a boolean: got %q", v)
-		}
+	resultStr := strings.TrimSpace(result)
+	switch strings.ToLower(resultStr) {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
 	default:
-		return false, fmt.Errorf("CEL expression did not return a string boolean: got %T", result)
+		return false, fmt.Errorf("CEL expression did not return a boolean: got %q", resultStr)
 	}
 }
 
@@ -76,7 +72,7 @@ func (e *CELEvaluator) EvaluateOutput(expression string, output string) (bool, e
 
 	// Use gomplate to evaluate the CEL expression with access to its function library
 	tmpl := gomplate.Template{
-		Expr: expression,
+		Template: expression,
 	}
 
 	result, err := gomplate.RunTemplate(templateData, tmpl)
@@ -85,18 +81,14 @@ func (e *CELEvaluator) EvaluateOutput(expression string, output string) (bool, e
 	}
 
 	// Parse the result as boolean
-	switch v := strings.TrimSpace(result).(type) {
-	case string:
-		switch strings.ToLower(v) {
-		case "true":
-			return true, nil
-		case "false":
-			return false, nil
-		default:
-			return false, fmt.Errorf("CEL expression did not return a boolean: got %q", v)
-		}
+	resultStr := strings.TrimSpace(result)
+	switch strings.ToLower(resultStr) {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
 	default:
-		return false, fmt.Errorf("CEL expression did not return a string boolean: got %T", result)
+		return false, fmt.Errorf("CEL expression did not return a boolean: got %q", resultStr)
 	}
 }
 
@@ -118,7 +110,7 @@ func (e *CELEvaluator) EvaluateResult(expression string, result map[string]inter
 
 	// Use gomplate to evaluate the CEL expression with access to its function library
 	tmpl := gomplate.Template{
-		Expr: expression,
+		Template: expression,
 	}
 
 	output, err := gomplate.RunTemplate(templateData, tmpl)
@@ -127,18 +119,14 @@ func (e *CELEvaluator) EvaluateResult(expression string, result map[string]inter
 	}
 
 	// Parse the result as boolean
-	switch v := strings.TrimSpace(output).(type) {
-	case string:
-		switch strings.ToLower(v) {
-		case "true":
-			return true, nil
-		case "false":
-			return false, nil
-		default:
-			return false, fmt.Errorf("CEL expression did not return a boolean: got %q", v)
-		}
+	outputStr := strings.TrimSpace(output)
+	switch strings.ToLower(outputStr) {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
 	default:
-		return false, fmt.Errorf("CEL expression did not return a string boolean: got %T", output)
+		return false, fmt.Errorf("CEL expression did not return a boolean: got %q", outputStr)
 	}
 }
 
@@ -150,14 +138,14 @@ func (e *CELEvaluator) ValidateCELExpression(expression string) error {
 
 	// Create minimal template data for validation
 	templateData := map[string]interface{}{
-		"nodes": []interface{}{},
+		"nodes":  []interface{}{},
 		"output": "",
 		"result": map[string]interface{}{},
 	}
 
 	// Use gomplate to validate the CEL expression syntax
 	tmpl := gomplate.Template{
-		Expr: expression,
+		Template: expression,
 	}
 
 	_, err := gomplate.RunTemplate(templateData, tmpl)
@@ -191,7 +179,7 @@ func (e *CELEvaluator) GetAvailableFunctions() []string {
 	return []string{
 		"CEL Functions:",
 		"  string.endsWith(suffix) - Check if string ends with suffix",
-		"  string.contains(substring) - Check if string contains substring", 
+		"  string.contains(substring) - Check if string contains substring",
 		"  string.startsWith(prefix) - Check if string starts with prefix",
 		"  nodes.all(n, predicate) - Check if all nodes match predicate",
 		"  nodes.exists(n, predicate) - Check if any node matches predicate",

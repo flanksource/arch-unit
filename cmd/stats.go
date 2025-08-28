@@ -82,7 +82,7 @@ func runStats(cmd *cobra.Command, args []string) error {
 		if i > 0 {
 			fmt.Println() // Add spacing between linters
 		}
-		
+
 		if err := displayLinterStats(linterStats, linterName, workDir, statsVerbose); err != nil {
 			fmt.Printf("⚠️  Failed to get stats for %s: %v\n", linterName, err)
 			continue
@@ -91,10 +91,10 @@ func runStats(cmd *cobra.Command, args []string) error {
 
 	// Display summary
 	fmt.Println("\n" + strings.Repeat("=", 80))
-	fmt.Printf("💡 %s Use %s to see detailed statistics\n", 
-		color.YellowString("Tip:"), 
+	fmt.Printf("💡 %s Use %s to see detailed statistics\n",
+		color.YellowString("Tip:"),
 		color.GreenString("arch-unit stats --verbose"))
-	
+
 	return nil
 }
 
@@ -112,14 +112,14 @@ func displayLinterStats(linterStats *cache.LinterStats, linterName, workDir stri
 
 	// Display main stats
 	fmt.Printf("🔧 %s\n", color.New(color.FgCyan, color.Bold).Sprint(linterName))
-	
+
 	if stats.RunCount == 0 {
 		fmt.Println("   No execution history")
 		return nil
 	}
 
 	// Basic stats (always shown)
-	fmt.Printf("   Last Run: %s (%s ago)\n", 
+	fmt.Printf("   Last Run: %s (%s ago)\n",
 		stats.LastRun.Format("2006-01-02 15:04:05"),
 		formatDuration(time.Since(stats.LastRun)))
 	fmt.Printf("   Total Runs: %s\n", color.GreenString("%d", stats.RunCount))
@@ -140,17 +140,17 @@ func displayLinterStats(linterStats *cache.LinterStats, linterName, workDir stri
 	}
 
 	// Intelligent debounce
-	fmt.Printf("   Recommended Debounce: %s\n", 
+	fmt.Printf("   Recommended Debounce: %s\n",
 		color.New(color.FgMagenta, color.Bold).Sprint(formatDuration(recommendedDebounce)))
 
 	// Verbose information
 	if verbose {
 		fmt.Printf("   Total Violations Found: %s\n", color.RedString("%d", stats.ViolationCount))
-		
+
 		// Performance assessment
 		performanceCategory := assessPerformance(stats.AvgDuration)
 		fmt.Printf("   Performance Category: %s\n", performanceCategory)
-		
+
 		// Debounce efficiency
 		efficiency := assessDebounceEfficiency(stats.AvgDuration, recommendedDebounce)
 		fmt.Printf("   Debounce Efficiency: %s\n", efficiency)
@@ -208,9 +208,9 @@ func assessDebounceEfficiency(avgDuration, debounce time.Duration) string {
 	if avgDuration == 0 {
 		return color.New(color.FgHiBlack).Sprint("Unknown")
 	}
-	
+
 	ratio := float64(debounce) / float64(avgDuration)
-	
+
 	if ratio >= 4 {
 		return color.GreenString("Excellent (%.1fx execution time)", ratio)
 	} else if ratio >= 2 {

@@ -24,10 +24,10 @@ type FileNode struct {
 
 // ClassNode represents a class/type in the tree
 type ClassNode struct {
-	Name      string         `json:"name"`
-	Icon      string         `json:"icon,omitempty"`
-	Members   []MemberInfo   `json:"members,omitempty"`
-	nodeType  string         // internal: method, field, type, variable
+	Name     string       `json:"name"`
+	Icon     string       `json:"icon,omitempty"`
+	Members  []MemberInfo `json:"members,omitempty"`
+	nodeType string       // internal: method, field, type, variable
 }
 
 // MemberInfo represents a member (method/field) with metadata
@@ -55,17 +55,17 @@ type NodeRow struct {
 
 // Overview represents AST statistics overview
 type Overview struct {
-	Directory string           `json:"directory" pretty:"label,style=text-blue-600 bold"`
-	Stats     map[string]int   `json:"stats" pretty:"table"`
-	Total     int              `json:"total" pretty:"int,style=bold"`
+	Directory string         `json:"directory" pretty:"label,style=text-blue-600 bold"`
+	Stats     map[string]int `json:"stats" pretty:"table"`
+	Total     int            `json:"total" pretty:"int,style=bold"`
 }
 
 // CacheStats represents cache statistics
 type CacheStats struct {
-	TotalFiles    int `json:"total_files" pretty:"int"`
-	CachedFiles   int `json:"cached_files" pretty:"int"`
-	TotalNodes    int `json:"total_nodes" pretty:"int"`
-	LastUpdated   string `json:"last_updated" pretty:"date"`
+	TotalFiles  int    `json:"total_files" pretty:"int"`
+	CachedFiles int    `json:"cached_files" pretty:"int"`
+	TotalNodes  int    `json:"total_nodes" pretty:"int"`
+	LastUpdated string `json:"last_updated" pretty:"date"`
 }
 
 // Implement api.TreeNode interface for FileNode
@@ -118,12 +118,12 @@ func (c *ClassNode) GetLabel() string {
 	if c.Name == "" {
 		label = "package-level"
 	}
-	
+
 	// Add member count summary
 	if len(c.Members) > 0 {
 		label = fmt.Sprintf("%s (%d)", label, len(c.Members))
 	}
-	
+
 	return label
 }
 
@@ -136,7 +136,7 @@ func (c *ClassNode) GetIcon() string {
 	if c.Icon != "" {
 		return c.Icon
 	}
-	
+
 	// Default icons based on type
 	switch c.nodeType {
 	case "method":
@@ -171,7 +171,7 @@ func (c *ClassNode) GetCompactMembers() string {
 	if len(c.Members) == 0 {
 		return ""
 	}
-	
+
 	var items []string
 	for _, member := range c.Members {
 		item := fmt.Sprintf("%s:%d", member.Name, member.Line)
@@ -180,7 +180,7 @@ func (c *ClassNode) GetCompactMembers() string {
 		}
 		items = append(items, item)
 	}
-	
+
 	return strings.Join(items, ", ")
 }
 
@@ -191,17 +191,17 @@ func BuildTreeDisplay(nodes []*models.ASTNode, pattern string, workingDir string
 		Count:   len(nodes),
 		Files:   []FileNode{},
 	}
-	
+
 	// Group nodes by file -> class -> members
 	fileMap := make(map[string]*FileNode)
-	
+
 	for _, node := range nodes {
 		// Get or create file node
 		relPath := node.FilePath
 		if strings.HasPrefix(node.FilePath, workingDir+"/") {
 			relPath = strings.TrimPrefix(node.FilePath, workingDir+"/")
 		}
-		
+
 		fileNode, exists := fileMap[relPath]
 		if !exists {
 			fileNode = &FileNode{
@@ -211,13 +211,13 @@ func BuildTreeDisplay(nodes []*models.ASTNode, pattern string, workingDir string
 			}
 			fileMap[relPath] = fileNode
 		}
-		
+
 		// Find or create class node
 		className := node.TypeName
 		if className == "" {
 			className = "package-level"
 		}
-		
+
 		var classNode *ClassNode
 		for i := range fileNode.Classes {
 			if fileNode.Classes[i].Name == className {
@@ -225,7 +225,7 @@ func BuildTreeDisplay(nodes []*models.ASTNode, pattern string, workingDir string
 				break
 			}
 		}
-		
+
 		if classNode == nil {
 			newClass := ClassNode{
 				Name:     className,
@@ -235,7 +235,7 @@ func BuildTreeDisplay(nodes []*models.ASTNode, pattern string, workingDir string
 			fileNode.Classes = append(fileNode.Classes, newClass)
 			classNode = &fileNode.Classes[len(fileNode.Classes)-1]
 		}
-		
+
 		// Add member info
 		memberName := node.MethodName
 		if memberName == "" {
@@ -244,7 +244,7 @@ func BuildTreeDisplay(nodes []*models.ASTNode, pattern string, workingDir string
 		if memberName == "" && node.TypeName != "" {
 			memberName = node.TypeName
 		}
-		
+
 		if memberName != "" {
 			classNode.Members = append(classNode.Members, MemberInfo{
 				Name:       memberName,
@@ -253,12 +253,12 @@ func BuildTreeDisplay(nodes []*models.ASTNode, pattern string, workingDir string
 			})
 		}
 	}
-	
+
 	// Convert map to slice
 	for _, fileNode := range fileMap {
 		display.Files = append(display.Files, *fileNode)
 	}
-	
+
 	return display
 }
 
@@ -267,13 +267,13 @@ func BuildTableDisplay(nodes []*models.ASTNode, workingDir string) *TableDisplay
 	display := &TableDisplay{
 		Rows: make([]NodeRow, len(nodes)),
 	}
-	
+
 	for i, node := range nodes {
 		relPath := node.FilePath
 		if strings.HasPrefix(node.FilePath, workingDir+"/") {
 			relPath = strings.TrimPrefix(node.FilePath, workingDir+"/")
 		}
-		
+
 		display.Rows[i] = NodeRow{
 			File:       relPath,
 			Package:    node.PackageName,
@@ -283,7 +283,7 @@ func BuildTableDisplay(nodes []*models.ASTNode, workingDir string) *TableDisplay
 			Lines:      node.LineCount,
 		}
 	}
-	
+
 	return display
 }
 
@@ -293,7 +293,7 @@ func BuildOverview(stats map[string]int, workingDir string) *Overview {
 	for _, count := range stats {
 		total += count
 	}
-	
+
 	return &Overview{
 		Directory: workingDir,
 		Stats:     stats,
@@ -303,14 +303,14 @@ func BuildOverview(stats map[string]int, workingDir string) *Overview {
 
 // FixtureTreeDisplay represents fixture test results in tree format
 type FixtureTreeDisplay struct {
-	Summary FixtureSummary      `json:"summary" pretty:"label,style=text-blue-600 bold"`
-	Tests   []FixtureTestNode   `json:"tests" pretty:"tree"`
+	Summary FixtureSummary    `json:"summary" pretty:"label,style=text-blue-600 bold"`
+	Tests   []FixtureTestNode `json:"tests" pretty:"tree"`
 }
 
-// FixtureTableDisplay represents fixture test results in table format  
+// FixtureTableDisplay represents fixture test results in table format
 type FixtureTableDisplay struct {
-	Summary FixtureSummary       `json:"summary" pretty:"label,style=text-blue-600 bold"`
-	Rows    []FixtureTestResult  `json:"rows" pretty:"table,sort=status,header_style=bold"`
+	Summary FixtureSummary      `json:"summary" pretty:"label,style=text-blue-600 bold"`
+	Rows    []FixtureTestResult `json:"rows" pretty:"table,sort=status,header_style=bold"`
 }
 
 // FixtureSummary represents test execution summary

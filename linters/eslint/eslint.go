@@ -74,7 +74,7 @@ func (e *ESLint) GetEffectiveExcludes(language string, config *models.Config) []
 		// Fallback to default excludes if no config
 		return e.DefaultExcludes()
 	}
-	
+
 	// Use the all_language_excludes macro
 	return config.GetAllLanguageExcludes(language, e.DefaultExcludes())
 }
@@ -86,7 +86,7 @@ func (e *ESLint) GetEffectiveIncludes(language string, config *models.Config) []
 		// Fallback to default includes if no config
 		return e.DefaultIncludes()
 	}
-	
+
 	// Use the combined includes system
 	return config.GetAllLanguageIncludes(language, e.DefaultIncludes())
 }
@@ -122,20 +122,20 @@ func (e *ESLint) ValidateConfig(config *models.LinterConfig) error {
 // Run executes eslint and returns violations
 func (e *ESLint) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Violation, error) {
 	var args []string
-	
+
 	// Add configured args
 	if e.Config != nil {
 		args = append(args, e.Config.Args...)
 	}
-	
+
 	// Add JSON format if requested and not already present
 	if e.ForceJSON && !e.hasFormatArg(args) {
 		args = append(args, "--format=json")
 	}
-	
+
 	// Add extra args
 	args = append(args, e.ExtraArgs...)
-	
+
 	// Add files or default to current directory
 	if len(e.Files) > 0 {
 		args = append(args, e.Files...)
@@ -143,15 +143,15 @@ func (e *ESLint) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Vi
 		// ESLint needs explicit file patterns, not just "."
 		args = append(args, ".")
 	}
-	
+
 	// Execute command
 	cmd := exec.CommandContext(ctx, "eslint", args...)
 	cmd.Dir = e.WorkDir
-	
+
 	logger.Infof("Executing: eslint %s", strings.Join(args, " "))
-	
+
 	output, err := cmd.CombinedOutput()
-	
+
 	// Handle ESLint exit codes
 	// ESLint exits with 1 when there are linting errors
 	// ESLint exits with 2 when there are configuration problems
@@ -169,16 +169,16 @@ func (e *ESLint) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Vi
 			}
 		}
 	}
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("eslint execution failed: %w\nOutput:\n%s", err, string(output))
 	}
-	
+
 	// Parse JSON output if we have any
 	if len(output) == 0 {
 		return []models.Violation{}, nil
 	}
-	
+
 	return e.parseViolations(output)
 }
 
@@ -210,7 +210,7 @@ func (e *ESLint) parseViolations(output []byte) ([]models.Violation, error) {
 		logger.Debugf("Failed to parse eslint JSON output: %v\nOutput: %s", err, string(output))
 		return nil, fmt.Errorf("failed to parse eslint JSON output: %w", err)
 	}
-	
+
 	var violations []models.Violation
 	for _, result := range results {
 		for _, message := range result.Messages {
@@ -218,33 +218,33 @@ func (e *ESLint) parseViolations(output []byte) ([]models.Violation, error) {
 			violations = append(violations, violation)
 		}
 	}
-	
+
 	return violations, nil
 }
 
 // ESLintResult represents a single file's results from ESLint
 type ESLintResult struct {
-	FilePath         string          `json:"filePath"`
-	Messages         []ESLintMessage `json:"messages"`
-	ErrorCount       int             `json:"errorCount"`
-	WarningCount     int             `json:"warningCount"`
-	FatalErrorCount  int             `json:"fatalErrorCount"`
-	FixableErrorCount int            `json:"fixableErrorCount"`
-	FixableWarningCount int          `json:"fixableWarningCount"`
+	FilePath            string          `json:"filePath"`
+	Messages            []ESLintMessage `json:"messages"`
+	ErrorCount          int             `json:"errorCount"`
+	WarningCount        int             `json:"warningCount"`
+	FatalErrorCount     int             `json:"fatalErrorCount"`
+	FixableErrorCount   int             `json:"fixableErrorCount"`
+	FixableWarningCount int             `json:"fixableWarningCount"`
 }
 
 // ESLintMessage represents a single message from ESLint
 type ESLintMessage struct {
-	RuleId      string  `json:"ruleId"`
-	Severity    int     `json:"severity"`
-	Message     string  `json:"message"`
-	Line        int     `json:"line"`
-	Column      int     `json:"column"`
-	NodeType    string  `json:"nodeType"`
-	MessageId   string  `json:"messageId,omitempty"`
-	EndLine     int     `json:"endLine,omitempty"`
-	EndColumn   int     `json:"endColumn,omitempty"`
-	Fix         *struct {
+	RuleId    string `json:"ruleId"`
+	Severity  int    `json:"severity"`
+	Message   string `json:"message"`
+	Line      int    `json:"line"`
+	Column    int    `json:"column"`
+	NodeType  string `json:"nodeType"`
+	MessageId string `json:"messageId,omitempty"`
+	EndLine   int    `json:"endLine,omitempty"`
+	EndColumn int    `json:"endColumn,omitempty"`
+	Fix       *struct {
 		Range []int  `json:"range"`
 		Text  string `json:"text"`
 	} `json:"fix,omitempty"`
@@ -253,12 +253,12 @@ type ESLintMessage struct {
 // ToViolation converts an ESLintMessage to a generic Violation
 func (m *ESLintMessage) ToViolation(workDir, filePath string) models.Violation {
 	filename := filePath
-	
+
 	// Make filename absolute if it's relative
 	if !filepath.IsAbs(filename) {
 		filename = filepath.Join(workDir, filename)
 	}
-	
+
 	// Map severity to string
 	severity := "info"
 	switch m.Severity {
@@ -267,13 +267,13 @@ func (m *ESLintMessage) ToViolation(workDir, filePath string) models.Violation {
 	case 2:
 		severity = "error"
 	}
-	
+
 	// Build the rule/method name
 	calledMethod := m.RuleId
 	if calledMethod == "" {
 		calledMethod = severity
 	}
-	
+
 	return models.Violation{
 		File:          filename,
 		Line:          m.Line,

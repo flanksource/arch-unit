@@ -82,7 +82,7 @@ func (e *MarkdownASTExtractor) ExtractFile(ctx flanksourceContext.Context, fileP
 
 	// Store document structure as nodes
 	nodeMap := make(map[string]int64)
-	
+
 	// Store the document itself as a package node
 	docNode := &models.ASTNode{
 		FilePath:     filePath,
@@ -93,7 +93,7 @@ func (e *MarkdownASTExtractor) ExtractFile(ctx flanksourceContext.Context, fileP
 		LineCount:    e.countLines(filePath),
 		LastModified: time.Now(),
 	}
-	
+
 	docID, err := e.cache.StoreASTNode(docNode)
 	if err != nil {
 		return fmt.Errorf("failed to store document node: %w", err)
@@ -112,15 +112,15 @@ func (e *MarkdownASTExtractor) ExtractFile(ctx flanksourceContext.Context, fileP
 			LineCount:    section.EndLine - section.StartLine + 1,
 			LastModified: time.Now(),
 		}
-		
+
 		sectionID, err := e.cache.StoreASTNode(sectionNode)
 		if err != nil {
 			continue
 		}
-		
+
 		fullName := fmt.Sprintf("%s.%s", e.packageName, section.Title)
 		nodeMap[fullName] = sectionID
-		
+
 		// Create relationship to parent section or document
 		if section.Parent != "" {
 			parentFullName := fmt.Sprintf("%s.%s", e.packageName, section.Parent)
@@ -138,7 +138,7 @@ func (e *MarkdownASTExtractor) ExtractFile(ctx flanksourceContext.Context, fileP
 	for _, block := range codeBlocks {
 		// Calculate complexity based on code block content
 		complexity := e.calculateCodeBlockComplexity(block.Content, block.Language)
-		
+
 		blockNode := &models.ASTNode{
 			FilePath:             filePath,
 			PackageName:          e.packageName,
@@ -151,12 +151,12 @@ func (e *MarkdownASTExtractor) ExtractFile(ctx flanksourceContext.Context, fileP
 			CyclomaticComplexity: complexity,
 			LastModified:         time.Now(),
 		}
-		
+
 		blockID, err := e.cache.StoreASTNode(blockNode)
 		if err != nil {
 			continue
 		}
-		
+
 		// If code block is in a section, create relationship
 		if block.InSection != "" {
 			sectionFullName := fmt.Sprintf("%s.%s", e.packageName, block.InSection)
@@ -165,7 +165,7 @@ func (e *MarkdownASTExtractor) ExtractFile(ctx flanksourceContext.Context, fileP
 					models.RelationshipReference, fmt.Sprintf("%s code block", block.Language))
 			}
 		}
-		
+
 		// Analyze code block for embedded AST if language is supported
 		e.analyzeEmbeddedCode(block, blockID)
 	}
@@ -184,7 +184,7 @@ func (e *MarkdownASTExtractor) ExtractFile(ctx flanksourceContext.Context, fileP
 		} else {
 			sourceID = docID
 		}
-		
+
 		// Store as external reference
 		e.cache.StoreASTRelationship(sourceID, nil, link.Line,
 			models.RelationshipReference, fmt.Sprintf("link to %s: %s", link.Text, link.URL))
@@ -209,24 +209,24 @@ func (e *MarkdownASTExtractor) parseMarkdownFile(filePath string) ([]MarkdownSec
 	var sections []MarkdownSection
 	var codeBlocks []MarkdownCodeBlock
 	var links []MarkdownLink
-	
+
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
 	inCodeBlock := false
 	currentSection := ""
 	sectionStack := []string{}
 	var currentBlock *MarkdownCodeBlock
-	
+
 	// Regular expressions for Markdown elements
 	headerRegex := regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
 	codeBlockStartRegex := regexp.MustCompile("^```(\\w*)")
 	codeBlockEndRegex := regexp.MustCompile("^```")
 	linkRegex := regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
-	
+
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
-		
+
 		// Handle code blocks
 		if !inCodeBlock {
 			if matches := codeBlockStartRegex.FindStringSubmatch(line); matches != nil {
@@ -260,27 +260,27 @@ func (e *MarkdownASTExtractor) parseMarkdownFile(filePath string) ([]MarkdownSec
 				currentBlock.Content += line
 			}
 		}
-		
+
 		// Skip processing other elements if inside code block
 		if inCodeBlock {
 			continue
 		}
-		
+
 		// Handle headers (sections)
 		if matches := headerRegex.FindStringSubmatch(line); matches != nil {
 			level := len(matches[1])
 			title := strings.TrimSpace(matches[2])
-			
+
 			// Update section stack
 			for len(sectionStack) >= level {
 				sectionStack = sectionStack[:len(sectionStack)-1]
 			}
-			
+
 			parent := ""
 			if len(sectionStack) > 0 {
 				parent = sectionStack[len(sectionStack)-1]
 			}
-			
+
 			section := MarkdownSection{
 				Level:     level,
 				Title:     title,
@@ -288,7 +288,7 @@ func (e *MarkdownASTExtractor) parseMarkdownFile(filePath string) ([]MarkdownSec
 				EndLine:   lineNum, // Will be updated when next section or EOF
 				Parent:    parent,
 			}
-			
+
 			// Update end line of previous section at same or higher level
 			for i := len(sections) - 1; i >= 0; i-- {
 				if sections[i].EndLine == sections[i].StartLine && sections[i].Level >= level {
@@ -297,12 +297,12 @@ func (e *MarkdownASTExtractor) parseMarkdownFile(filePath string) ([]MarkdownSec
 					break
 				}
 			}
-			
+
 			sections = append(sections, section)
 			sectionStack = append(sectionStack, title)
 			currentSection = title
 		}
-		
+
 		// Handle links
 		if matches := linkRegex.FindAllStringSubmatch(line, -1); matches != nil {
 			for _, match := range matches {
@@ -316,7 +316,7 @@ func (e *MarkdownASTExtractor) parseMarkdownFile(filePath string) ([]MarkdownSec
 			}
 		}
 	}
-	
+
 	// Update end lines for remaining sections
 	totalLines := lineNum
 	for i := range sections {
@@ -332,7 +332,7 @@ func (e *MarkdownASTExtractor) parseMarkdownFile(filePath string) ([]MarkdownSec
 			sections[i].EndLine = nextLine
 		}
 	}
-	
+
 	return sections, codeBlocks, links, scanner.Err()
 }
 
@@ -342,7 +342,7 @@ func (e *MarkdownASTExtractor) analyzeEmbeddedCode(block MarkdownCodeBlock, pare
 	if len(strings.TrimSpace(block.Content)) < 10 {
 		return
 	}
-	
+
 	// Create temporary file with the code content
 	var ext string
 	switch strings.ToLower(block.Language) {
@@ -357,18 +357,18 @@ func (e *MarkdownASTExtractor) analyzeEmbeddedCode(block MarkdownCodeBlock, pare
 	default:
 		return // Unsupported language for embedded analysis
 	}
-	
+
 	tmpFile, err := os.CreateTemp("", fmt.Sprintf("markdown_code_*%s", ext))
 	if err != nil {
 		return
 	}
 	defer os.Remove(tmpFile.Name())
 	defer tmpFile.Close()
-	
+
 	if _, err := tmpFile.WriteString(block.Content); err != nil {
 		return
 	}
-	
+
 	// Use appropriate extractor based on language
 	switch strings.ToLower(block.Language) {
 	case "python", "py":
@@ -379,7 +379,7 @@ func (e *MarkdownASTExtractor) analyzeEmbeddedCode(block MarkdownCodeBlock, pare
 		_ = NewGoASTExtractor(e.cache)
 		// Similar consideration
 	}
-	
+
 	// For now, we just track that this code block exists
 	// Future enhancement: fully parse embedded code and link to parent document
 }
@@ -388,11 +388,11 @@ func (e *MarkdownASTExtractor) analyzeEmbeddedCode(block MarkdownCodeBlock, pare
 func (e *MarkdownASTExtractor) calculateCodeBlockComplexity(content, language string) int {
 	complexity := 1
 	lines := strings.Split(content, "\n")
-	
+
 	// Simple heuristic-based complexity calculation
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		
+
 		// Common control flow keywords across languages
 		controlFlow := []string{"if", "else", "elif", "for", "while", "switch", "case", "catch", "except"}
 		for _, keyword := range controlFlow {
@@ -401,13 +401,13 @@ func (e *MarkdownASTExtractor) calculateCodeBlockComplexity(content, language st
 				break
 			}
 		}
-		
+
 		// Logical operators
 		if strings.Contains(trimmed, "&&") || strings.Contains(trimmed, "||") {
 			complexity++
 		}
 	}
-	
+
 	return complexity
 }
 
@@ -416,7 +416,7 @@ func (e *MarkdownASTExtractor) extractPackageName(filePath string) string {
 	// Use filename without extension as package name
 	base := filepath.Base(filePath)
 	name := strings.TrimSuffix(base, filepath.Ext(base))
-	
+
 	// Handle special documentation files
 	switch strings.ToLower(name) {
 	case "readme":
@@ -448,7 +448,7 @@ func (e *MarkdownASTExtractor) countLines(filePath string) int {
 		return 0
 	}
 	defer file.Close()
-	
+
 	scanner := bufio.NewScanner(file)
 	lineCount := 0
 	for scanner.Scan() {

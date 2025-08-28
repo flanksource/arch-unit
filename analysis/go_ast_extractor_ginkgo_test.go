@@ -19,9 +19,9 @@ import (
 
 var _ = Describe("Go AST Extractor", func() {
 	var (
-		tmpDir   string
-		astCache *cache.ASTCache
-		ctx      flanksourceContext.Context
+		tmpDir    string
+		astCache  *cache.ASTCache
+		ctx       flanksourceContext.Context
 		extractor *analysis.GoASTExtractor
 	)
 
@@ -30,7 +30,7 @@ var _ = Describe("Go AST Extractor", func() {
 		var err error
 		astCache, err = cache.NewASTCache()
 		Expect(err).NotTo(HaveOccurred())
-		
+
 		ctx = flanksourceContext.NewContext(context.Background())
 		extractor = analysis.NewGoASTExtractor(astCache)
 	})
@@ -389,7 +389,7 @@ var _ = Describe("Go AST Extractor Performance", func() {
 		var err error
 		astCache, err = cache.NewASTCache()
 		Expect(err).NotTo(HaveOccurred())
-		
+
 		ctx = flanksourceContext.NewContext(context.Background())
 		extractor = analysis.NewGoASTExtractor(astCache)
 	})
@@ -402,7 +402,7 @@ var _ = Describe("Go AST Extractor Performance", func() {
 
 	It("should handle large files efficiently", func() {
 		largeFile := filepath.Join(tmpDir, "large.go")
-		
+
 		// Generate a large Go file
 		var content strings.Builder
 		content.WriteString("package main\n\n")
@@ -431,14 +431,14 @@ func Function%d() {
 }
 `, i, i, i, i, i))
 		}
-		
+
 		err := os.WriteFile(largeFile, []byte(content.String()), 0644)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Clear cache before measurement
 		err = astCache.DeleteASTForFile(largeFile)
 		Expect(err).NotTo(HaveOccurred())
-		
+
 		startTime := time.Now()
 		err = extractor.ExtractFile(ctx, largeFile)
 		Expect(err).NotTo(HaveOccurred())

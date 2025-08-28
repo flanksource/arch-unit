@@ -253,7 +253,7 @@ func (s *NodeDependencyScanner) scanPnpmLock(ctx *analysis.ScanContext, filepath
 	seen := make(map[string]bool)
 
 	// Process packages section
-	for path, _ := range lockFile.Packages {
+	for path := range lockFile.Packages {
 		// Extract package name and version from path
 		// Format: "/@babel/core/7.20.0" or "/package-name/1.2.3"
 		parts := strings.Split(strings.TrimPrefix(path, "/"), "/")

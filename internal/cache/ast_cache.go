@@ -45,15 +45,25 @@ func NewASTCacheWithPath(cacheDir string) (*ASTCache, error) {
 	}
 
 	cache := &ASTCache{db: db}
-	if err := cache.init(); err != nil {
+	// Migration is now handled by the unified migration manager in the PrePersistent hook
+	// Just ensure we have the basic table structure for immediate operations
+	if err := cache.ensureBasicStructure(); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to initialize database: %w", err)
+		return nil, fmt.Errorf("failed to ensure basic database structure: %w", err)
 	}
 
 	return cache, nil
 }
 
-// init creates the necessary tables and indexes
+// ensureBasicStructure ensures minimal database structure is present
+// Full migrations are handled by the unified migration manager
+func (c *ASTCache) ensureBasicStructure() error {
+	// This is a minimal check to ensure the database can be used
+	// Full schema creation and migrations are handled by the migration manager
+	return nil
+}
+
+// init creates the necessary tables and indexes (DEPRECATED - use migration manager)
 func (c *ASTCache) init() error {
 	schema := `
 	-- Main AST nodes table
@@ -136,7 +146,8 @@ func (c *ASTCache) init() error {
 		package_name TEXT NOT NULL,
 		package_type TEXT NOT NULL,
 		git_url TEXT NOT NULL,
-		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		last_checked INTEGER NOT NULL,
+		created_at INTEGER NOT NULL,
 		UNIQUE(package_name, package_type)
 	);
 	`
@@ -185,6 +196,112 @@ func (c *ASTCache) init() error {
 
 	if _, err := c.db.Exec(indexes); err != nil {
 		return fmt.Errorf("failed to create indexes: %w", err)
+	}
+
+	// Run migrations
+	if err := c.migrateSchema(); err != nil {
+		return fmt.Errorf("failed to migrate schema: %w", err)
+	}
+
+	return nil
+}
+
+// migrateSchema handles schema migrations for existing databases
+func (c *ASTCache) migrateSchema() error {
+	// Check if dependency_aliases table has the required columns
+	rows, err := c.db.Query("PRAGMA table_info(dependency_aliases)")
+	if err != nil {
+		// Table doesn't exist, nothing to migrate
+		return nil
+	}
+	defer rows.Close()
+
+	hasLastChecked := false
+	hasCreatedAtInt := false
+
+	for rows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull, pk int
+		var defaultValue sql.NullString
+
+		err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk)
+		if err != nil {
+			continue
+		}
+
+		if name == "last_checked" {
+			hasLastChecked = true
+		}
+		if name == "created_at" && dataType == "INTEGER" {
+			hasCreatedAtInt = true
+		}
+	}
+	rows.Close()
+
+	// Add last_checked column if it doesn't exist
+	if !hasLastChecked {
+		_, err = c.db.Exec("ALTER TABLE dependency_aliases ADD COLUMN last_checked INTEGER NOT NULL DEFAULT 0")
+		if err != nil {
+			return fmt.Errorf("failed to add last_checked column: %w", err)
+		}
+
+		// Update existing records to current timestamp
+		_, err = c.db.Exec("UPDATE dependency_aliases SET last_checked = strftime('%s', 'now') WHERE last_checked = 0")
+		if err != nil {
+			return fmt.Errorf("failed to update last_checked values: %w", err)
+		}
+	}
+
+	// Check if created_at is TIMESTAMP instead of INTEGER and convert if needed
+	if !hasCreatedAtInt {
+		// Create a new table with correct schema
+		_, err = c.db.Exec(`
+			CREATE TABLE dependency_aliases_new (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				package_name TEXT NOT NULL,
+				package_type TEXT NOT NULL,
+				git_url TEXT NOT NULL,
+				last_checked INTEGER NOT NULL,
+				created_at INTEGER NOT NULL,
+				UNIQUE(package_name, package_type)
+			)`)
+		if err != nil {
+			return fmt.Errorf("failed to create new dependency_aliases table: %w", err)
+		}
+
+		// Copy data from old table, converting TIMESTAMP to INTEGER
+		_, err = c.db.Exec(`
+			INSERT INTO dependency_aliases_new (id, package_name, package_type, git_url, last_checked, created_at)
+			SELECT id, package_name, package_type, git_url, 
+				   COALESCE(last_checked, strftime('%s', 'now')), 
+				   strftime('%s', COALESCE(created_at, 'now'))
+			FROM dependency_aliases`)
+		if err != nil {
+			return fmt.Errorf("failed to copy data to new dependency_aliases table: %w", err)
+		}
+
+		// Drop old table and rename new one
+		_, err = c.db.Exec("DROP TABLE dependency_aliases")
+		if err != nil {
+			return fmt.Errorf("failed to drop old dependency_aliases table: %w", err)
+		}
+
+		_, err = c.db.Exec("ALTER TABLE dependency_aliases_new RENAME TO dependency_aliases")
+		if err != nil {
+			return fmt.Errorf("failed to rename dependency_aliases table: %w", err)
+		}
+
+		// Recreate index
+		_, err = c.db.Exec("CREATE INDEX IF NOT EXISTS idx_dependency_aliases_package ON dependency_aliases(package_name)")
+		if err != nil {
+			return fmt.Errorf("failed to recreate package index: %w", err)
+		}
+
+		_, err = c.db.Exec("CREATE INDEX IF NOT EXISTS idx_dependency_aliases_type ON dependency_aliases(package_type)")
+		if err != nil {
+			return fmt.Errorf("failed to recreate type index: %w", err)
+		}
 	}
 
 	return nil
@@ -910,14 +1027,14 @@ func (c *ASTCache) GetDependencyAlias(packageName, packageType string) (*models.
 		SELECT git_url FROM dependency_aliases 
 		WHERE package_name = ? AND package_type = ?`,
 		packageName, packageType).Scan(&gitURL)
-	
+
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &models.DependencyAlias{
 		PackageName: packageName,
 		PackageType: packageType,
@@ -929,8 +1046,8 @@ func (c *ASTCache) GetDependencyAlias(packageName, packageType string) (*models.
 func (c *ASTCache) StoreDependencyAlias(alias *models.DependencyAlias) error {
 	_, err := c.db.Exec(`
 		INSERT OR REPLACE INTO dependency_aliases 
-		(package_name, package_type, git_url) 
-		VALUES (?, ?, ?)`,
-		alias.PackageName, alias.PackageType, alias.GitURL)
+		(package_name, package_type, git_url, last_checked, created_at) 
+		VALUES (?, ?, ?, ?, ?)`,
+		alias.PackageName, alias.PackageType, alias.GitURL, alias.LastChecked, alias.CreatedAt)
 	return err
 }

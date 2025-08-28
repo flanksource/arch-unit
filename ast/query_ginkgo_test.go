@@ -70,7 +70,7 @@ var _ = Describe("AST Query", func() {
 		var err error
 		astCache, err = cache.NewASTCache()
 		Expect(err).NotTo(HaveOccurred())
-		
+
 		analyzer = ast.NewAnalyzer(astCache, tmpDir)
 
 		// Copy example files to test directory
@@ -93,14 +93,14 @@ var _ = Describe("AST Query", func() {
 			It("should find methods with high complexity", func() {
 				nodes, err := analyzer.ExecuteAQLQuery("cyclomatic(*) > 5")
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				var complexMethods []string
 				for _, node := range nodes {
 					if node.NodeType == models.NodeTypeMethod && node.CyclomaticComplexity > 5 {
 						complexMethods = append(complexMethods, node.MethodName)
 					}
 				}
-				
+
 				// The test should pass if we have any high-complexity method
 				Expect(len(complexMethods)).To(BeNumerically(">=", 0), "Complex methods check")
 			})
@@ -108,7 +108,7 @@ var _ = Describe("AST Query", func() {
 			It("should find simple methods", func() {
 				nodes, err := analyzer.ExecuteAQLQuery("cyclomatic(*) == 1")
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				simpleMethodFound := false
 				for _, node := range nodes {
 					if node.NodeType == "method" && node.CyclomaticComplexity == 1 {
@@ -116,7 +116,7 @@ var _ = Describe("AST Query", func() {
 						break
 					}
 				}
-				
+
 				Expect(simpleMethodFound).To(BeTrue())
 			})
 		})
@@ -125,14 +125,14 @@ var _ = Describe("AST Query", func() {
 			It("should find methods with specific parameter counts", func() {
 				nodes, err := analyzer.ExecuteAQLQuery("params(*) == 2")
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				var methodsWithTwoParams []string
 				for _, node := range nodes {
 					if node.NodeType == "method" && node.ParameterCount == 2 {
 						methodsWithTwoParams = append(methodsWithTwoParams, node.MethodName)
 					}
 				}
-				
+
 				// Look for Create method in UserRepository which has 2 parameters (user *User) error
 				Expect(len(methodsWithTwoParams)).To(BeNumerically(">=", 0))
 			})
@@ -140,7 +140,7 @@ var _ = Describe("AST Query", func() {
 			It("should find methods with many parameters", func() {
 				nodes, err := analyzer.ExecuteAQLQuery("params(*) > 0")
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				methodsWithManyParams := false
 				for _, node := range nodes {
 					if node.NodeType == "method" && node.ParameterCount > 0 {
@@ -148,7 +148,7 @@ var _ = Describe("AST Query", func() {
 						break
 					}
 				}
-				
+
 				Expect(methodsWithManyParams).To(BeTrue())
 			})
 		})
@@ -157,14 +157,14 @@ var _ = Describe("AST Query", func() {
 			It("should find methods with specific return counts", func() {
 				nodes, err := analyzer.ExecuteAQLQuery("returns(*) == 2")
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				var methodsWithTwoReturns []string
 				for _, node := range nodes {
 					if node.NodeType == "method" && node.ReturnCount == 2 {
 						methodsWithTwoReturns = append(methodsWithTwoReturns, node.MethodName)
 					}
 				}
-				
+
 				// GetUser and GetByID methods should return (*User, error)
 				Expect(methodsWithTwoReturns).To(ContainElement("GetUser"))
 				Expect(methodsWithTwoReturns).To(ContainElement("GetByID"))
@@ -175,7 +175,7 @@ var _ = Describe("AST Query", func() {
 			It("should find Service methods with high complexity", func() {
 				nodes, err := analyzer.ExecuteAQLQuery("cyclomatic(*Service*) > 1")
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				serviceMethods := false
 				for _, node := range nodes {
 					if node.TypeName == "UserService" && node.CyclomaticComplexity > 1 {
@@ -183,14 +183,14 @@ var _ = Describe("AST Query", func() {
 						break
 					}
 				}
-				
+
 				Expect(serviceMethods).To(BeTrue())
 			})
 
 			It("should find Service methods", func() {
 				nodes, err := analyzer.ExecuteAQLQuery("*Service*")
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				serviceNodes := false
 				for _, node := range nodes {
 					if node.TypeName == "UserService" {
@@ -198,7 +198,7 @@ var _ = Describe("AST Query", func() {
 						break
 					}
 				}
-				
+
 				Expect(serviceNodes).To(BeTrue())
 			})
 		})
@@ -207,7 +207,7 @@ var _ = Describe("AST Query", func() {
 			It("should find nodes with specific line counts", func() {
 				nodes, err := analyzer.ExecuteAQLQuery("lines(*) > 5")
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				largeNodes := false
 				for _, node := range nodes {
 					if node.LineCount > 5 {
@@ -215,14 +215,14 @@ var _ = Describe("AST Query", func() {
 						break
 					}
 				}
-				
+
 				Expect(largeNodes).To(BeTrue())
 			})
 		})
 
 		Context("with error handling", func() {
 			It("should handle invalid queries gracefully", func() {
-				_, err := analyzer.ExecuteAQLQuery("*.lines > 100")  // Old syntax should cause error
+				_, err := analyzer.ExecuteAQLQuery("*.lines > 100") // Old syntax should cause error
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("invalid metric query format"))
 			})
@@ -246,28 +246,28 @@ var _ = Describe("AST Query", func() {
 			It("should match type patterns", func() {
 				nodes, err := analyzer.QueryPattern("User*")
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				userTypes := []string{}
 				for _, node := range nodes {
 					if node.NodeType == "type" {
 						userTypes = append(userTypes, node.TypeName)
 					}
 				}
-				
+
 				Expect(userTypes).To(ContainElements("UserController", "UserService", "UserRepository", "User"))
 			})
 
 			It("should match method patterns", func() {
 				nodes, err := analyzer.QueryPattern("*:*:Get*")
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				getMethods := []string{}
 				for _, node := range nodes {
 					if node.NodeType == "method" && node.MethodName != "" {
 						getMethods = append(getMethods, node.MethodName)
 					}
 				}
-				
+
 				Expect(getMethods).To(ContainElements("GetUser", "GetByID"))
 			})
 		})
@@ -276,7 +276,7 @@ var _ = Describe("AST Query", func() {
 			It("should match exact type names", func() {
 				nodes, err := analyzer.QueryPattern("main:UserController")
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				found := false
 				for _, node := range nodes {
 					if node.TypeName == "UserController" && node.NodeType == "type" {
@@ -284,14 +284,14 @@ var _ = Describe("AST Query", func() {
 						break
 					}
 				}
-				
+
 				Expect(found).To(BeTrue())
 			})
 
 			It("should match specific methods", func() {
 				nodes, err := analyzer.QueryPattern("main:UserController:GetUser")
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				found := false
 				for _, node := range nodes {
 					if node.TypeName == "UserController" && node.MethodName == "GetUser" {
@@ -299,7 +299,7 @@ var _ = Describe("AST Query", func() {
 						break
 					}
 				}
-				
+
 				Expect(found).To(BeTrue())
 			})
 		})
@@ -309,9 +309,9 @@ var _ = Describe("AST Query", func() {
 		It("should filter nodes by complexity threshold", func() {
 			allNodes, err := analyzer.QueryPattern("*")
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			complexNodes := ast.FilterByComplexity(allNodes, 3)
-			
+
 			for _, node := range complexNodes {
 				Expect(node.CyclomaticComplexity).To(BeNumerically(">=", 3))
 			}
@@ -320,7 +320,7 @@ var _ = Describe("AST Query", func() {
 		It("should return empty slice when no nodes meet threshold", func() {
 			allNodes, err := analyzer.QueryPattern("*")
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			complexNodes := ast.FilterByComplexity(allNodes, 1000)
 			Expect(complexNodes).To(BeEmpty())
 		})
@@ -330,9 +330,9 @@ var _ = Describe("AST Query", func() {
 		It("should filter nodes by type", func() {
 			allNodes, err := analyzer.QueryPattern("*")
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			typeNodes := ast.FilterByNodeType(allNodes, "type")
-			
+
 			for _, node := range typeNodes {
 				Expect(node.NodeType).To(Equal("type"))
 			}
@@ -341,13 +341,13 @@ var _ = Describe("AST Query", func() {
 		It("should filter method nodes", func() {
 			allNodes, err := analyzer.QueryPattern("*")
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			methodNodes := ast.FilterByNodeType(allNodes, "method")
-			
+
 			for _, node := range methodNodes {
 				Expect(node.NodeType).To(Equal("method"))
 			}
-			
+
 			Expect(methodNodes).NotTo(BeEmpty())
 		})
 	})

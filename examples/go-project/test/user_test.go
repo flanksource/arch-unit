@@ -1,18 +1,18 @@
 package test
 
 import (
-	"fmt"      // OK: Test can use fmt.Println
-	"testing"  // OK: Test can use testing package
+	"fmt"     // OK: Test can use fmt.Println
+	"testing" // OK: Test can use testing package
 )
 
 func TestUserService(t *testing.T) {
 	// OK: Test can use fmt.Println
 	fmt.Println("Running user service tests")
-	
+
 	// OK: Test can access internal packages
 	// cfg := config.Load()
 	// fmt.Printf("Config loaded: %+v\n", cfg)
-	
+
 	// svc := service.NewService()
 	// if svc == nil {
 	// 	t.Fatal("Service should not be nil")

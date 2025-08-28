@@ -28,20 +28,20 @@ func NewRenamer(workingDir string, noColor bool) *Renamer {
 
 // ReferenceLocation represents a location where a node is referenced
 type ReferenceLocation struct {
-	FilePath   string `json:"file_path"`
-	Line       int    `json:"line"`
-	Column     int    `json:"column"`
-	OldText    string `json:"old_text"`
-	NewText    string `json:"new_text"`
-	Context    string `json:"context"` // Surrounding code for context
+	FilePath string `json:"file_path"`
+	Line     int    `json:"line"`
+	Column   int    `json:"column"`
+	OldText  string `json:"old_text"`
+	NewText  string `json:"new_text"`
+	Context  string `json:"context"` // Surrounding code for context
 }
 
 // RenameOperation represents a planned rename operation
 type RenameOperation struct {
-	TargetNode  *models.ASTNode       `json:"target_node"`
-	OldName     string                `json:"old_name"`
-	NewName     string                `json:"new_name"`
-	References  []*ReferenceLocation  `json:"references"`
+	TargetNode    *models.ASTNode                 `json:"target_node"`
+	OldName       string                          `json:"old_name"`
+	NewName       string                          `json:"new_name"`
+	References    []*ReferenceLocation            `json:"references"`
 	FilesToModify map[string][]*ReferenceLocation `json:"files_to_modify"`
 }
 
@@ -99,7 +99,7 @@ func (r *Renamer) FindAllReferences(analyzer *Analyzer, targetNode *models.ASTNo
 			refLocation, err := r.extractReferenceLocation(rel, targetNode)
 			if err != nil {
 				// Log warning but continue
-				fmt.Fprintf(os.Stderr, "Warning: failed to extract reference at %s:%d: %v\n", 
+				fmt.Fprintf(os.Stderr, "Warning: failed to extract reference at %s:%d: %v\n",
 					rel.FromASTID, rel.LineNo, err)
 				continue
 			}
@@ -125,10 +125,10 @@ func (r *Renamer) FindAllReferences(analyzer *Analyzer, targetNode *models.ASTNo
 func (r *Renamer) extractReferenceLocation(rel *models.ASTRelationship, targetNode *models.ASTNode) (*ReferenceLocation, error) {
 	// We need to find the file that contains the reference
 	// For now, we'll use the relationship text and line number to locate it
-	
+
 	// The FromASTID tells us which node contains the reference
 	// We need to get that node's file and search around the line number
-	
+
 	// This is a simplified implementation - in a real system we'd need more sophisticated parsing
 	return &ReferenceLocation{
 		FilePath: "unknown", // Would need to resolve from FromASTID
@@ -143,7 +143,7 @@ func (r *Renamer) extractReferenceLocation(rel *models.ASTRelationship, targetNo
 // extractDefinitionLocation extracts the location where the node is defined
 func (r *Renamer) extractDefinitionLocation(node *models.ASTNode) (*ReferenceLocation, error) {
 	oldName := extractNameFromNode(node)
-	
+
 	return &ReferenceLocation{
 		FilePath: node.FilePath,
 		Line:     node.StartLine,
@@ -171,13 +171,13 @@ func extractNameFromNode(node *models.ASTNode) string {
 // PlanRename creates a rename operation plan
 func (r *Renamer) PlanRename(targetNode *models.ASTNode, newName string, references []*ReferenceLocation) (*RenameOperation, error) {
 	oldName := extractNameFromNode(targetNode)
-	
+
 	// Update all references with the new name
 	filesToModify := make(map[string][]*ReferenceLocation)
-	
+
 	for _, ref := range references {
 		ref.NewText = strings.ReplaceAll(ref.OldText, oldName, newName)
-		
+
 		if _, exists := filesToModify[ref.FilePath]; !exists {
 			filesToModify[ref.FilePath] = make([]*ReferenceLocation, 0)
 		}
@@ -196,23 +196,23 @@ func (r *Renamer) PlanRename(targetNode *models.ASTNode, newName string, referen
 // GeneratePreview generates a preview of the rename operation
 func (r *Renamer) GeneratePreview(op *RenameOperation, showDiff bool) (string, error) {
 	var result strings.Builder
-	
+
 	result.WriteString(fmt.Sprintf("🔄 Rename Preview: %s → %s\n", op.OldName, op.NewName))
 	result.WriteString("═══════════════════════════════════════════════════════════════\n\n")
-	
+
 	result.WriteString(fmt.Sprintf("Target: %s (%s)\n", op.TargetNode.GetFullName(), op.TargetNode.NodeType))
 	result.WriteString(fmt.Sprintf("Files to modify: %d\n", len(op.FilesToModify)))
 	result.WriteString(fmt.Sprintf("Total references: %d\n\n", len(op.References)))
-	
+
 	// Show files and changes
 	for filePath, refs := range op.FilesToModify {
 		relPath, err := filepath.Rel(r.workingDir, filePath)
 		if err != nil {
 			relPath = filePath
 		}
-		
+
 		result.WriteString(fmt.Sprintf("📄 %s (%d changes)\n", relPath, len(refs)))
-		
+
 		if showDiff {
 			for _, ref := range refs {
 				result.WriteString(fmt.Sprintf("  Line %d: %s → %s\n", ref.Line, ref.OldText, ref.NewText))
@@ -223,7 +223,7 @@ func (r *Renamer) GeneratePreview(op *RenameOperation, showDiff bool) (string, e
 		}
 		result.WriteString("\n")
 	}
-	
+
 	return result.String(), nil
 }
 
@@ -233,7 +233,7 @@ func (r *Renamer) ExecuteRename(op *RenameOperation, createBackup bool) (*Rename
 		Success:       true,
 		ModifiedFiles: make([]string, 0),
 	}
-	
+
 	for filePath, refs := range op.FilesToModify {
 		// Create backup if requested
 		if createBackup {
@@ -244,7 +244,7 @@ func (r *Renamer) ExecuteRename(op *RenameOperation, createBackup bool) (*Rename
 				}, err
 			}
 		}
-		
+
 		// Apply changes to the file
 		if err := r.applyChangesToFile(filePath, refs); err != nil {
 			return &RenameResult{
@@ -252,31 +252,31 @@ func (r *Renamer) ExecuteRename(op *RenameOperation, createBackup bool) (*Rename
 				ErrorMessage: fmt.Sprintf("failed to modify %s: %v", filePath, err),
 			}, err
 		}
-		
+
 		result.ModifiedFiles = append(result.ModifiedFiles, filePath)
 		result.FilesModified++
 		result.ReferencesUpdated += len(refs)
 	}
-	
+
 	return result, nil
 }
 
 // createBackup creates a backup file with .bak extension
 func (r *Renamer) createBackup(filePath string) error {
 	backupPath := filePath + ".bak"
-	
+
 	src, err := os.Open(filePath)
 	if err != nil {
 		return err
 	}
 	defer src.Close()
-	
+
 	dst, err := os.Create(backupPath)
 	if err != nil {
 		return err
 	}
 	defer dst.Close()
-	
+
 	_, err = io.Copy(dst, src)
 	return err
 }
@@ -288,7 +288,7 @@ func (r *Renamer) applyChangesToFile(filePath string, refs []*ReferenceLocation)
 	if err != nil {
 		return err
 	}
-	
+
 	// Sort references by line number (descending) to avoid line number shifting issues
 	// For now, do simple text replacement - a real implementation would need more sophisticated parsing
 	for _, ref := range refs {
@@ -298,7 +298,7 @@ func (r *Renamer) applyChangesToFile(filePath string, refs []*ReferenceLocation)
 			lines[lineIndex] = strings.ReplaceAll(lines[lineIndex], ref.OldText, ref.NewText)
 		}
 	}
-	
+
 	// Write the modified file
 	return r.writeFileLines(filePath, lines)
 }

@@ -10,10 +10,10 @@ import (
 
 // CallGraph represents a call graph structure
 type CallGraph struct {
-	Nodes         []*models.ASTNode            `json:"nodes"`
-	Relationships []*models.ASTRelationship    `json:"relationships"`
+	Nodes         []*models.ASTNode             `json:"nodes"`
+	Relationships []*models.ASTRelationship     `json:"relationships"`
 	LibraryRels   []*models.LibraryRelationship `json:"library_relationships,omitempty"`
-	RootNodes     []*models.ASTNode            `json:"root_nodes"` // Entry points
+	RootNodes     []*models.ASTNode             `json:"root_nodes"` // Entry points
 }
 
 // GraphNode represents a node in the call graph for visualization
@@ -235,7 +235,7 @@ func (gb *GraphBuilder) FormatCallGraph(graph *CallGraph, format string, maxDept
 func (gb *GraphBuilder) formatAsTree(graph *CallGraph, maxDepth int) (string, error) {
 	var result strings.Builder
 
-	result.WriteString(fmt.Sprintf("📊 Call Graph (%d nodes, %d relationships)\n", 
+	result.WriteString(fmt.Sprintf("📊 Call Graph (%d nodes, %d relationships)\n",
 		len(graph.Nodes), len(graph.Relationships)))
 	result.WriteString("═══════════════════════════════════════════════════════════════\n\n")
 
@@ -293,7 +293,7 @@ func (gb *GraphBuilder) formatNodeTree(node *GraphNode, result *strings.Builder,
 	for i, libCall := range node.LibraryCalls {
 		isLastLibCall := i == len(node.LibraryCalls)-1 && len(node.Callees) == 0
 		libStr := fmt.Sprintf("%s%s 📚 %s.%s\n",
-			childPrefix, gb.getTreeSymbol(isLastLibCall), 
+			childPrefix, gb.getTreeSymbol(isLastLibCall),
 			libCall.LibraryNode.Package, libCall.LibraryNode.Method)
 		result.WriteString(libStr)
 	}
@@ -343,7 +343,7 @@ func (gb *GraphBuilder) formatAsDot(graph *CallGraph) (string, error) {
 			libName := rel.LibraryNode.GetFullName()
 			if !libraryNodes[libName] {
 				label := strings.ReplaceAll(libName, "\"", "\\\"")
-				result.WriteString(fmt.Sprintf("    \"lib_%s\" [label=\"%s\", style=\"filled,rounded\", fillcolor=lightblue];\n", 
+				result.WriteString(fmt.Sprintf("    \"lib_%s\" [label=\"%s\", style=\"filled,rounded\", fillcolor=lightblue];\n",
 					libName, label))
 				libraryNodes[libName] = true
 			}

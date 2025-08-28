@@ -17,22 +17,22 @@ import (
 // InitQuestions holds the answers from the interactive questionnaire
 type InitQuestions struct {
 	// Language Detection
-	DetectedLanguages []string
-	ConfirmLanguages  bool
+	DetectedLanguages   []string
+	ConfirmLanguages    bool
 	AdditionalLanguages []string
-	
+
 	// Linter Setup (optional, only during init)
-	DetectedLinters   map[string]bool
+	DetectedLinters     map[string]bool
 	SetupMissingLinters bool
-	EnabledLinters    map[string]bool
-	
-	// Architecture 
+	EnabledLinters      map[string]bool
+
+	// Architecture
 	ArchitecturePattern string // "layered", "clean", "hexagonal", "none"
-	
+
 	// Code Quality
 	StrictnessLevel string // "strict", "moderate", "lenient"
 	StyleGuide      string // "google", "airbnb", "pep8", "custom"
-	
+
 	// Built-in Rules
 	EnabledBuiltinRules map[string]bool
 }
@@ -96,7 +96,7 @@ func detectAndConfirmLanguages(targetDir string, questions *InitQuestions, scann
 	if len(detectedLanguages) > 0 {
 		fmt.Printf("📂 Detected languages: %s\n", strings.Join(detectedLanguages, ", "))
 		fmt.Print("Is this correct? (y/n) [y]: ")
-		
+
 		scanner.Scan()
 		answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
 		questions.ConfirmLanguages = answer != "n" && answer != "no"
@@ -126,11 +126,11 @@ func detectAndConfirmLanguages(targetDir string, questions *InitQuestions, scann
 
 func selectStyleGuide(questions *InitQuestions, scanner *bufio.Scanner) error {
 	fmt.Println("\n📋 Select a style guide:")
-	
+
 	// Build options based on detected languages
 	options := []string{"custom"}
 	optionMap := make(map[string]string)
-	
+
 	for _, lang := range questions.DetectedLanguages {
 		// Try to get handler from registry
 		if handler, ok := languages.DefaultRegistry.GetHandler(lang); ok {
@@ -171,7 +171,7 @@ func selectStyleGuide(questions *InitQuestions, scanner *bufio.Scanner) error {
 	fmt.Printf("Select style guide [1-%d] [1]: ", len(options))
 	scanner.Scan()
 	input := strings.TrimSpace(scanner.Text())
-	
+
 	if input == "" {
 		questions.StyleGuide = options[0]
 	} else {
@@ -193,11 +193,11 @@ func selectStrictnessLevel(questions *InitQuestions, scanner *bufio.Scanner) err
 	fmt.Println("  1. strict   - Lower thresholds, more rules, best for new projects")
 	fmt.Println("  2. moderate - Balanced defaults, good for most projects")
 	fmt.Println("  3. lenient  - Higher thresholds, fewer rules, good for legacy code")
-	
+
 	fmt.Print("Select strictness [1-3] [2]: ")
 	scanner.Scan()
 	input := strings.TrimSpace(scanner.Text())
-	
+
 	switch input {
 	case "1":
 		questions.StrictnessLevel = "strict"
@@ -217,11 +217,11 @@ func selectArchitecturePattern(questions *InitQuestions, scanner *bufio.Scanner)
 	fmt.Println("  2. layered   - Layered architecture (presentation, business, data)")
 	fmt.Println("  3. clean     - Clean architecture (domain, application, infrastructure)")
 	fmt.Println("  4. hexagonal - Hexagonal/Ports & Adapters architecture")
-	
+
 	fmt.Print("Select architecture [1-4] [1]: ")
 	scanner.Scan()
 	input := strings.TrimSpace(scanner.Text())
-	
+
 	switch input {
 	case "2":
 		questions.ArchitecturePattern = "layered"
@@ -239,20 +239,20 @@ func selectArchitecturePattern(questions *InitQuestions, scanner *bufio.Scanner)
 
 func detectAndConfigureLinters(targetDir string, questions *InitQuestions, scanner *bufio.Scanner) error {
 	fmt.Println("\n🔍 Detecting linter configurations...")
-	
+
 	// Detect existing linter configs
 	linterConfigs, err := config.DetectLinterConfigs(targetDir)
 	if err != nil {
 		logger.Warnf("Failed to detect linter configs: %v", err)
 		linterConfigs = make(map[string]bool)
 	}
-	
+
 	questions.DetectedLinters = linterConfigs
 
 	// Show detected linters
 	foundLinters := []string{}
 	missingLinters := []string{}
-	
+
 	for _, lang := range questions.DetectedLanguages {
 		if linters, ok := config.DefaultLintersByLanguage[lang]; ok {
 			for _, linter := range linters {
@@ -273,7 +273,7 @@ func detectAndConfigureLinters(targetDir string, questions *InitQuestions, scann
 	if len(missingLinters) > 0 {
 		fmt.Printf("⚠️  No configurations found for: %s\n", strings.Join(missingLinters, ", "))
 		fmt.Print("Would you like to create default configurations for missing linters? (y/n) [n]: ")
-		
+
 		scanner.Scan()
 		answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
 		questions.SetupMissingLinters = answer == "y" || answer == "yes"
@@ -291,7 +291,7 @@ func detectAndConfigureLinters(targetDir string, questions *InitQuestions, scann
 
 func selectBuiltinRules(questions *InitQuestions, scanner *bufio.Scanner) error {
 	fmt.Println("\n📚 Select built-in rules to enable:")
-	
+
 	// Group rules by category
 	rulesByCategory := make(map[config.BuiltinRuleCategory][]string)
 	for name, rule := range config.BuiltinRules {
@@ -331,7 +331,7 @@ func selectBuiltinRules(questions *InitQuestions, scanner *bufio.Scanner) error 
 		fmt.Printf("\n%s Rules:\n", strings.Title(string(category)))
 		for _, ruleName := range rules {
 			rule := config.BuiltinRules[ruleName]
-			
+
 			// Default selection based on strictness
 			defaultEnabled := rule.Default
 			if questions.StrictnessLevel == "strict" {
@@ -342,10 +342,10 @@ func selectBuiltinRules(questions *InitQuestions, scanner *bufio.Scanner) error 
 
 			fmt.Printf("  - %s: %s\n", ruleName, rule.Description)
 			fmt.Printf("    Enable? (y/n) [%s]: ", boolToYN(defaultEnabled))
-			
+
 			scanner.Scan()
 			input := strings.ToLower(strings.TrimSpace(scanner.Text()))
-			
+
 			if input == "" {
 				questions.EnabledBuiltinRules[ruleName] = defaultEnabled
 			} else {

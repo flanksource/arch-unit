@@ -13,33 +13,33 @@ import (
 
 // LibraryResolver identifies and classifies external libraries and frameworks
 type LibraryResolver struct {
-	cache              *cache.ASTCache
-	knownLibraries     map[string]*LibraryInfo
-	standardLibraries  map[string]bool
+	cache             *cache.ASTCache
+	knownLibraries    map[string]*LibraryInfo
+	standardLibraries map[string]bool
 }
 
 // LibraryInfo contains metadata about a library
 type LibraryInfo struct {
-	Name        string
-	Framework   string
-	Language    string
-	Version     string
-	Category    string // "web", "database", "testing", "utility", etc.
-	CommonTypes []string
+	Name          string
+	Framework     string
+	Language      string
+	Version       string
+	Category      string // "web", "database", "testing", "utility", etc.
+	CommonTypes   []string
 	CommonMethods []string
 }
 
 // NewLibraryResolver creates a new library resolver
 func NewLibraryResolver(astCache *cache.ASTCache) *LibraryResolver {
 	resolver := &LibraryResolver{
-		cache:              astCache,
-		knownLibraries:     make(map[string]*LibraryInfo),
-		standardLibraries:  make(map[string]bool),
+		cache:             astCache,
+		knownLibraries:    make(map[string]*LibraryInfo),
+		standardLibraries: make(map[string]bool),
 	}
-	
+
 	resolver.initializeKnownLibraries()
 	resolver.initializeGoStandardLibraries()
-	
+
 	return resolver
 }
 
@@ -67,7 +67,7 @@ func (r *LibraryResolver) initializeKnownLibraries() {
 			Category: "web", CommonTypes: []string{"Request", "Response", "Handler"},
 			CommonMethods: []string{"Get", "Post", "ListenAndServe", "HandleFunc"},
 		},
-		
+
 		// Database
 		{
 			Name: "gorm.io/gorm", Framework: "gorm", Language: "go",
@@ -84,7 +84,7 @@ func (r *LibraryResolver) initializeKnownLibraries() {
 			Category: "database", CommonTypes: []string{"Driver"},
 			CommonMethods: []string{},
 		},
-		
+
 		// Testing
 		{
 			Name: "testing", Framework: "stdlib", Language: "go",
@@ -96,7 +96,7 @@ func (r *LibraryResolver) initializeKnownLibraries() {
 			Category: "testing", CommonTypes: []string{"Suite"},
 			CommonMethods: []string{"Equal", "NotEqual", "True", "False", "Nil", "NotNil"},
 		},
-		
+
 		// Logging
 		{
 			Name: "github.com/sirupsen/logrus", Framework: "logrus", Language: "go",
@@ -108,28 +108,28 @@ func (r *LibraryResolver) initializeKnownLibraries() {
 			Category: "logging", CommonTypes: []string{"Logger", "SugaredLogger"},
 			CommonMethods: []string{"Info", "Debug", "Warn", "Error", "Fatal", "With"},
 		},
-		
+
 		// JSON/Serialization
 		{
 			Name: "encoding/json", Framework: "stdlib", Language: "go",
 			Category: "serialization", CommonTypes: []string{"Encoder", "Decoder"},
 			CommonMethods: []string{"Marshal", "Unmarshal", "NewEncoder", "NewDecoder"},
 		},
-		
+
 		// Context
 		{
 			Name: "context", Framework: "stdlib", Language: "go",
 			Category: "concurrency", CommonTypes: []string{"Context"},
 			CommonMethods: []string{"Background", "TODO", "WithCancel", "WithTimeout", "WithValue"},
 		},
-		
+
 		// Time
 		{
 			Name: "time", Framework: "stdlib", Language: "go",
 			Category: "utility", CommonTypes: []string{"Time", "Duration", "Timer", "Ticker"},
 			CommonMethods: []string{"Now", "Since", "Parse", "Format", "Sleep"},
 		},
-		
+
 		// Python Libraries
 		{
 			Name: "django", Framework: "django", Language: "python",
@@ -171,7 +171,7 @@ func (r *LibraryResolver) initializeKnownLibraries() {
 			Category: "http", CommonTypes: []string{"Response", "Session"},
 			CommonMethods: []string{"get", "post", "put", "delete", "head"},
 		},
-		
+
 		// JavaScript/TypeScript Libraries
 		{
 			Name: "react", Framework: "react", Language: "javascript",
@@ -239,7 +239,7 @@ func (r *LibraryResolver) initializeKnownLibraries() {
 			CommonMethods: []string{"subscribe", "pipe", "map", "filter", "switchMap"},
 		},
 	}
-	
+
 	for _, lib := range libraries {
 		r.knownLibraries[lib.Name] = lib
 	}
@@ -254,7 +254,7 @@ func (r *LibraryResolver) initializeGoStandardLibraries() {
 		"strconv", "strings", "sync", "syscall", "testing", "text", "time",
 		"unicode", "unsafe",
 	}
-	
+
 	for _, pkg := range stdLibPackages {
 		r.standardLibraries[pkg] = true
 	}
@@ -266,17 +266,17 @@ func (r *LibraryResolver) ResolveLibrary(packagePath string) *LibraryInfo {
 	if lib, found := r.knownLibraries[packagePath]; found {
 		return lib
 	}
-	
+
 	// Check for standard library
 	if r.isStandardLibrary(packagePath) {
 		return &LibraryInfo{
-			Name: packagePath,
+			Name:      packagePath,
 			Framework: "stdlib",
-			Language: "go",
-			Category: r.categorizeStandardLibrary(packagePath),
+			Language:  "go",
+			Category:  r.categorizeStandardLibrary(packagePath),
 		}
 	}
-	
+
 	// Try to match by prefix for versioned packages
 	for knownPath, lib := range r.knownLibraries {
 		if strings.HasPrefix(packagePath, knownPath) {
@@ -286,13 +286,13 @@ func (r *LibraryResolver) ResolveLibrary(packagePath string) *LibraryInfo {
 			return &resolved
 		}
 	}
-	
+
 	// Unknown third-party library
 	return &LibraryInfo{
-		Name: packagePath,
+		Name:      packagePath,
 		Framework: "third-party",
-		Language: "go",
-		Category: r.guessCategory(packagePath),
+		Language:  "go",
+		Category:  r.guessCategory(packagePath),
 	}
 }
 
@@ -302,13 +302,13 @@ func (r *LibraryResolver) isStandardLibrary(packagePath string) bool {
 	if !strings.Contains(packagePath, "/") {
 		return true
 	}
-	
+
 	// Some standard library packages have slashes
 	parts := strings.Split(packagePath, "/")
 	if len(parts) >= 1 && r.standardLibraries[parts[0]] {
 		return true
 	}
-	
+
 	return r.standardLibraries[packagePath]
 }
 
@@ -347,29 +347,29 @@ func (r *LibraryResolver) categorizeStandardLibrary(packagePath string) string {
 // guessCategory attempts to guess the category of an unknown library
 func (r *LibraryResolver) guessCategory(packagePath string) string {
 	lowered := strings.ToLower(packagePath)
-	
+
 	switch {
-	case strings.Contains(lowered, "gin") || strings.Contains(lowered, "echo") || 
-		 strings.Contains(lowered, "mux") || strings.Contains(lowered, "http") ||
-		 strings.Contains(lowered, "web") || strings.Contains(lowered, "rest") ||
-		 strings.Contains(lowered, "api"):
+	case strings.Contains(lowered, "gin") || strings.Contains(lowered, "echo") ||
+		strings.Contains(lowered, "mux") || strings.Contains(lowered, "http") ||
+		strings.Contains(lowered, "web") || strings.Contains(lowered, "rest") ||
+		strings.Contains(lowered, "api"):
 		return "web"
 	case strings.Contains(lowered, "sql") || strings.Contains(lowered, "db") ||
-		 strings.Contains(lowered, "database") || strings.Contains(lowered, "orm") ||
-		 strings.Contains(lowered, "postgres") || strings.Contains(lowered, "mysql") ||
-		 strings.Contains(lowered, "mongo") || strings.Contains(lowered, "redis"):
+		strings.Contains(lowered, "database") || strings.Contains(lowered, "orm") ||
+		strings.Contains(lowered, "postgres") || strings.Contains(lowered, "mysql") ||
+		strings.Contains(lowered, "mongo") || strings.Contains(lowered, "redis"):
 		return "database"
 	case strings.Contains(lowered, "test") || strings.Contains(lowered, "mock") ||
-		 strings.Contains(lowered, "assert") || strings.Contains(lowered, "spec"):
+		strings.Contains(lowered, "assert") || strings.Contains(lowered, "spec"):
 		return "testing"
 	case strings.Contains(lowered, "log") || strings.Contains(lowered, "zap") ||
-		 strings.Contains(lowered, "logrus"):
+		strings.Contains(lowered, "logrus"):
 		return "logging"
 	case strings.Contains(lowered, "json") || strings.Contains(lowered, "xml") ||
-		 strings.Contains(lowered, "yaml") || strings.Contains(lowered, "proto"):
+		strings.Contains(lowered, "yaml") || strings.Contains(lowered, "proto"):
 		return "serialization"
 	case strings.Contains(lowered, "crypto") || strings.Contains(lowered, "hash") ||
-		 strings.Contains(lowered, "security"):
+		strings.Contains(lowered, "security"):
 		return "crypto"
 	case strings.Contains(lowered, "config") || strings.Contains(lowered, "env"):
 		return "config"
@@ -386,7 +386,7 @@ func (r *LibraryResolver) StoreLibraryNodes() error {
 		if err != nil {
 			return fmt.Errorf("failed to store library node for %s: %w", lib.Name, err)
 		}
-		
+
 		// Store common types
 		for _, typeName := range lib.CommonTypes {
 			_, err := r.cache.StoreLibraryNode(lib.Name, typeName, "", "", "class", lib.Language, lib.Framework)
@@ -394,7 +394,7 @@ func (r *LibraryResolver) StoreLibraryNodes() error {
 				return fmt.Errorf("failed to store library type %s.%s: %w", lib.Name, typeName, err)
 			}
 		}
-		
+
 		// Store common methods for each type
 		for _, typeName := range lib.CommonTypes {
 			for _, methodName := range lib.CommonMethods {
@@ -405,7 +405,7 @@ func (r *LibraryResolver) StoreLibraryNodes() error {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -416,14 +416,14 @@ func (r *LibraryResolver) ResolvePythonLibrary(importPath string) (int64, error)
 		// Try to get or create the library node
 		return r.cache.StoreLibraryNode(importPath, "", "", "", models.NodeTypePackage, "python", "stdlib")
 	}
-	
+
 	// Check known Python libraries
 	for _, lib := range r.knownLibraries {
 		if lib.Language == "python" && lib.Name == importPath {
 			return r.cache.StoreLibraryNode(lib.Name, "", "", "", models.NodeTypePackage, lib.Language, lib.Framework)
 		}
 	}
-	
+
 	// Unknown library - store as external
 	return r.cache.StoreLibraryNode(importPath, "", "", "", models.NodeTypePackage, "python", "external")
 }
@@ -434,14 +434,14 @@ func (r *LibraryResolver) ResolveJavaScriptLibrary(importPath string) (int64, er
 	if r.isNodeBuiltinModule(importPath) {
 		return r.cache.StoreLibraryNode(importPath, "", "", "", models.NodeTypePackage, "javascript", "nodejs")
 	}
-	
+
 	// Check known JavaScript libraries
 	for _, lib := range r.knownLibraries {
 		if lib.Language == "javascript" && (lib.Name == importPath || strings.HasPrefix(importPath, lib.Name+"/")) {
 			return r.cache.StoreLibraryNode(lib.Name, "", "", "", models.NodeTypePackage, lib.Language, lib.Framework)
 		}
 	}
-	
+
 	// Unknown library - store as npm package
 	return r.cache.StoreLibraryNode(importPath, "", "", "", models.NodeTypePackage, "javascript", "npm")
 }
@@ -452,21 +452,21 @@ func (r *LibraryResolver) ResolveTypeScriptLibrary(importPath string) (int64, er
 	if r.isNodeBuiltinModule(importPath) {
 		return r.cache.StoreLibraryNode(importPath, "", "", "", models.NodeTypePackage, "typescript", "nodejs")
 	}
-	
+
 	// Check for @types packages
 	if strings.HasPrefix(importPath, "@types/") {
 		libName := strings.TrimPrefix(importPath, "@types/")
 		return r.cache.StoreLibraryNode(libName, "", "", "", models.NodeTypePackage, "typescript", "types")
 	}
-	
+
 	// Check known TypeScript/JavaScript libraries
 	for _, lib := range r.knownLibraries {
-		if (lib.Language == "typescript" || lib.Language == "javascript") && 
-		   (lib.Name == importPath || strings.HasPrefix(importPath, lib.Name+"/")) {
+		if (lib.Language == "typescript" || lib.Language == "javascript") &&
+			(lib.Name == importPath || strings.HasPrefix(importPath, lib.Name+"/")) {
 			return r.cache.StoreLibraryNode(lib.Name, "", "", "", models.NodeTypePackage, lib.Language, lib.Framework)
 		}
 	}
-	
+
 	// Unknown library - store as npm package
 	return r.cache.StoreLibraryNode(importPath, "", "", "", models.NodeTypePackage, "typescript", "npm")
 }
@@ -479,7 +479,7 @@ func (r *LibraryResolver) isPythonStandardLibrary(importPath string) bool {
 		return false
 	}
 	baseName := parts[0]
-	
+
 	// Common Python standard library modules
 	pythonStdlib := []string{
 		"abc", "argparse", "array", "ast", "asyncio", "base64", "builtins",
@@ -492,7 +492,7 @@ func (r *LibraryResolver) isPythonStandardLibrary(importPath string) bool {
 		"time", "traceback", "types", "typing", "unittest", "urllib", "uuid",
 		"warnings", "weakref", "xml", "zipfile",
 	}
-	
+
 	for _, lib := range pythonStdlib {
 		if baseName == lib {
 			return true
@@ -513,7 +513,7 @@ func (r *LibraryResolver) isNodeBuiltinModule(importPath string) bool {
 		"trace_events", "tty", "url", "util", "v8", "vm", "wasi", "worker_threads",
 		"zlib",
 	}
-	
+
 	// Check with and without "node:" prefix
 	cleanPath := strings.TrimPrefix(importPath, "node:")
 	for _, builtin := range nodeBuiltins {
@@ -532,24 +532,24 @@ func (r *LibraryResolver) AnalyzeGoMod(projectRoot string) ([]string, error) {
 		return nil, fmt.Errorf("failed to open go.mod: %w", err)
 	}
 	defer file.Close()
-	
+
 	var dependencies []string
 	scanner := bufio.NewScanner(file)
 	inRequireBlock := false
-	
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		
+
 		if strings.HasPrefix(line, "require (") {
 			inRequireBlock = true
 			continue
 		}
-		
+
 		if inRequireBlock && line == ")" {
 			inRequireBlock = false
 			continue
 		}
-		
+
 		if strings.HasPrefix(line, "require ") {
 			// Single line require
 			parts := strings.Fields(line)
@@ -566,11 +566,11 @@ func (r *LibraryResolver) AnalyzeGoMod(projectRoot string) ([]string, error) {
 			}
 		}
 	}
-	
+
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("error reading go.mod: %w", err)
 	}
-	
+
 	return dependencies, nil
 }
 

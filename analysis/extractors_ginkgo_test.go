@@ -23,12 +23,12 @@ var _ = Describe("AST Extractors", func() {
 
 	BeforeEach(func() {
 		tmpDir = GinkgoT().TempDir()
-		
+
 		cacheDir := GinkgoT().TempDir()
 		var err error
 		astCache, err = cache.NewASTCacheWithPath(cacheDir)
 		Expect(err).NotTo(HaveOccurred())
-		
+
 		ctx = flanksourceContext.NewContext(context.Background())
 	})
 

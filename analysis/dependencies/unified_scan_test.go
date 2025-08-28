@@ -17,7 +17,7 @@ func TestUnifiedScanner_TwoPhaseScanning(t *testing.T) {
 	if task.Global == nil {
 		task.Global = task.NewManager()
 	}
-	
+
 	// Initialize logger for testing to avoid panic
 	initTestLogger()
 
@@ -35,7 +35,7 @@ func TestUnifiedScanner_TwoPhaseScanning(t *testing.T) {
 
 	// Create git manager
 	gitManager := git.NewGitRepositoryManager(filepath.Join(tmpDir, ".cache"))
-	
+
 	// Create unified scanner
 	unifiedScanner := NewUnifiedScanner(scanner, gitManager, 2)
 
@@ -75,14 +75,14 @@ func TestUnifiedScanner_GitRepositoryScanning(t *testing.T) {
 
 	// Create git manager
 	gitManager := git.NewGitRepositoryManager(filepath.Join(tmpDir, ".cache"))
-	
+
 	// Create unified scanner with depth 1 to limit scanning
 	unifiedScanner := NewUnifiedScanner(scanner, gitManager, 1)
 
 	// Use a small test repository with known structure
 	// This is a small repository with minimal dependencies
 	testRepo := "https://github.com/flanksource/is-healthy"
-	
+
 	// Checkout the repository first
 	worktreePath, err := gitManager.GetWorktreePath(testRepo, "main")
 	require.NoError(t, err)
@@ -99,7 +99,7 @@ func TestUnifiedScanner_GitRepositoryScanning(t *testing.T) {
 	// Debug: Log what was found
 	t.Logf("Tree Root: %v", tree.Root)
 	t.Logf("Tree Dependencies: %v", tree.Dependencies)
-	
+
 	// Verify that dependencies were discovered
 	assert.NotEmpty(t, tree.Root, "Should have root dependencies")
 	assert.Equal(t, 1, tree.MaxDepth, "Max depth should be 1")
@@ -125,7 +125,7 @@ func TestUnifiedScanner_ConcurrentDiscovery(t *testing.T) {
 
 	// Create git manager
 	gitManager := git.NewGitRepositoryManager(filepath.Join(tmpDir, ".cache"))
-	
+
 	// Create unified scanner
 	unifiedScanner := NewUnifiedScanner(scanner, gitManager, 2)
 
@@ -140,7 +140,7 @@ func TestUnifiedScanner_ConcurrentDiscovery(t *testing.T) {
 
 	// Verify concurrent discovery
 	assert.Greater(t, len(tree.Dependencies), 0, "Should have discovered dependencies concurrently")
-	
+
 	// Check for version conflicts if multiple versions of same dependency exist
 	if len(tree.Conflicts) > 0 {
 		assert.NotEmpty(t, tree.Conflicts[0].DependencyName, "Conflict should have dependency name")
@@ -165,7 +165,7 @@ func TestUnifiedScanner_RecursionPrevention(t *testing.T) {
 
 	// Create git manager
 	gitManager := git.NewGitRepositoryManager(filepath.Join(tmpDir, ".cache"))
-	
+
 	// Create unified scanner with higher depth to test recursion prevention
 	unifiedScanner := NewUnifiedScanner(scanner, gitManager, 5)
 
@@ -223,7 +223,7 @@ func setupMultipleTestProjects(t *testing.T, dir string) {
 	subDir1 := filepath.Join(dir, "subproject1")
 	err := os.MkdirAll(subDir1, 0755)
 	require.NoError(t, err)
-	
+
 	// Sub-project with Python dependencies
 	requirementsContent := `flask==2.3.0
 requests==2.31.0
@@ -235,7 +235,7 @@ pytest==7.4.0`
 	subDir2 := filepath.Join(dir, "subproject2")
 	err = os.MkdirAll(subDir2, 0755)
 	require.NoError(t, err)
-	
+
 	// Docker project
 	dockerfileContent := `FROM golang:1.21-alpine
 FROM node:18-alpine

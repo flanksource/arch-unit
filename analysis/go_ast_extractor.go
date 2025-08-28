@@ -82,7 +82,7 @@ func (e *GoASTExtractor) ExtractFile(ctx flanksourceContext.Context, filePath st
 func (e *GoASTExtractor) extractImport(imp *ast.ImportSpec) {
 	pkgPath := strings.Trim(imp.Path.Value, `"`)
 	alias := ""
-	
+
 	if imp.Name != nil {
 		alias = imp.Name.Name
 	} else {
@@ -90,7 +90,7 @@ func (e *GoASTExtractor) extractImport(imp *ast.ImportSpec) {
 		parts := strings.Split(pkgPath, "/")
 		alias = parts[len(parts)-1]
 	}
-	
+
 	e.imports[alias] = pkgPath
 }
 
@@ -191,7 +191,7 @@ func (e *GoASTExtractor) extractInterfaceMethods(typeID int64, typeName string, 
 	for _, method := range interfaceType.Methods.List {
 		if len(method.Names) > 0 {
 			methodName := method.Names[0].Name
-			
+
 			methodNode := &models.ASTNode{
 				FilePath:     e.filePath,
 				PackageName:  e.packageName,
@@ -259,7 +259,7 @@ func (e *GoASTExtractor) extractFuncDecl(decl *ast.FuncDecl, receiverType string
 
 	// Extract parameter details
 	parameters := e.extractParameters(decl.Type)
-	
+
 	// Extract return value details
 	returnValues := e.extractReturnValues(decl.Type)
 
@@ -311,7 +311,7 @@ func (e *GoASTExtractor) countParameters(funcType *ast.FuncType) int {
 	if funcType.Params == nil {
 		return 0
 	}
-	
+
 	count := 0
 	for _, param := range funcType.Params.List {
 		if len(param.Names) == 0 {
@@ -328,7 +328,7 @@ func (e *GoASTExtractor) countReturns(funcType *ast.FuncType) int {
 	if funcType.Results == nil {
 		return 0
 	}
-	
+
 	count := 0
 	for _, result := range funcType.Results.List {
 		if len(result.Names) == 0 {
@@ -345,11 +345,11 @@ func (e *GoASTExtractor) extractParameters(funcType *ast.FuncType) []models.Para
 	if funcType.Params == nil || len(funcType.Params.List) == 0 {
 		return nil
 	}
-	
+
 	var parameters []models.Parameter
 	for _, param := range funcType.Params.List {
 		paramType := e.getTypeString(param.Type)
-		
+
 		if len(param.Names) == 0 {
 			// Unnamed parameter
 			parameters = append(parameters, models.Parameter{
@@ -376,11 +376,11 @@ func (e *GoASTExtractor) extractReturnValues(funcType *ast.FuncType) []models.Re
 	if funcType.Results == nil || len(funcType.Results.List) == 0 {
 		return nil
 	}
-	
+
 	var returnValues []models.ReturnValue
 	for _, result := range funcType.Results.List {
 		returnType := e.getTypeString(result.Type)
-		
+
 		if len(result.Names) == 0 {
 			// Unnamed return
 			returnValues = append(returnValues, models.ReturnValue{
@@ -450,12 +450,12 @@ func (e *GoASTExtractor) calculateCyclomaticComplexity(body *ast.BlockStmt) int 
 	if body == nil {
 		return 1 // Base complexity
 	}
-	
+
 	complexity := 1 // Base path
 	ast.Inspect(body, func(n ast.Node) bool {
 		switch n.(type) {
-		case *ast.IfStmt, *ast.ForStmt, *ast.RangeStmt, *ast.SwitchStmt, 
-			 *ast.TypeSwitchStmt, *ast.SelectStmt:
+		case *ast.IfStmt, *ast.ForStmt, *ast.RangeStmt, *ast.SwitchStmt,
+			*ast.TypeSwitchStmt, *ast.SelectStmt:
 			complexity++
 		case *ast.CaseClause:
 			// Each case adds complexity (except default case)
@@ -470,7 +470,7 @@ func (e *GoASTExtractor) calculateCyclomaticComplexity(body *ast.BlockStmt) int 
 		}
 		return true
 	})
-	
+
 	return complexity
 }
 
@@ -493,17 +493,17 @@ func (e *GoASTExtractor) extractFunctionCalls(funcID int64, body *ast.BlockStmt)
 func (e *GoASTExtractor) extractCallExpr(funcID int64, call *ast.CallExpr) error {
 	callLine := e.fileSet.Position(call.Pos()).Line
 	callText := e.getCallExprText(call)
-	
+
 	// Determine what's being called
 	switch fun := call.Fun.(type) {
 	case *ast.Ident:
 		// Simple function call: funcName()
 		return e.handleSimpleFunctionCall(funcID, callLine, callText, fun.Name)
-	
+
 	case *ast.SelectorExpr:
 		// Method call or package function: receiver.method() or pkg.func()
 		return e.handleSelectorCall(funcID, callLine, callText, fun)
-	
+
 	default:
 		// Other call types (function literals, etc.)
 		return e.storeGenericCall(funcID, callLine, callText)
@@ -520,21 +520,21 @@ func (e *GoASTExtractor) handleSimpleFunctionCall(funcID int64, line int, text, 
 // handleSelectorCall handles method calls and package function calls
 func (e *GoASTExtractor) handleSelectorCall(funcID int64, line int, text string, sel *ast.SelectorExpr) error {
 	methodName := sel.Sel.Name
-	
+
 	switch x := sel.X.(type) {
 	case *ast.Ident:
 		// Could be pkg.Function() or variable.Method()
 		receiverName := x.Name
-		
+
 		// Check if it's a known import
 		if pkgPath, isImport := e.imports[receiverName]; isImport {
 			// This is an external library call
 			return e.handleLibraryCall(funcID, line, text, pkgPath, "", methodName)
 		}
-		
+
 		// Otherwise, it's likely a method call on a local variable/field
 		return e.cache.StoreASTRelationship(funcID, nil, line, models.RelationshipCall, text)
-	
+
 	default:
 		// More complex expressions
 		return e.cache.StoreASTRelationship(funcID, nil, line, models.RelationshipCall, text)
@@ -545,13 +545,13 @@ func (e *GoASTExtractor) handleSelectorCall(funcID int64, line int, text string,
 func (e *GoASTExtractor) handleLibraryCall(funcID int64, line int, text, pkgPath, className, methodName string) error {
 	// Determine framework/library type
 	framework := e.classifyLibrary(pkgPath)
-	
+
 	// Store library node
 	libraryID, err := e.cache.StoreLibraryNode(pkgPath, className, methodName, "", models.NodeTypeMethod, "go", framework)
 	if err != nil {
 		return fmt.Errorf("failed to store library node: %w", err)
 	}
-	
+
 	// Store library relationship
 	return e.cache.StoreLibraryRelationship(funcID, libraryID, line, models.RelationshipCall, text)
 }
@@ -562,7 +562,7 @@ func (e *GoASTExtractor) classifyLibrary(pkgPath string) string {
 	if !strings.Contains(pkgPath, "/") {
 		return "stdlib"
 	}
-	
+
 	// Common frameworks
 	switch {
 	case strings.Contains(pkgPath, "gin-gonic/gin"):
@@ -588,7 +588,7 @@ func (e *GoASTExtractor) storeGenericCall(funcID int64, line int, text string) e
 // getCallExprText extracts text representation of a call expression
 func (e *GoASTExtractor) getCallExprText(call *ast.CallExpr) string {
 	startPos := e.fileSet.Position(call.Pos())
-	
+
 	// For now, return a basic representation
 	// In a full implementation, we'd reconstruct the exact source text
 	switch fun := call.Fun.(type) {
@@ -599,6 +599,6 @@ func (e *GoASTExtractor) getCallExprText(call *ast.CallExpr) string {
 			return ident.Name + "." + fun.Sel.Name + "()"
 		}
 	}
-	
+
 	return fmt.Sprintf("call@%d:%d", startPos.Line, startPos.Column)
 }

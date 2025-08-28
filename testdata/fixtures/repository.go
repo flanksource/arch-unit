@@ -68,7 +68,7 @@ func (r *UserRepository) Save(user *model.User) (*model.User, error) {
 
 	query := `INSERT INTO users (id, name, email, age, status, created_at, updated_at) 
 		VALUES (?, ?, ?, ?, ?, ?, ?)`
-	
+
 	_, err := r.db.Exec(query, user.ID, user.Name, user.Email, user.Age, user.Status, user.CreatedAt, user.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -85,7 +85,7 @@ func (r *UserRepository) Update(user *model.User) (*model.User, error) {
 
 	query := `UPDATE users SET name = ?, email = ?, age = ?, status = ?, updated_at = ? 
 		WHERE id = ?`
-	
+
 	result, err := r.db.Exec(query, user.Name, user.Email, user.Age, user.Status, user.UpdatedAt, user.ID)
 	if err != nil {
 		return nil, err
@@ -167,7 +167,7 @@ func (r *UserRepository) Search(query SearchQuery) ([]*model.User, error) {
 
 	// Validate sort fields to prevent SQL injection
 	validSortFields := map[string]bool{
-		"id": true, "name": true, "email": true, "age": true, 
+		"id": true, "name": true, "email": true, "age": true,
 		"status": true, "created_at": true, "updated_at": true,
 	}
 
@@ -195,7 +195,7 @@ func (r *UserRepository) Search(query SearchQuery) ([]*model.User, error) {
 	var users []*model.User
 	for rows.Next() {
 		user := &model.User{}
-		err := rows.Scan(&user.ID, &user.Name, &user.Email, &user.Age, &user.Status, 
+		err := rows.Scan(&user.ID, &user.Name, &user.Email, &user.Age, &user.Status,
 			&user.CreatedAt, &user.UpdatedAt)
 		if err != nil {
 			return nil, err
@@ -328,7 +328,7 @@ func (r *UserRepository) GetUserStatistics() (*model.UserStatistics, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate average age: %w", err)
 	}
-	
+
 	if avgAge.Valid {
 		stats.AverageAge = avgAge.Float64
 	}

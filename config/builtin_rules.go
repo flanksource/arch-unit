@@ -20,7 +20,7 @@ type BuiltinRule struct {
 	Name        string
 	Description string
 	Category    BuiltinRuleCategory
-	Default     bool // Enabled by default
+	Default     bool     // Enabled by default
 	Languages   []string // Empty means all languages
 	Config      map[string]interface{}
 	Apply       func(config *models.Config, ruleConfig models.BuiltinRuleConfig) error
@@ -181,7 +181,7 @@ func applyLayeredArchitectureRule(config *models.Config, ruleConfig models.Built
 	// Presentation layer
 	addRuleIfNotExists(config, "**/presentation/**", models.RuleConfig{
 		Imports: []string{
-			"!**/data/**",  // No direct data access from presentation
+			"!**/data/**", // No direct data access from presentation
 		},
 	})
 
@@ -217,21 +217,21 @@ func applyNoHardcodedSecretsRule(config *models.Config, ruleConfig models.Builti
 func applySecureImportsRule(config *models.Config, ruleConfig models.BuiltinRuleConfig) error {
 	// Add rules for all files
 	addImportRules(config, "**", []string{
-		"!crypto/md5",      // Weak hash
-		"!crypto/sha1",     // Weak hash
-		"!math/rand",       // Not cryptographically secure
+		"!crypto/md5",  // Weak hash
+		"!crypto/sha1", // Weak hash
+		"!math/rand",   // Not cryptographically secure
 	})
 
 	// Python specific
 	addImportRules(config, "**/*.py", []string{
-		"!pickle",          // Security risk with untrusted data
-		"!eval",            // Code injection risk
-		"!exec",            // Code injection risk
+		"!pickle", // Security risk with untrusted data
+		"!eval",   // Code injection risk
+		"!exec",   // Code injection risk
 	})
 
 	// JavaScript/TypeScript specific
 	addImportRules(config, "**/*.{js,ts,jsx,tsx}", []string{
-		"!eval",            // Code injection risk
+		"!eval", // Code injection risk
 	})
 
 	return nil

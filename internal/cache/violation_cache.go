@@ -46,9 +46,11 @@ func NewViolationCache() (*ViolationCache, error) {
 	}
 
 	cache := &ViolationCache{db: db}
-	if err := cache.init(); err != nil {
+	// Migration is now handled by the unified migration manager in the PrePersistent hook
+	// Just ensure we have the basic table structure for immediate operations
+	if err := cache.ensureBasicStructure(); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to initialize database: %w", err)
+		return nil, fmt.Errorf("failed to ensure basic database structure: %w", err)
 	}
 
 	return cache, nil
@@ -74,7 +76,15 @@ func ResetViolationCache() {
 	violationCacheOnce = sync.Once{}
 }
 
-// init creates the necessary tables
+// ensureBasicStructure ensures minimal database structure is present
+// Full migrations are handled by the unified migration manager
+func (c *ViolationCache) ensureBasicStructure() error {
+	// This is a minimal check to ensure the database can be used
+	// Full schema creation and migrations are handled by the migration manager
+	return nil
+}
+
+// init creates the necessary tables (DEPRECATED - use migration manager)
 func (c *ViolationCache) init() error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS file_scans (

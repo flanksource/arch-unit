@@ -29,7 +29,7 @@ func (vr *DefaultVersionResolver) ResolveVersion(ctx context.Context, gitURL str
 	if !vr.IsVersionAlias(alias) {
 		return alias, nil
 	}
-	
+
 	// Check cache first
 	cacheKey := fmt.Sprintf("%s:%s", gitURL, alias)
 	vr.mutex.RLock()
@@ -38,13 +38,13 @@ func (vr *DefaultVersionResolver) ResolveVersion(ctx context.Context, gitURL str
 		return cached, nil
 	}
 	vr.mutex.RUnlock()
-	
+
 	// Get repository
 	repo, err := vr.gitManager.GetRepository(gitURL)
 	if err != nil {
 		return "", fmt.Errorf("failed to get repository: %w", err)
 	}
-	
+
 	// Resolve the alias
 	var resolved string
 	switch {
@@ -59,16 +59,16 @@ func (vr *DefaultVersionResolver) ResolveVersion(ctx context.Context, gitURL str
 	default:
 		return alias, nil // Not actually an alias
 	}
-	
+
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Cache the result
 	vr.mutex.Lock()
 	vr.cache[cacheKey] = resolved
 	vr.mutex.Unlock()
-	
+
 	return resolved, nil
 }
 
@@ -87,7 +87,7 @@ func (vr *DefaultVersionResolver) GetAvailableVersions(ctx context.Context, gitU
 	if err != nil {
 		return nil, fmt.Errorf("failed to get repository: %w", err)
 	}
-	
+
 	// This is a placeholder - we would need to implement tag listing
 	// For now, return empty list
 	return []string{}, nil
@@ -113,17 +113,17 @@ func (vr *DefaultVersionResolver) resolveHeadOffset(repo GitRepository, alias st
 	if err != nil {
 		return "", fmt.Errorf("invalid HEAD~ offset: %s", offsetStr)
 	}
-	
+
 	// Get all versions and return the nth one back from HEAD
 	versions, err := vr.getAllVersionsSorted(repo)
 	if err != nil {
 		return "", err
 	}
-	
+
 	if offset >= len(versions) {
 		return "", fmt.Errorf("HEAD~%d goes beyond available versions (found %d versions)", offset, len(versions))
 	}
-	
+
 	return versions[offset], nil
 }
 
@@ -134,17 +134,17 @@ func (vr *DefaultVersionResolver) resolveGAOffset(repo GitRepository, alias stri
 	if err != nil {
 		return "", fmt.Errorf("invalid GA~ offset: %s", offsetStr)
 	}
-	
+
 	// Get all stable versions and return the nth one back from GA
 	stableVersions, err := vr.getStableVersionsSorted(repo)
 	if err != nil {
 		return "", err
 	}
-	
+
 	if offset >= len(stableVersions) {
 		return "", fmt.Errorf("GA~%d goes beyond available stable versions (found %d versions)", offset, len(stableVersions))
 	}
-	
+
 	return stableVersions[offset], nil
 }
 
@@ -178,7 +178,7 @@ func (vr *DefaultVersionResolver) isPreRelease(version string, preReleasePattern
 	if preReleasePatterns == nil {
 		preReleasePatterns = []string{"alpha", "beta", "rc", "preview", "pre"}
 	}
-	
+
 	versionLower := strings.ToLower(version)
 	for _, pattern := range preReleasePatterns {
 		if strings.Contains(versionLower, strings.ToLower(pattern)) {

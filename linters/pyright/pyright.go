@@ -54,10 +54,10 @@ func (p *Pyright) DefaultIncludes() []string {
 // handled by the all_language_excludes macro. This only returns Pyright-specific excludes.
 func (p *Pyright) DefaultExcludes() []string {
 	return []string{
-		"*.d.ts",          // TypeScript declaration files (generated)
-		"*.egg-info/**",   // Python package metadata
-		"venv/**",         // Virtual environments (legacy pattern)
-		"env/**",          // Virtual environments (legacy pattern)
+		"*.d.ts",        // TypeScript declaration files (generated)
+		"*.egg-info/**", // Python package metadata
+		"venv/**",       // Virtual environments (legacy pattern)
+		"env/**",        // Virtual environments (legacy pattern)
 	}
 }
 
@@ -73,7 +73,7 @@ func (p *Pyright) GetEffectiveExcludes(language string, config *models.Config) [
 		// Fallback to default excludes if no config
 		return p.DefaultExcludes()
 	}
-	
+
 	// Use the all_language_excludes macro
 	return config.GetAllLanguageExcludes(language, p.DefaultExcludes())
 }
@@ -85,7 +85,7 @@ func (p *Pyright) GetEffectiveIncludes(language string, config *models.Config) [
 		// Fallback to default includes if no config
 		return p.DefaultIncludes()
 	}
-	
+
 	// Use the combined includes system
 	return config.GetAllLanguageIncludes(language, p.DefaultIncludes())
 }
@@ -121,35 +121,35 @@ func (p *Pyright) ValidateConfig(config *models.LinterConfig) error {
 // Run executes pyright and returns violations
 func (p *Pyright) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Violation, error) {
 	var args []string
-	
+
 	// Add configured args
 	if p.Config != nil {
 		args = append(args, p.Config.Args...)
 	}
-	
+
 	// Add JSON format if requested and not already present
 	if p.ForceJSON && !p.hasJSONArg(args) {
 		args = append(args, "--outputjson")
 	}
-	
+
 	// Add extra args
 	args = append(args, p.ExtraArgs...)
-	
+
 	// Add files or default to current directory
 	if len(p.Files) > 0 {
 		args = append(args, p.Files...)
 	} else if !p.hasPathArg(args) {
 		args = append(args, ".")
 	}
-	
+
 	// Execute command
 	cmd := exec.CommandContext(ctx, "pyright", args...)
 	cmd.Dir = p.WorkDir
-	
+
 	logger.Infof("Executing: pyright %s", strings.Join(args, " "))
-	
+
 	output, err := cmd.CombinedOutput()
-	
+
 	// Handle pyright exit codes
 	// Pyright exits with 1 when there are errors/warnings
 	if err != nil {
@@ -161,16 +161,16 @@ func (p *Pyright) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.V
 			}
 		}
 	}
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("pyright execution failed: %w\nOutput:\n%s", err, string(output))
 	}
-	
+
 	// Parse JSON output if we have any
 	if len(output) == 0 {
 		return []models.Violation{}, nil
 	}
-	
+
 	return p.parseViolations(output)
 }
 
@@ -202,26 +202,26 @@ func (p *Pyright) parseViolations(output []byte) ([]models.Violation, error) {
 		logger.Debugf("Failed to parse pyright JSON output: %v\nOutput: %s", err, string(output))
 		return nil, fmt.Errorf("failed to parse pyright JSON output: %w", err)
 	}
-	
+
 	var violations []models.Violation
 	for _, diagnostic := range result.GeneralDiagnostics {
 		violation := diagnostic.ToViolation(p.WorkDir)
 		violations = append(violations, violation)
 	}
-	
+
 	return violations, nil
 }
 
 // PyrightOutput represents the JSON structure from pyright
 type PyrightOutput struct {
-	Version            string             `json:"version"`
-	Time               string             `json:"time"`
+	Version            string              `json:"version"`
+	Time               string              `json:"time"`
 	GeneralDiagnostics []PyrightDiagnostic `json:"generalDiagnostics"`
 	Summary            struct {
-		FilesAnalyzed int `json:"filesAnalyzed"`
-		ErrorCount    int `json:"errorCount"`
-		WarningCount  int `json:"warningCount"`
-		InfoCount     int `json:"informationCount"`
+		FilesAnalyzed int     `json:"filesAnalyzed"`
+		ErrorCount    int     `json:"errorCount"`
+		WarningCount  int     `json:"warningCount"`
+		InfoCount     int     `json:"informationCount"`
 		TimeInSec     float64 `json:"timeInSec"`
 	} `json:"summary"`
 }
@@ -247,18 +247,18 @@ type PyrightDiagnostic struct {
 // ToViolation converts a PyrightDiagnostic to a generic Violation
 func (d *PyrightDiagnostic) ToViolation(workDir string) models.Violation {
 	filename := d.File
-	
+
 	// Make filename absolute if it's relative
 	if !filepath.IsAbs(filename) {
 		filename = filepath.Join(workDir, filename)
 	}
-	
+
 	// Build the rule/method name
 	calledMethod := d.Severity
 	if d.Rule != "" {
 		calledMethod = fmt.Sprintf("%s:%s", d.Severity, d.Rule)
 	}
-	
+
 	return models.Violation{
 		File:          filename,
 		Line:          d.Range.Start.Line + 1, // Pyright uses 0-based indexing

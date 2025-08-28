@@ -66,7 +66,7 @@ func NewAIAnalyzer(config AIAnalyzerConfig) (*AIAnalyzer, error) {
 // NewAIAnalyzerWithAgent creates an AI analyzer with a provided agent
 func NewAIAnalyzerWithAgent(agent ai.Agent, config AIAnalyzerConfig) *AIAnalyzer {
 	commentAnalyzer := NewCommentAnalyzer(config.CommentAnalysis, agent)
-	
+
 	return &AIAnalyzer{
 		agent:           agent,
 		commentAnalyzer: commentAnalyzer,
@@ -76,21 +76,21 @@ func NewAIAnalyzerWithAgent(agent ai.Agent, config AIAnalyzerConfig) *AIAnalyzer
 
 // AnalysisResult holds the complete analysis results for a file
 type AnalysisResult struct {
-	FilePath         string                    `json:"file_path"`
-	Language         string                    `json:"language"`
-	LineCount        int                       `json:"line_count"`
-	CommentResults   []*CommentQualityResult  `json:"comment_results"`
-	QualityViolations []models.Violation       `json:"quality_violations"`
-	Summary          AnalysisSummary          `json:"summary"`
+	FilePath          string                  `json:"file_path"`
+	Language          string                  `json:"language"`
+	LineCount         int                     `json:"line_count"`
+	CommentResults    []*CommentQualityResult `json:"comment_results"`
+	QualityViolations []models.Violation      `json:"quality_violations"`
+	Summary           AnalysisSummary         `json:"summary"`
 }
 
 // AnalysisSummary provides a summary of the analysis
 type AnalysisSummary struct {
-	TotalComments      int     `json:"total_comments"`
-	ComplexComments    int     `json:"complex_comments"`
-	PoorQualityComments int    `json:"poor_quality_comments"`
-	AverageScore       float64 `json:"average_score"`
-	ViolationCount     int     `json:"violation_count"`
+	TotalComments       int     `json:"total_comments"`
+	ComplexComments     int     `json:"complex_comments"`
+	PoorQualityComments int     `json:"poor_quality_comments"`
+	AverageScore        float64 `json:"average_score"`
+	ViolationCount      int     `json:"violation_count"`
 }
 
 // AnalyzeFile performs complete AI-powered analysis on a file's AST
@@ -126,7 +126,7 @@ func (aa *AIAnalyzer) AnalyzeFile(ctx context.Context, ast *models.GenericAST) (
 // AnalyzeFiles performs analysis on multiple files
 func (aa *AIAnalyzer) AnalyzeFiles(ctx context.Context, asts []*models.GenericAST) ([]*AnalysisResult, error) {
 	results := make([]*AnalysisResult, len(asts))
-	
+
 	for i, ast := range asts {
 		result, err := aa.AnalyzeFile(ctx, ast)
 		if err != nil {
@@ -134,7 +134,7 @@ func (aa *AIAnalyzer) AnalyzeFiles(ctx context.Context, asts []*models.GenericAS
 		}
 		results[i] = result
 	}
-	
+
 	return results, nil
 }
 
@@ -177,11 +177,11 @@ func (aa *AIAnalyzer) formatCommentViolationMessage(result *CommentQualityResult
 	}
 
 	message := fmt.Sprintf("Comment quality issues: %s", joinStrings(issues, ", "))
-	
+
 	if len(result.Issues) > 0 {
 		message += fmt.Sprintf(" - Issues: %s", joinStrings(result.Issues, ", "))
 	}
-	
+
 	if len(result.Suggestions) > 0 {
 		message += fmt.Sprintf(" - Suggestions: %s", joinStrings(result.Suggestions, ", "))
 	}
@@ -200,7 +200,7 @@ func (aa *AIAnalyzer) calculateSummary(commentResults []*CommentQualityResult, v
 	}
 
 	summary.TotalComments = len(commentResults)
-	
+
 	var totalScore float64
 	for _, result := range commentResults {
 		totalScore += result.Score
@@ -236,7 +236,7 @@ func joinStrings(strs []string, sep string) string {
 	if len(strs) == 1 {
 		return strs[0]
 	}
-	
+
 	result := strs[0]
 	for i := 1; i < len(strs); i++ {
 		result += sep + strs[i]
@@ -249,18 +249,18 @@ func (config *AIAnalyzerConfig) Validate() error {
 	if config.Model == "" {
 		config.Model = "claude-3-haiku-20240307"
 	}
-	
+
 	if config.MaxConcurrent <= 0 {
 		config.MaxConcurrent = 3
 	}
-	
+
 	if config.CommentAnalysis.WordLimit <= 0 {
 		config.CommentAnalysis.WordLimit = 10
 	}
-	
+
 	if config.CommentAnalysis.MinDescriptiveScore < 0 || config.CommentAnalysis.MinDescriptiveScore > 1 {
 		config.CommentAnalysis.MinDescriptiveScore = 0.7
 	}
-	
+
 	return nil
 }

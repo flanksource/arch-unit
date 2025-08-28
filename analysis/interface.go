@@ -105,28 +105,21 @@ func NewBaseAnalyzer(language string) *BaseAnalyzer {
 
 // LogProgress logs analysis progress through the task
 func (b *BaseAnalyzer) LogProgress(task *clicky.Task, message string, args ...interface{}) {
-	if task != nil {
-		task.Infof(message, args...)
-	}
+	task.Infof(message, args...)
 }
 
 // LogDebug logs debug information through the task
 func (b *BaseAnalyzer) LogDebug(task *clicky.Task, message string, args ...interface{}) {
-	if task != nil {
-		// Debug: (message, args...)
-	}
+	task.Debugf(message, args...)
 }
 
 // LogWarning logs warnings through the task
 func (b *BaseAnalyzer) LogWarning(task *clicky.Task, message string, args ...interface{}) {
-	if task != nil {
-		task.Warnf(message, args...)
-	}
+	task.Warnf(message, args...)
 }
 
 // LogError logs errors through the task
 func (b *BaseAnalyzer) LogError(task *clicky.Task, message string, args ...interface{}) {
-	if task != nil {
-		task.Errorf(message, args...)
-	}
+	task.Errorf(message, args...)
+
 }

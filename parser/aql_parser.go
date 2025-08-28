@@ -38,7 +38,7 @@ func (p *Parser) nextToken() {
 
 // addError adds an error message
 func (p *Parser) addError(msg string) {
-	p.errors = append(p.errors, fmt.Sprintf("line %d, col %d: %s", 
+	p.errors = append(p.errors, fmt.Sprintf("line %d, col %d: %s",
 		p.currentToken.Line, p.currentToken.Column, msg))
 }
 
@@ -48,8 +48,8 @@ func (p *Parser) expectToken(tokenType TokenType) bool {
 		p.nextToken()
 		return true
 	}
-	
-	p.addError(fmt.Sprintf("expected %s, got %s", 
+
+	p.addError(fmt.Sprintf("expected %s, got %s",
 		tokenTypeNames[tokenType], tokenTypeNames[p.currentToken.Type]))
 	return false
 }
@@ -59,7 +59,7 @@ func (p *Parser) currentTokenIs(tokenType TokenType) bool {
 	return p.currentToken.Type == tokenType
 }
 
-// peekTokenIs checks if peek token is of given type  
+// peekTokenIs checks if peek token is of given type
 func (p *Parser) peekTokenIs(tokenType TokenType) bool {
 	return p.peekToken.Type == tokenType
 }
@@ -81,7 +81,7 @@ func (p *Parser) ParseRuleSet() (*models.AQLRuleSet, error) {
 		if err != nil {
 			return nil, err
 		}
-		
+
 		if rule != nil {
 			ruleSet.AddRule(rule)
 		}
@@ -125,7 +125,7 @@ func (p *Parser) parseRule() (*models.AQLRule, error) {
 		if err != nil {
 			return nil, err
 		}
-		
+
 		if stmt != nil {
 			rule.Statements = append(rule.Statements, stmt)
 		}
@@ -184,7 +184,7 @@ func (p *Parser) parseLimitStatement() (*models.AQLStatement, error) {
 	}, nil
 }
 
-// parseForbidStatement parses a FORBID statement  
+// parseForbidStatement parses a FORBID statement
 func (p *Parser) parseForbidStatement() (*models.AQLStatement, error) {
 	p.nextToken() // consume FORBID
 
@@ -316,13 +316,13 @@ func (p *Parser) isRelationshipPattern() bool {
 	// This is a simplified check - in a full parser we'd need better lookahead
 	lexerCopy := NewLexer(p.lexer.input[p.currentToken.Position:])
 	depth := 0
-	
+
 	for {
 		token := lexerCopy.NextToken()
 		if token.Type == TokenEOF || token.Type == TokenError {
 			break
 		}
-		
+
 		if token.Type == TokenLParen {
 			depth++
 		} else if token.Type == TokenRParen {
@@ -334,7 +334,7 @@ func (p *Parser) isRelationshipPattern() bool {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -395,12 +395,12 @@ func (p *Parser) parsePattern() (*models.AQLPattern, error) {
 	for p.currentTokenIs(TokenDot) || p.currentTokenIs(TokenColon) {
 		delimiter := p.currentToken.Value
 		p.nextToken()
-		
+
 		if !p.currentTokenIs(TokenIdent) {
 			p.addError("expected identifier after " + delimiter)
 			return nil, fmt.Errorf("expected identifier")
 		}
-		
+
 		patternText += delimiter + p.currentToken.Value
 		p.nextToken()
 	}
@@ -436,7 +436,7 @@ func (p *Parser) parseOperator() (models.AQLOperatorType, error) {
 		p.nextToken()
 		return models.AQLOperatorNE, nil
 	default:
-		p.addError(fmt.Sprintf("expected comparison operator, got %s", 
+		p.addError(fmt.Sprintf("expected comparison operator, got %s",
 			tokenTypeNames[p.currentToken.Type]))
 		return "", fmt.Errorf("expected operator")
 	}
@@ -448,32 +448,32 @@ func (p *Parser) parseValue() (*models.AQLValue, error) {
 	case TokenNumber:
 		numStr := p.currentToken.Value
 		p.nextToken()
-		
+
 		num, err := strconv.Atoi(numStr)
 		if err != nil {
 			p.addError(fmt.Sprintf("invalid number: %s", numStr))
 			return nil, err
 		}
-		
+
 		return &models.AQLValue{
 			Type:     models.AQLValueInt,
 			IntValue: num,
 		}, nil
-		
+
 	case TokenString:
 		str := p.currentToken.Value
 		p.nextToken()
-		
+
 		return &models.AQLValue{
 			Type:     models.AQLValueString,
 			StrValue: str,
 		}, nil
-		
+
 	case TokenIdent:
 		// Handle boolean literals
 		ident := p.currentToken.Value
 		p.nextToken()
-		
+
 		switch ident {
 		case "true":
 			return &models.AQLValue{
@@ -489,7 +489,7 @@ func (p *Parser) parseValue() (*models.AQLValue, error) {
 			p.addError(fmt.Sprintf("unexpected identifier in value: %s", ident))
 			return nil, fmt.Errorf("unexpected identifier")
 		}
-		
+
 	default:
 		p.addError(fmt.Sprintf("expected value, got %s", tokenTypeNames[p.currentToken.Type]))
 		return nil, fmt.Errorf("expected value")

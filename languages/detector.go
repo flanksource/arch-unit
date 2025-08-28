@@ -11,21 +11,21 @@ import (
 // DetectLanguagesInDirectory scans a directory and detects all programming languages present
 func DetectLanguagesInDirectory(rootDir string) ([]string, error) {
 	languageSet := make(map[string]bool)
-	
+
 	// Get built-in exclusion patterns
 	excludePatterns := models.GetBuiltinExcludePatterns()
-	
+
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // Skip files with errors
 		}
-		
+
 		// Get relative path for pattern matching
 		relPath, err := filepath.Rel(rootDir, path)
 		if err != nil {
 			relPath = path
 		}
-		
+
 		// Check if path should be excluded
 		if shouldExclude(relPath, excludePatterns) {
 			if info.IsDir() {
@@ -33,7 +33,7 @@ func DetectLanguagesInDirectory(rootDir string) ([]string, error) {
 			}
 			return nil
 		}
-		
+
 		// Detect language for non-directory files
 		if !info.IsDir() {
 			lang := DetectLanguage(path)
@@ -41,20 +41,20 @@ func DetectLanguagesInDirectory(rootDir string) ([]string, error) {
 				languageSet[lang] = true
 			}
 		}
-		
+
 		return nil
 	})
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Convert set to slice
 	var languages []string
 	for lang := range languageSet {
 		languages = append(languages, lang)
 	}
-	
+
 	return languages, nil
 }
 
@@ -78,14 +78,14 @@ func matchesPattern(path, pattern string) bool {
 			return true
 		}
 	}
-	
+
 	// Handle specific directory patterns like ".git/**"
 	if strings.Contains(pattern, "/") {
 		if strings.HasPrefix(path, strings.TrimSuffix(pattern, "/**")+"/") {
 			return true
 		}
 	}
-	
+
 	// Handle file patterns like "*.min.*"
 	if strings.HasPrefix(pattern, "*.") {
 		suffix := strings.TrimPrefix(pattern, "*")
@@ -93,12 +93,12 @@ func matchesPattern(path, pattern string) bool {
 			return true
 		}
 	}
-	
+
 	// Handle exact matches
 	if path == pattern {
 		return true
 	}
-	
+
 	// Check if any parent directory matches
 	parts := strings.Split(path, "/")
 	for _, part := range parts {
@@ -106,7 +106,7 @@ func matchesPattern(path, pattern string) bool {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -114,17 +114,17 @@ func matchesPattern(path, pattern string) bool {
 func matchesSimplePattern(name, pattern string) bool {
 	// Remove /** suffix if present
 	pattern = strings.TrimSuffix(pattern, "/**")
-	
+
 	// Direct match
 	if name == pattern {
 		return true
 	}
-	
+
 	// Handle patterns like "__pycache__"
 	if pattern == name {
 		return true
 	}
-	
+
 	return false
 }
 

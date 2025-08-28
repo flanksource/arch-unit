@@ -33,12 +33,12 @@ func GenerateValeConfig(workDir string, config *models.Config, language string, 
 	var configContent strings.Builder
 	configContent.WriteString("# Auto-generated Vale configuration by arch-unit\n")
 	configContent.WriteString("# This file respects the all_language_excludes macro\n\n")
-	
+
 	// Basic Vale settings - use built-in styles if no custom styles installed
 	configContent.WriteString("# Vale requires at least minimal configuration\n")
 	configContent.WriteString("StylesPath = .vale-styles\n")
 	configContent.WriteString("MinAlertLevel = suggestion\n\n")
-	
+
 	// Format-specific settings
 	configContent.WriteString("[*.md]\n")
 	configContent.WriteString("# Markdown-specific settings\n")
@@ -50,7 +50,7 @@ func GenerateValeConfig(workDir string, config *models.Config, language string, 
 		configContent.WriteString("[*]\n")
 		configContent.WriteString("SkippedScopes = code, tt\n")
 		configContent.WriteString("IgnoredScopes = code, tt\n\n")
-		
+
 		// Vale uses BlockIgnores for file patterns
 		configContent.WriteString("BlockIgnores = ")
 		for i, pattern := range excludes {
@@ -88,15 +88,15 @@ func convertToValePattern(pattern string) string {
 	// Vale uses standard glob patterns but with some differences
 	// Convert ** patterns to single * for Vale
 	pattern = strings.ReplaceAll(pattern, "**", "*")
-	
+
 	// Remove trailing slash patterns
 	pattern = strings.TrimSuffix(pattern, "/")
-	
+
 	// Vale patterns are relative to the working directory
 	if strings.HasPrefix(pattern, "/") {
 		pattern = pattern[1:]
 	}
-	
+
 	return pattern
 }
 

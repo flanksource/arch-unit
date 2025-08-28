@@ -46,7 +46,7 @@ var _ = Describe("AST Integration", func() {
 			for _, fixture := range testFixtures {
 				sourceFile := filepath.Join("../../testdata/fixtures", fixture)
 				destFile := filepath.Join(tmpDir, fixture)
-				
+
 				content, err := os.ReadFile(sourceFile)
 				if os.IsNotExist(err) {
 					// Create mock fixture if doesn't exist
@@ -54,7 +54,7 @@ var _ = Describe("AST Integration", func() {
 				} else {
 					Expect(err).NotTo(HaveOccurred())
 				}
-				
+
 				err = os.WriteFile(destFile, content, 0644)
 				Expect(err).NotTo(HaveOccurred())
 			}
@@ -121,7 +121,7 @@ var _ = Describe("AST Integration", func() {
 			for _, fixture := range []string{"controller.go", "service.go", "repository.go"} {
 				sourceFile := filepath.Join("../../testdata/fixtures", fixture)
 				destFile := filepath.Join(tmpDir, fixture)
-				
+
 				content, err := os.ReadFile(sourceFile)
 				if os.IsNotExist(err) {
 					// Create mock fixture if doesn't exist
@@ -129,7 +129,7 @@ var _ = Describe("AST Integration", func() {
 				} else {
 					Expect(err).NotTo(HaveOccurred())
 				}
-				
+
 				err = os.WriteFile(destFile, content, 0644)
 				Expect(err).NotTo(HaveOccurred())
 			}
@@ -192,11 +192,11 @@ var _ = Describe("AST Integration", func() {
 		BeforeEach(func() {
 			// Use test fixtures to simulate a typical web application structure
 			testFixtures = []string{"controller.go", "service.go", "repository.go", "model.go"}
-			
+
 			for _, fixture := range testFixtures {
 				sourceFile := filepath.Join("../../testdata/fixtures", fixture)
 				destFile := filepath.Join(tmpDir, fixture)
-				
+
 				content, err := os.ReadFile(sourceFile)
 				if os.IsNotExist(err) {
 					// Create mock fixture if doesn't exist
@@ -204,7 +204,7 @@ var _ = Describe("AST Integration", func() {
 				} else {
 					Expect(err).NotTo(HaveOccurred())
 				}
-				
+
 				err = os.WriteFile(destFile, content, 0644)
 				Expect(err).NotTo(HaveOccurred())
 			}
@@ -451,7 +451,7 @@ func connectDB() (*sql.DB, error) {
 			for i := 0; i < fileCount; i++ {
 				filename := filepath.Join(tmpDir, fmt.Sprintf("file%d.go", i))
 				content := generateLargeGoFile(i, methodsPerFile)
-				
+
 				err := os.WriteFile(filename, []byte(content), 0644)
 				Expect(err).NotTo(HaveOccurred())
 			}
@@ -459,12 +459,12 @@ func connectDB() (*sql.DB, error) {
 			// Extract AST from all files
 			extractor := analysis.NewGoASTExtractor(astCache)
 			totalNodes := 0
-			
+
 			for i := 0; i < fileCount; i++ {
 				filename := filepath.Join(tmpDir, fmt.Sprintf("file%d.go", i))
 				err := extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), filename)
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				nodes, err := astCache.GetASTNodesByFile(filename)
 				Expect(err).NotTo(HaveOccurred())
 				totalNodes += len(nodes)
@@ -582,29 +582,29 @@ func main() {
 // Helper function to generate a large Go file for performance testing
 func generateLargeGoFile(fileIndex, methodCount int) string {
 	var content strings.Builder
-	
+
 	content.WriteString(fmt.Sprintf("package file%d\n\n", fileIndex))
 	content.WriteString("import \"fmt\"\n\n")
-	
+
 	// Generate struct types
 	content.WriteString(fmt.Sprintf("type Type%d struct {\n", fileIndex))
 	content.WriteString("    ID int\n")
 	content.WriteString("    Name string\n")
 	content.WriteString("}\n\n")
-	
+
 	content.WriteString(fmt.Sprintf("type Service%d struct {\n", fileIndex))
 	content.WriteString(fmt.Sprintf("    repo *Repository%d\n", fileIndex))
 	content.WriteString("}\n\n")
-	
+
 	content.WriteString(fmt.Sprintf("type Repository%d struct {\n", fileIndex))
 	content.WriteString("    db interface{}\n")
 	content.WriteString("}\n\n")
-	
+
 	// Generate methods with varying complexity
 	for i := 0; i < methodCount; i++ {
 		complexity := i%5 + 1 // Complexity from 1 to 5
 		paramCount := i%4 + 1 // 1 to 4 parameters
-		
+
 		// Generate method signature
 		content.WriteString(fmt.Sprintf("func (s *Service%d) Method%d(", fileIndex, i))
 		for p := 0; p < paramCount; p++ {
@@ -614,7 +614,7 @@ func generateLargeGoFile(fileIndex, methodCount int) string {
 			content.WriteString(fmt.Sprintf("param%d int", p))
 		}
 		content.WriteString(") int {\n")
-		
+
 		// Generate method body with controlled complexity
 		content.WriteString("    result := 0\n")
 		for c := 0; c < complexity; c++ {
@@ -622,7 +622,7 @@ func generateLargeGoFile(fileIndex, methodCount int) string {
 			content.WriteString(fmt.Sprintf("        result += %d\n", c))
 			content.WriteString("    }\n")
 		}
-		
+
 		// Add some method calls
 		if i%3 == 0 {
 			content.WriteString("    s.repo.Save(result)\n")
@@ -630,10 +630,10 @@ func generateLargeGoFile(fileIndex, methodCount int) string {
 		if i%4 == 0 {
 			content.WriteString("    fmt.Printf(\"Result: %d\\n\", result)\n")
 		}
-		
+
 		content.WriteString("    return result\n")
 		content.WriteString("}\n\n")
 	}
-	
+
 	return content.String()
 }

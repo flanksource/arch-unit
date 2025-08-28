@@ -123,13 +123,13 @@ func (ls *LinterStats) updateDebounceMetadata(tx *Tx, linterName, workDir string
 	// Get current metadata
 	var consecutiveNoViolations, consecutiveViolations int
 	var adaptationFactor float64
-	
+
 	err := tx.QueryRow(`
 		SELECT consecutive_no_violations, consecutive_violations, adaptation_factor
 		FROM debounce_metadata 
 		WHERE linter_name = ? AND work_dir = ?`,
 		linterName, workDir).Scan(&consecutiveNoViolations, &consecutiveViolations, &adaptationFactor)
-	
+
 	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
@@ -167,7 +167,7 @@ func (ls *LinterStats) GetIntelligentDebounce(linterName, workDir string) (time.
 	// Get recent execution statistics
 	var lastDuration, avgDuration time.Duration
 	var runCount int64
-	
+
 	err := ls.db.QueryRow(`
 		SELECT 
 			COALESCE(MAX(duration_ms), 0) as last_duration,
@@ -177,7 +177,7 @@ func (ls *LinterStats) GetIntelligentDebounce(linterName, workDir string) (time.
 		WHERE linter_name = ? AND work_dir = ? 
 		AND executed_at > datetime('now', '-7 days')`,
 		linterName, workDir).Scan(&lastDuration, &avgDuration, &runCount)
-	
+
 	if err != nil {
 		// Default for new linters
 		return 5 * time.Minute, nil
@@ -197,7 +197,7 @@ func (ls *LinterStats) GetIntelligentDebounce(linterName, workDir string) (time.
 	// Calculate base debounce using new thresholds
 	// Use the average duration as the primary metric
 	var baseDebounce time.Duration
-	
+
 	if runCount == 0 {
 		// New linter - default to 5 minutes
 		baseDebounce = 5 * time.Minute
@@ -220,12 +220,12 @@ func (ls *LinterStats) GetIntelligentDebounce(linterName, workDir string) (time.
 		// 15+ minutes: 8 hour debounce
 		baseDebounce = 8 * time.Hour
 	}
-	
+
 	// Apply adaptation factor to fine-tune based on violation patterns
 	if baseDebounce > 0 {
 		baseDebounce = time.Duration(float64(baseDebounce) * adaptationFactor)
 	}
-	
+
 	// Ensure reasonable bounds even with adaptation
 	// Don't let adaptation factor push debounce too extreme
 	if baseDebounce > 24*time.Hour {
@@ -279,7 +279,7 @@ func (ls *LinterStats) GetStats(linterName, workDir string) (*ExecutionStats, er
 	var lastRunStr string
 	var lastDurationMs int64
 	var avgDurationMs float64
-	
+
 	// First get the basic stats
 	err := ls.db.QueryRow(`
 		SELECT 
@@ -305,11 +305,11 @@ func (ls *LinterStats) GetStats(linterName, workDir string) (*ExecutionStats, er
 			ORDER BY executed_at DESC
 			LIMIT 1`,
 			linterName, workDir).Scan(&lastRunStr, &lastDurationMs)
-		
+
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Parse the time string
 		stats.LastRun, err = time.Parse("2006-01-02 15:04:05", lastRunStr)
 		if err != nil {
@@ -320,7 +320,7 @@ func (ls *LinterStats) GetStats(linterName, workDir string) (*ExecutionStats, er
 				stats.LastRun = time.Time{}
 			}
 		}
-		
+
 		stats.LastDuration = time.Duration(lastDurationMs) * time.Millisecond
 	} else {
 		stats.LastRun = time.Time{}

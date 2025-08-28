@@ -108,11 +108,11 @@ func (c *Cache) ShouldSkip(path string, debounceDuration time.Duration) (bool, e
 	if err != nil {
 		return false, err
 	}
-	
+
 	if entry == nil {
 		return false, nil // No previous run, don't skip
 	}
-	
+
 	timeSinceLastRun := time.Since(entry.LastRun)
 	return timeSinceLastRun < debounceDuration, nil
 }
@@ -136,7 +136,7 @@ func (c *Cache) CleanOldEntries(maxAge time.Duration) error {
 		}
 
 		cachePath := filepath.Join(c.baseDir, entry.Name())
-		
+
 		// Read the cache entry to check its LastRun time
 		data, err := os.ReadFile(cachePath)
 		if err != nil {

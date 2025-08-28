@@ -21,7 +21,7 @@ type SourceViewer struct {
 func NewSourceViewer(workingDir string, noColor bool) *SourceViewer {
 	parser := clicky.NewPrettyParser()
 	parser.NoColor = noColor
-	
+
 	return &SourceViewer{
 		prettyParser: parser,
 		workingDir:   workingDir,
@@ -48,7 +48,7 @@ func (sv *SourceViewer) ViewNodeSource(node *models.ASTNode) (*NodeSourceView, e
 	// Extract relevant lines (with some context)
 	startLine := max(1, node.StartLine-2) // Add 2 lines of context
 	endLine := min(len(sourceLines), node.EndLine+2)
-	
+
 	if startLine > len(sourceLines) {
 		return nil, fmt.Errorf("start line %d exceeds file length %d", startLine, len(sourceLines))
 	}
@@ -74,7 +74,7 @@ func (sv *SourceViewer) ViewNodeSource(node *models.ASTNode) (*NodeSourceView, e
 // ViewMultipleNodes views source for multiple AST nodes
 func (sv *SourceViewer) ViewMultipleNodes(nodes []*models.ASTNode) ([]*NodeSourceView, error) {
 	var views []*NodeSourceView
-	
+
 	for _, node := range nodes {
 		view, err := sv.ViewNodeSource(node)
 		if err != nil {
@@ -84,7 +84,7 @@ func (sv *SourceViewer) ViewMultipleNodes(nodes []*models.ASTNode) ([]*NodeSourc
 		}
 		views = append(views, view)
 	}
-	
+
 	return views, nil
 }
 
@@ -105,7 +105,7 @@ func (sv *SourceViewer) FormatSourceView(view *NodeSourceView, format string) (s
 // FormatMultipleViews formats multiple source views
 func (sv *SourceViewer) FormatMultipleViews(views []*NodeSourceView, format string) (string, error) {
 	var formatted []string
-	
+
 	for i, view := range views {
 		viewFormatted, err := sv.FormatSourceView(view, format)
 		if err != nil {
@@ -113,55 +113,55 @@ func (sv *SourceViewer) FormatMultipleViews(views []*NodeSourceView, format stri
 		}
 		formatted = append(formatted, viewFormatted)
 	}
-	
+
 	return strings.Join(formatted, "\n\n"), nil
 }
 
 // formatAsTree formats the source view as a tree structure
 func (sv *SourceViewer) formatAsTree(view *NodeSourceView) (string, error) {
 	var result strings.Builder
-	
+
 	// Header with file and node info
 	result.WriteString(fmt.Sprintf("📄 %s:%d-%d\n", view.FilePath, view.Node.StartLine, view.Node.EndLine))
 	result.WriteString(fmt.Sprintf("🔍 %s (%s)\n", view.Node.GetFullName(), view.Node.NodeType))
-	
+
 	if view.Node.CyclomaticComplexity > 0 {
-		result.WriteString(fmt.Sprintf("📊 Complexity: %d, Params: %d, Lines: %d\n", 
+		result.WriteString(fmt.Sprintf("📊 Complexity: %d, Params: %d, Lines: %d\n",
 			view.Node.CyclomaticComplexity, len(view.Node.Parameters), view.Node.LineCount))
 	}
-	
+
 	result.WriteString("─────────────────────────────────────────────────────────────\n")
-	
+
 	// Source lines with line numbers
 	for i, line := range view.SourceLines {
 		lineNum := view.StartLine + i
 		isNodeLine := lineNum >= view.Node.StartLine && lineNum <= view.Node.EndLine
-		
+
 		prefix := "  "
 		if isNodeLine {
 			prefix = "▶ " // Highlight lines that belong to the node
 		}
-		
+
 		result.WriteString(fmt.Sprintf("%s%4d │ %s\n", prefix, lineNum, line))
 	}
-	
+
 	return result.String(), nil
 }
 
 // formatAsPlain formats the source view as plain text
 func (sv *SourceViewer) formatAsPlain(view *NodeSourceView) (string, error) {
 	var result strings.Builder
-	
+
 	// Simple header
-	result.WriteString(fmt.Sprintf("%s:%d-%d %s\n", 
+	result.WriteString(fmt.Sprintf("%s:%d-%d %s\n",
 		view.FilePath, view.Node.StartLine, view.Node.EndLine, view.Node.GetFullName()))
-	
+
 	// Source lines with line numbers
 	for i, line := range view.SourceLines {
 		lineNum := view.StartLine + i
 		result.WriteString(fmt.Sprintf("%4d │ %s\n", lineNum, line))
 	}
-	
+
 	return result.String(), nil
 }
 

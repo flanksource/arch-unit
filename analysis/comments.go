@@ -25,21 +25,21 @@ type CommentQualityResult struct {
 
 // CommentAnalyzerConfig holds configuration for comment analysis
 type CommentAnalyzerConfig struct {
-	WordLimit          int     `json:"word_limit"`
-	LowCostModel       string  `json:"low_cost_model"`
+	WordLimit           int     `json:"word_limit"`
+	LowCostModel        string  `json:"low_cost_model"`
 	MinDescriptiveScore float64 `json:"min_descriptive_score"`
-	CheckVerbosity     bool    `json:"check_verbosity"`
-	Enabled            bool    `json:"enabled"`
+	CheckVerbosity      bool    `json:"check_verbosity"`
+	Enabled             bool    `json:"enabled"`
 }
 
 // DefaultCommentAnalyzerConfig returns default configuration
 func DefaultCommentAnalyzerConfig() CommentAnalyzerConfig {
 	return CommentAnalyzerConfig{
-		WordLimit:          10,
-		LowCostModel:       "claude-3-haiku-20240307",
+		WordLimit:           10,
+		LowCostModel:        "claude-3-haiku-20240307",
 		MinDescriptiveScore: 0.7,
-		CheckVerbosity:     true,
-		Enabled:            true,
+		CheckVerbosity:      true,
+		Enabled:             true,
 	}
 }
 
@@ -101,7 +101,7 @@ func (ca *CommentAnalyzer) AnalyzeComment(ctx context.Context, comment models.Co
 // AnalyzeComments analyzes multiple comments
 func (ca *CommentAnalyzer) AnalyzeComments(ctx context.Context, comments []models.Comment) ([]*CommentQualityResult, error) {
 	results := make([]*CommentQualityResult, len(comments))
-	
+
 	for i, comment := range comments {
 		result, err := ca.AnalyzeComment(ctx, comment)
 		if err != nil {
@@ -109,21 +109,21 @@ func (ca *CommentAnalyzer) AnalyzeComments(ctx context.Context, comments []model
 		}
 		results[i] = result
 	}
-	
+
 	return results, nil
 }
 
 // analyzeWithAI uses AI to analyze complex comments
 func (ca *CommentAnalyzer) analyzeWithAI(ctx context.Context, comment models.Comment) (*CommentQualityResult, error) {
 	prompt := ca.buildAnalysisPrompt(comment)
-	
+
 	request := ai.PromptRequest{
 		Name:   "comment-quality-analysis",
 		Prompt: prompt,
 		Context: map[string]string{
-			"file":    comment.Context,
-			"line":    fmt.Sprintf("%d", comment.StartLine),
-			"type":    string(comment.Type),
+			"file": comment.Context,
+			"line": fmt.Sprintf("%d", comment.StartLine),
+			"type": string(comment.Type),
 		},
 	}
 
@@ -247,10 +247,10 @@ func (ca *CommentAnalyzer) GetPoorQualityComments(results []*CommentQualityResul
 	var poor []*CommentQualityResult
 
 	for _, result := range results {
-		if result.Score < ca.config.MinDescriptiveScore || 
-		   (ca.config.CheckVerbosity && result.IsVerbose) ||
-		   !result.IsDescriptive ||
-		   len(result.Issues) > 0 {
+		if result.Score < ca.config.MinDescriptiveScore ||
+			(ca.config.CheckVerbosity && result.IsVerbose) ||
+			!result.IsDescriptive ||
+			len(result.Issues) > 0 {
 			poor = append(poor, result)
 		}
 	}

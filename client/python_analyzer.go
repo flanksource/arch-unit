@@ -142,24 +142,24 @@ func (a *PythonAnalyzer) AnalyzeFile(filePath string, rules *models.RuleSet) ([]
 		return nil, err
 	}
 	defer os.Remove(tmpFile.Name())
-	
+
 	if _, err := tmpFile.WriteString(pythonAnalyzerScript); err != nil {
 		return nil, err
 	}
 	tmpFile.Close()
-	
+
 	// Run Python analyzer
 	cmd := exec.Command("python3", tmpFile.Name(), filePath)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to analyze Python file: %w", err)
 	}
-	
+
 	var calls []PythonCall
 	if err := json.Unmarshal(output, &calls); err != nil {
 		return nil, fmt.Errorf("failed to parse Python analyzer output: %w", err)
 	}
-	
+
 	// Check for violations
 	var violations []models.Violation
 	for _, call := range calls {
@@ -184,7 +184,7 @@ func (a *PythonAnalyzer) AnalyzeFile(filePath string, rules *models.RuleSet) ([]
 			}
 		}
 	}
-	
+
 	return violations, nil
 }
 
@@ -194,22 +194,22 @@ func AnalyzePythonFiles(rootDir string, files []string, ruleSets []models.RuleSe
 	result := &models.AnalysisResult{
 		FileCount: len(files),
 	}
-	
+
 	for _, file := range files {
 		rules := parser.GetRulesForFile(file, ruleSets)
 		if rules != nil {
 			result.RuleCount += len(rules.Rules)
 		}
-		
+
 		violations, err := analyzer.AnalyzeFile(file, rules)
 		if err != nil {
 			// Skip files with errors
 			continue
 		}
-		
+
 		result.Violations = append(result.Violations, violations...)
 	}
-	
+
 	return result, nil
 }
 
@@ -238,7 +238,7 @@ func (a *PythonAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) 
 
 	// Create and run the Python AST extraction script
 	script := pythonASTExtractionScript
-	
+
 	// Create temp script file
 	tmpFile, err := os.CreateTemp("", "python_ast_*.py")
 	if err != nil {
@@ -246,26 +246,26 @@ func (a *PythonAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) 
 	}
 	defer os.Remove(tmpFile.Name())
 	defer tmpFile.Close()
-	
+
 	if _, err := tmpFile.WriteString(script); err != nil {
 		return nil, fmt.Errorf("failed to write script: %w", err)
 	}
-	
+
 	// Execute the script
 	cmd := exec.Command("python3", tmpFile.Name(), filePath)
 	cmd.Dir = a.rootDir
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("python analysis failed: %w - output: %s", err, string(output))
 	}
-	
+
 	// Parse the JSON output
 	var pythonAST PythonASTData
 	if err := json.Unmarshal(output, &pythonAST); err != nil {
 		return nil, fmt.Errorf("failed to parse python AST JSON: %w", err)
 	}
-	
+
 	// Convert to GenericAST
 	genericAST := &models.GenericAST{
 		Language:    "python",
@@ -278,7 +278,7 @@ func (a *PythonAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) 
 		Comments:    []models.Comment{},
 		Imports:     []models.Import{},
 	}
-	
+
 	// Convert imports
 	for _, imp := range pythonAST.Imports {
 		genericImport := models.Import{
@@ -288,7 +288,7 @@ func (a *PythonAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) 
 		}
 		genericAST.Imports = append(genericAST.Imports, genericImport)
 	}
-	
+
 	// Convert functions
 	for _, fn := range pythonAST.Functions {
 		function := models.Function{
@@ -301,7 +301,7 @@ func (a *PythonAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) 
 			Comments:   []models.Comment{},
 			IsExported: !strings.HasPrefix(fn.Name, "_"), // Python convention
 		}
-		
+
 		// Convert parameters
 		for _, param := range fn.Parameters {
 			parameter := models.Parameter{
@@ -311,7 +311,7 @@ func (a *PythonAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) 
 			}
 			function.Parameters = append(function.Parameters, parameter)
 		}
-		
+
 		// Convert function comments
 		for _, comment := range fn.Comments {
 			genericComment := models.NewComment(
@@ -323,10 +323,10 @@ func (a *PythonAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) 
 			)
 			function.Comments = append(function.Comments, genericComment)
 		}
-		
+
 		genericAST.Functions = append(genericAST.Functions, function)
 	}
-	
+
 	// Convert classes (as types)
 	for _, cls := range pythonAST.Classes {
 		typeDef := models.TypeDefinition{
@@ -341,7 +341,7 @@ func (a *PythonAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) 
 			Comments:   []models.Comment{},
 			IsExported: !strings.HasPrefix(cls.Name, "_"),
 		}
-		
+
 		// Convert methods as functions
 		for _, method := range cls.Methods {
 			methodFunc := models.Function{
@@ -354,7 +354,7 @@ func (a *PythonAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) 
 				Comments:   []models.Comment{},
 				IsExported: !strings.HasPrefix(method.Name, "_"),
 			}
-			
+
 			for _, param := range method.Parameters {
 				parameter := models.Parameter{
 					Name:       param.Name,
@@ -363,10 +363,10 @@ func (a *PythonAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) 
 				}
 				methodFunc.Parameters = append(methodFunc.Parameters, parameter)
 			}
-			
+
 			typeDef.Methods = append(typeDef.Methods, methodFunc)
 		}
-		
+
 		// Convert class comments
 		for _, comment := range cls.Comments {
 			genericComment := models.NewComment(
@@ -378,10 +378,10 @@ func (a *PythonAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) 
 			)
 			typeDef.Comments = append(typeDef.Comments, genericComment)
 		}
-		
+
 		genericAST.Types = append(genericAST.Types, typeDef)
 	}
-	
+
 	// Convert variables
 	for _, variable := range pythonAST.Variables {
 		genericVar := models.Variable{
@@ -395,7 +395,7 @@ func (a *PythonAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) 
 		}
 		genericAST.Variables = append(genericAST.Variables, genericVar)
 	}
-	
+
 	// Convert comments
 	for _, comment := range pythonAST.Comments {
 		genericComment := models.NewComment(
@@ -407,7 +407,7 @@ func (a *PythonAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) 
 		)
 		genericAST.Comments = append(genericAST.Comments, genericComment)
 	}
-	
+
 	return genericAST, nil
 }
 
@@ -436,11 +436,11 @@ type PythonFunction struct {
 }
 
 type PythonClass struct {
-	Name      string            `json:"name"`
-	StartLine int               `json:"start_line"`
-	EndLine   int               `json:"end_line"`
-	Methods   []PythonFunction  `json:"methods"`
-	Comments  []PythonComment   `json:"comments"`
+	Name      string           `json:"name"`
+	StartLine int              `json:"start_line"`
+	EndLine   int              `json:"end_line"`
+	Methods   []PythonFunction `json:"methods"`
+	Comments  []PythonComment  `json:"comments"`
 }
 
 type PythonVariable struct {
@@ -656,12 +656,12 @@ if __name__ == "__main__":
 
 func FindSourceFiles(rootDir string) ([]string, []string, error) {
 	var goFiles, pythonFiles []string
-	
+
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
-		
+
 		if info.IsDir() {
 			// Skip vendor and hidden directories
 			if info.Name() == "vendor" || info.Name() == ".git" || strings.HasPrefix(info.Name(), ".") {
@@ -669,21 +669,21 @@ func FindSourceFiles(rootDir string) ([]string, []string, error) {
 			}
 			return nil
 		}
-		
+
 		// Store relative path
 		relPath, err := filepath.Rel(".", path)
 		if err != nil || strings.HasPrefix(relPath, "..") {
 			relPath = path
 		}
-		
+
 		if IsGoFile(path) {
 			goFiles = append(goFiles, relPath)
 		} else if IsPythonFile(path) {
 			pythonFiles = append(pythonFiles, relPath)
 		}
-		
+
 		return nil
 	})
-	
+
 	return goFiles, pythonFiles, err
 }

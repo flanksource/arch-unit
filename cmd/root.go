@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/commons/logger"
 	"github.com/spf13/cobra"
@@ -35,6 +36,13 @@ var rootCmd = &cobra.Command{
 code dependencies and method calls based on rules defined in .ARCHUNIT files.
 
 It supports both Go and Python codebases and uses AST parsing to identify violations.`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Run migrations before any command execution
+		if err := runMigrations(); err != nil {
+			logger.Errorf("Failed to run migrations: %v", err)
+			os.Exit(1)
+		}
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if showVersion {
 			vInfo := VersionInfo{
@@ -60,6 +68,7 @@ It supports both Go and Python codebases and uses AST parsing to identify violat
 
 			output, err := clicky.Format(vInfo)
 			if err != nil {
+				fmt.Println(err.Error())
 				// Fallback to simple output
 				if getVersionInfo != nil {
 					version, commit, date, isDirty := getVersionInfo()
@@ -92,6 +101,17 @@ func Execute() {
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
+}
+
+// runMigrations executes all pending cache migrations
+func runMigrations() error {
+	migrationManager, err := cache.NewMigrationManager()
+	if err != nil {
+		return fmt.Errorf("failed to create migration manager: %w", err)
+	}
+	defer migrationManager.Close()
+
+	return migrationManager.RunMigrations()
 }
 
 func init() {

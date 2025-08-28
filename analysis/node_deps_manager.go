@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	depsOnce    sync.Once
+	depsOnce      sync.Once
 	depsInstalled bool
-	depsError   error
+	depsError     error
 )
 
 // NodeDependenciesManager manages Node.js dependencies for parsers
@@ -26,7 +26,7 @@ type NodeDependenciesManager struct {
 func NewNodeDependenciesManager() *NodeDependenciesManager {
 	homeDir, _ := os.UserHomeDir()
 	baseDir := filepath.Join(homeDir, ".arch-unit", "node_modules")
-	
+
 	return &NodeDependenciesManager{
 		baseDir: baseDir,
 	}
@@ -45,7 +45,7 @@ func (m *NodeDependenciesManager) EnsureDependencies(ctx flanksourceContext.Cont
 			depsInstalled = true
 		}
 	})
-	
+
 	return depsError
 }
 
@@ -54,7 +54,7 @@ func (m *NodeDependenciesManager) installDependencies(ctx flanksourceContext.Con
 	// Create .arch-unit directory if it doesn't exist
 	archUnitDir := filepath.Dir(m.baseDir)
 	ctx.Infof("Creating .arch-unit directory...")
-	
+
 	if err := os.MkdirAll(archUnitDir, 0755); err != nil {
 		ctx.Errorf("Failed to create directory: %v", err)
 		return fmt.Errorf("failed to create .arch-unit directory: %w", err)
@@ -63,32 +63,32 @@ func (m *NodeDependenciesManager) installDependencies(ctx flanksourceContext.Con
 	// Check if package.json exists
 	packageJSONPath := filepath.Join(archUnitDir, "package.json")
 	ctx.Infof("Checking package.json...")
-	
+
 	if _, err := os.Stat(packageJSONPath); os.IsNotExist(err) {
 		// Create package.json
 		ctx.Infof("Creating package.json with dependencies...")
-		
+
 		packageJSON := map[string]interface{}{
 			"name":        "arch-unit-parsers",
 			"version":     "1.0.0",
 			"description": "Node.js dependencies for arch-unit AST parsers",
 			"private":     true,
 			"dependencies": map[string]string{
-				"typescript": "^5.0.0",
-				"acorn":      "^8.0.0",
-				"acorn-walk": "^8.0.0",
-				"@babel/parser": "^7.0.0",
+				"typescript":      "^5.0.0",
+				"acorn":           "^8.0.0",
+				"acorn-walk":      "^8.0.0",
+				"@babel/parser":   "^7.0.0",
 				"@babel/traverse": "^7.0.0",
-				"@babel/types": "^7.0.0",
+				"@babel/types":    "^7.0.0",
 			},
 		}
-		
+
 		data, err := json.MarshalIndent(packageJSON, "", "  ")
 		if err != nil {
 			ctx.Errorf("Failed to create package.json: %v", err)
 			return fmt.Errorf("failed to marshal package.json: %w", err)
 		}
-		
+
 		if err := os.WriteFile(packageJSONPath, data, 0644); err != nil {
 			ctx.Errorf("Failed to write package.json: %v", err)
 			return fmt.Errorf("failed to write package.json: %w", err)
@@ -97,7 +97,7 @@ func (m *NodeDependenciesManager) installDependencies(ctx flanksourceContext.Con
 
 	// Check if node_modules exists and has the required packages
 	ctx.Infof("Checking existing packages...")
-	
+
 	if m.checkDependenciesInstalled() {
 		ctx.Infof("Dependencies already installed")
 		ctx.Debugf("Node.js dependencies already installed in %s", m.baseDir)
@@ -106,20 +106,20 @@ func (m *NodeDependenciesManager) installDependencies(ctx flanksourceContext.Con
 
 	// Install dependencies
 	ctx.Infof("Installing packages with npm...")
-	
+
 	cmd := exec.Command("npm", "install", "--no-save", "--no-audit", "--no-fund")
 	cmd.Dir = archUnitDir
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// Try with yarn if npm fails
 		ctx.Warnf("npm failed, trying yarn...")
 		ctx.Debugf("npm install failed, trying yarn...")
-		
+
 		cmd = exec.Command("yarn", "install", "--silent")
 		cmd.Dir = archUnitDir
 		output, err = cmd.CombinedOutput()
-		
+
 		if err != nil {
 			ctx.Errorf("Failed to install dependencies: %v", err)
 			return fmt.Errorf("failed to install Node.js dependencies: %w\nOutput: %s", err, string(output))
@@ -128,7 +128,7 @@ func (m *NodeDependenciesManager) installDependencies(ctx flanksourceContext.Con
 
 	// Verify installation
 	ctx.Infof("Verifying installation...")
-	
+
 	if !m.checkDependenciesInstalled() {
 		ctx.Errorf("Dependencies not properly installed")
 		return fmt.Errorf("dependencies were not properly installed")
@@ -196,7 +196,7 @@ Module._resolveFilename = function(request, parent, isMain) {
 `, m.baseDir)
 
 	fullScript := moduleSetup + scriptContent
-	
+
 	if _, err := tmpFile.WriteString(fullScript); err != nil {
 		os.Remove(tmpFile.Name())
 		return "", fmt.Errorf("failed to write script: %w", err)

@@ -55,9 +55,9 @@ func (m *Markdownlint) DefaultIncludes() []string {
 // handled by the all_language_excludes macro. This only returns Markdownlint-specific excludes.
 func (m *Markdownlint) DefaultExcludes() []string {
 	return []string{
-		"*.min.md",      // Minified markdown files
-		"LICENSE*",      // License files (different writing style)
-		"CHANGELOG*",    // Changelog files (different writing style)
+		"*.min.md",   // Minified markdown files
+		"LICENSE*",   // License files (different writing style)
+		"CHANGELOG*", // Changelog files (different writing style)
 	}
 }
 
@@ -73,7 +73,7 @@ func (m *Markdownlint) GetEffectiveExcludes(language string, config *models.Conf
 		// Fallback to default excludes if no config
 		return m.DefaultExcludes()
 	}
-	
+
 	// Use the all_language_excludes macro
 	return config.GetAllLanguageExcludes(language, m.DefaultExcludes())
 }
@@ -85,7 +85,7 @@ func (m *Markdownlint) GetEffectiveIncludes(language string, config *models.Conf
 		// Fallback to default includes if no config
 		return m.DefaultIncludes()
 	}
-	
+
 	// Use the combined includes system
 	return config.GetAllLanguageIncludes(language, m.DefaultIncludes())
 }
@@ -121,20 +121,20 @@ func (m *Markdownlint) ValidateConfig(config *models.LinterConfig) error {
 // Run executes markdownlint and returns violations
 func (m *Markdownlint) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Violation, error) {
 	var args []string
-	
+
 	// Add configured args
 	if m.Config != nil {
 		args = append(args, m.Config.Args...)
 	}
-	
+
 	// Add JSON format if requested and not already present
 	if m.ForceJSON && !m.hasJSONArg(args) {
 		args = append(args, "--json")
 	}
-	
+
 	// Add extra args
 	args = append(args, m.ExtraArgs...)
-	
+
 	// Add files or default to markdown files in current directory
 	if len(m.Files) > 0 {
 		args = append(args, m.Files...)
@@ -142,16 +142,16 @@ func (m *Markdownlint) Run(ctx commonsContext.Context, task *clicky.Task) ([]mod
 		// Markdownlint needs explicit file patterns
 		args = append(args, "**/*.md")
 	}
-	
+
 	// Execute command (markdownlint-cli2 is the modern version)
 	cmdName := "markdownlint"
 	cmd := exec.CommandContext(ctx, cmdName, args...)
 	cmd.Dir = m.WorkDir
-	
+
 	logger.Infof("Executing: %s %s", cmdName, strings.Join(args, " "))
-	
+
 	output, err := cmd.CombinedOutput()
-	
+
 	// Handle markdownlint exit codes
 	// Markdownlint exits with 1 when there are violations
 	if err != nil {
@@ -163,16 +163,16 @@ func (m *Markdownlint) Run(ctx commonsContext.Context, task *clicky.Task) ([]mod
 			}
 		}
 	}
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("markdownlint execution failed: %w\nOutput:\n%s", err, string(output))
 	}
-	
+
 	// Parse JSON output if we have any
 	if len(output) == 0 {
 		return []models.Violation{}, nil
 	}
-	
+
 	return m.parseViolations(output)
 }
 
@@ -204,7 +204,7 @@ func (m *Markdownlint) parseViolations(output []byte) ([]models.Violation, error
 		// Try parsing as markdownlint-cli2 format
 		return m.parseMarkdownlintCli2(output)
 	}
-	
+
 	var violations []models.Violation
 	for filename, issues := range results {
 		for _, issue := range issues {
@@ -212,7 +212,7 @@ func (m *Markdownlint) parseViolations(output []byte) ([]models.Violation, error
 			violations = append(violations, violation)
 		}
 	}
-	
+
 	return violations, nil
 }
 
@@ -224,25 +224,25 @@ func (m *Markdownlint) parseMarkdownlintCli2(output []byte) ([]models.Violation,
 		logger.Debugf("Failed to parse markdownlint JSON output: %v\nOutput: %s", err, string(output))
 		return nil, fmt.Errorf("failed to parse markdownlint JSON output: %w", err)
 	}
-	
+
 	var violations []models.Violation
 	for _, result := range results {
 		violation := result.ToViolation(m.WorkDir)
 		violations = append(violations, violation)
 	}
-	
+
 	return violations, nil
 }
 
 // MarkdownlintIssue represents a single issue from markdownlint (cli1 format)
 type MarkdownlintIssue struct {
-	LineNumber   int      `json:"lineNumber"`
-	RuleNames    []string `json:"ruleNames"`
-	RuleDescription string `json:"ruleDescription"`
-	RuleInformation string `json:"ruleInformation,omitempty"`
-	ErrorDetail  string   `json:"errorDetail,omitempty"`
-	ErrorContext string   `json:"errorContext,omitempty"`
-	ErrorRange   []int    `json:"errorRange,omitempty"`
+	LineNumber      int      `json:"lineNumber"`
+	RuleNames       []string `json:"ruleNames"`
+	RuleDescription string   `json:"ruleDescription"`
+	RuleInformation string   `json:"ruleInformation,omitempty"`
+	ErrorDetail     string   `json:"errorDetail,omitempty"`
+	ErrorContext    string   `json:"errorContext,omitempty"`
+	ErrorRange      []int    `json:"errorRange,omitempty"`
 }
 
 // ToViolation converts a MarkdownlintIssue to a generic Violation
@@ -251,13 +251,13 @@ func (i *MarkdownlintIssue) ToViolation(workDir, filename string) models.Violati
 	if !filepath.IsAbs(filename) {
 		filename = filepath.Join(workDir, filename)
 	}
-	
+
 	// Build rule name
 	ruleName := "unknown"
 	if len(i.RuleNames) > 0 {
 		ruleName = strings.Join(i.RuleNames, "/")
 	}
-	
+
 	// Build message
 	message := i.RuleDescription
 	if i.ErrorDetail != "" {
@@ -266,13 +266,13 @@ func (i *MarkdownlintIssue) ToViolation(workDir, filename string) models.Violati
 	if i.ErrorContext != "" {
 		message = fmt.Sprintf("%s [%s]", message, i.ErrorContext)
 	}
-	
+
 	// Determine column from error range if available
 	column := 0
 	if len(i.ErrorRange) > 0 {
 		column = i.ErrorRange[0]
 	}
-	
+
 	return models.Violation{
 		File:          filename,
 		Line:          i.LineNumber,
@@ -288,14 +288,14 @@ func (i *MarkdownlintIssue) ToViolation(workDir, filename string) models.Violati
 
 // MarkdownlintCli2Result represents a single result from markdownlint-cli2
 type MarkdownlintCli2Result struct {
-	FileName        string `json:"fileName"`
-	LineNumber      int    `json:"lineNumber"`
+	FileName        string   `json:"fileName"`
+	LineNumber      int      `json:"lineNumber"`
 	RuleNames       []string `json:"ruleNames"`
-	RuleDescription string `json:"ruleDescription"`
-	RuleInformation string `json:"ruleInformation,omitempty"`
-	ErrorDetail     string `json:"errorDetail,omitempty"`
-	ErrorContext    string `json:"errorContext,omitempty"`
-	ErrorRange      []int  `json:"errorRange,omitempty"`
+	RuleDescription string   `json:"ruleDescription"`
+	RuleInformation string   `json:"ruleInformation,omitempty"`
+	ErrorDetail     string   `json:"errorDetail,omitempty"`
+	ErrorContext    string   `json:"errorContext,omitempty"`
+	ErrorRange      []int    `json:"errorRange,omitempty"`
 }
 
 // ToViolation converts a MarkdownlintCli2Result to a generic Violation

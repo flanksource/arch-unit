@@ -131,7 +131,7 @@ func runASTAnalyze(cmd *cobra.Command, args []string) error {
 
 	duration := time.Since(startTime)
 	rootTask.Infof("Analysis completed in %v", duration)
-	
+
 	// Count some basic statistics for the final log
 	totalFiles := len(results)
 	successCount := 0
@@ -143,9 +143,9 @@ func runASTAnalyze(cmd *cobra.Command, args []string) error {
 			successCount++
 		}
 	}
-	
+
 	rootTask.Infof("Analyzed %d files: %d successful, %d errors", totalFiles, successCount, errorCount)
-	
+
 	if errorCount > 0 {
 		rootTask.Warning()
 	} else {
@@ -154,6 +154,6 @@ func runASTAnalyze(cmd *cobra.Command, args []string) error {
 
 	// Wait for clicky tasks to complete
 	_ = clicky.WaitForGlobalCompletionSilent()
-	
+
 	return nil
 }

@@ -48,9 +48,9 @@ func (g *GolangciLint) DefaultIncludes() []string {
 // handled by the all_language_excludes macro. This only returns GolangciLint-specific excludes.
 func (g *GolangciLint) DefaultExcludes() []string {
 	return []string{
-		"**/*_gen.go",     // Generated Go files
-		"**/*.pb.go",      // Protocol buffer generated files
-		"**/testdata/**",  // Go test data directories
+		"**/*_gen.go",    // Generated Go files
+		"**/*.pb.go",     // Protocol buffer generated files
+		"**/testdata/**", // Go test data directories
 	}
 }
 
@@ -66,7 +66,7 @@ func (g *GolangciLint) GetEffectiveExcludes(language string, config *models.Conf
 		// Fallback to default excludes if no config
 		return g.DefaultExcludes()
 	}
-	
+
 	// Use the all_language_excludes macro
 	return config.GetAllLanguageExcludes(language, g.DefaultExcludes())
 }
@@ -78,7 +78,7 @@ func (g *GolangciLint) GetEffectiveIncludes(language string, config *models.Conf
 		// Fallback to default includes if no config
 		return g.DefaultIncludes()
 	}
-	
+
 	// Use the combined includes system
 	return config.GetAllLanguageIncludes(language, g.DefaultIncludes())
 }
@@ -115,35 +115,35 @@ func (g *GolangciLint) ValidateConfig(config *models.LinterConfig) error {
 // Run executes golangci-lint and returns violations
 func (g *GolangciLint) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Violation, error) {
 	var args []string
-	
+
 	// Add configured args
 	if g.Config != nil {
 		args = append(args, g.Config.Args...)
 	}
-	
+
 	// Add JSON format if requested and not already present
 	if g.ForceJSON && !g.hasFormatArg(args, "--out-format") {
 		args = append(args, "--out-format=json")
 	}
-	
+
 	// Add extra args
 	args = append(args, g.ExtraArgs...)
-	
+
 	// Add files or default to current directory
 	if len(g.Files) > 0 {
 		args = append(args, g.Files...)
 	} else if !g.hasPathArg(args) {
 		args = append(args, ".")
 	}
-	
+
 	// Execute command
 	cmd := exec.CommandContext(ctx, "golangci-lint", args...)
 	cmd.Dir = g.WorkDir
-	
+
 	logger.Infof("Executing: golangci-lint %s", strings.Join(args, " "))
-	
+
 	output, err := cmd.CombinedOutput()
-	
+
 	// Handle golangci-lint specific exit codes
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
@@ -154,16 +154,16 @@ func (g *GolangciLint) Run(ctx commonsContext.Context, task *clicky.Task) ([]mod
 			}
 		}
 	}
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("golangci-lint execution failed: %w\nOutput:\n%s", err, string(output))
 	}
-	
+
 	// Parse JSON output if we have any
 	if len(output) == 0 {
 		return []models.Violation{}, nil
 	}
-	
+
 	return g.parseViolations(output)
 }
 
@@ -195,13 +195,13 @@ func (g *GolangciLint) parseViolations(output []byte) ([]models.Violation, error
 		logger.Debugf("Failed to parse golangci-lint JSON output: %v\nOutput: %s", err, string(output))
 		return nil, fmt.Errorf("failed to parse golangci-lint JSON output: %w", err)
 	}
-	
+
 	var violations []models.Violation
 	for _, issue := range result.Issues {
 		violation := issue.ToViolation(g.WorkDir)
 		violations = append(violations, violation)
 	}
-	
+
 	return violations, nil
 }
 
@@ -228,7 +228,7 @@ func (issue *GolangciIssue) ToViolation(workDir string) models.Violation {
 	line := issue.Pos.Line
 	column := issue.Pos.Column
 	message := issue.Text
-	
+
 	// For typecheck errors, parse the actual location from the Text field
 	if issue.FromLinter == "typecheck" {
 		// Look for patterns like "./file.go:line:col: message" in multi-line text
@@ -257,15 +257,15 @@ func (issue *GolangciIssue) ToViolation(workDir string) models.Violation {
 			}
 		}
 	}
-	
+
 	// Clean message using the same logic as the original implementation
 	message = cleanGolangciMessage(message)
-	
+
 	// Make filename absolute if it's relative
 	if !filepath.IsAbs(filename) {
 		filename = filepath.Join(workDir, filename)
 	}
-	
+
 	return models.Violation{
 		File:          filename,
 		Line:          line,

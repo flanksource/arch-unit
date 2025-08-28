@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flanksource/arch-unit/tests/fixtures"
+	"github.com/flanksource/arch-unit/fixtures"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
 	"github.com/flanksource/gomplate/v3"
@@ -40,7 +40,7 @@ func (e *ExecFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, opt
 
 	// Prepare template context
 	templateData := make(map[string]interface{})
-	
+
 	// Use the working directory from where the command is called as base
 	// If fixture.CWD is absolute, use it directly; otherwise join with WorkDir
 	workDir := opts.WorkDir
@@ -54,7 +54,14 @@ func (e *ExecFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, opt
 		}
 	}
 	templateData["workDir"] = workDir
-	
+
+	// Merge template variables from fixture if present
+	if fixture.TemplateVars != nil {
+		for key, value := range fixture.TemplateVars {
+			templateData[key] = value
+		}
+	}
+
 	// Get flanksource context if available
 	var flanksourceCtx flanksourceContext.Context
 	var hasContext bool
@@ -62,32 +69,32 @@ func (e *ExecFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, opt
 		flanksourceCtx = fCtx
 		hasContext = true
 	}
-	
+
 	// Execute build command if specified (but skip it in task mode since build task handles it)
 	if fixture.Build != "" && !hasContext {
 		if opts.Verbose {
 			logger.Infof("🔨 Build command: %s", fixture.Build)
 		}
-		
+
 		buildCmd := exec.CommandContext(ctx, "sh", "-c", fixture.Build)
 		buildCmd.Dir = workDir
-		
+
 		var buildOut bytes.Buffer
 		buildCmd.Stdout = &buildOut
 		buildCmd.Stderr = &buildOut
-		
+
 		if err := buildCmd.Run(); err != nil {
 			result.Status = "FAIL"
 			result.Error = fmt.Sprintf("build command failed: %v\nOutput: %s", err, buildOut.String())
-			result.Duration = time.Since(start).String()
+			result.Duration = time.Since(start)
 			return result
 		}
-		
+
 		if opts.Verbose && buildOut.Len() > 0 {
 			logger.Debugf("Build output: %s", buildOut.String())
 		}
 	}
-	
+
 	// Create temp files if needed
 	tempFiles := make(map[string]*TempFileInfo)
 	if tempFileData, ok := opts.ExtraArgs["temp_files"].(map[string]interface{}); ok {
@@ -96,16 +103,16 @@ func (e *ExecFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, opt
 			if err != nil {
 				result.Status = "FAIL"
 				result.Error = fmt.Sprintf("failed to create temp file '%s': %v", name, err)
-				result.Duration = time.Since(start).String()
+				result.Duration = time.Since(start)
 				return result
 			}
 			defer os.Remove(tempFile.Path)
-			
+
 			tempFiles[name] = tempFile
 			templateData[name] = tempFile.GetTemplateData()
 		}
 	}
-	
+
 	// Determine the command to execute
 	var command string
 	if fixture.Exec != "" {
@@ -119,51 +126,51 @@ func (e *ExecFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, opt
 	} else if fixture.CLIArgs != "" {
 		command = fixture.CLIArgs
 	}
-	
+
 	if command == "" {
 		result.Status = "FAIL"
 		result.Error = "no command specified"
-		result.Duration = time.Since(start).String()
+		result.Duration = time.Since(start)
 		return result
 	}
-	
+
 	// Render command with gomplate
 	renderedCommand, err := renderTemplate(command, templateData)
 	if err != nil {
 		result.Status = "FAIL"
 		result.Error = fmt.Sprintf("failed to render command template: %v", err)
-		result.Duration = time.Since(start).String()
+		result.Duration = time.Since(start)
 		return result
 	}
-	
+
 	// Store the command in the result for JSON output
 	result.Command = renderedCommand
-	
+
 	// Log the command using appropriate logger
 	if hasContext {
 		flanksourceCtx.Infof("🚀 Exec command: %s", renderedCommand)
 	} else if opts.Verbose {
 		logger.Infof("🚀 Exec command: %s", renderedCommand)
 	}
-	
+
 	// Parse rendered command
 	args := strings.Fields(renderedCommand)
 	if len(args) == 0 {
 		result.Status = "FAIL"
 		result.Error = "no command specified"
-		result.Duration = time.Since(start).String()
+		result.Duration = time.Since(start)
 		return result
 	}
-	
+
 	// Execute the command
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = workDir
-	
+
 	// Capture output
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	
+
 	// Add environment variables from fixture
 	if envVars, ok := fixture.Expected.Properties["env"].(map[string]interface{}); ok {
 		env := os.Environ()
@@ -172,7 +179,7 @@ func (e *ExecFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, opt
 		}
 		cmd.Env = env
 	}
-	
+
 	// Run the command
 	err = cmd.Run()
 	exitCode := 0
@@ -181,21 +188,21 @@ func (e *ExecFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, opt
 	} else if err != nil && !strings.Contains(err.Error(), "exit status") {
 		result.Status = "FAIL"
 		result.Error = fmt.Sprintf("command execution failed: %v", err)
-		result.Duration = time.Since(start).String()
+		result.Duration = time.Since(start)
 		return result
 	}
-	
+
 	// Store execution results in enhanced fields
 	stdoutStr := stdout.String()
 	stderrStr := stderr.String()
-	result.Output = stdoutStr + stderrStr
+	// Output is combined from Stdout and Stderr via Out() method
 	result.ExitCode = exitCode
 	result.Stdout = stdoutStr
 	result.Stderr = stderrStr
 	result.Metadata["stdout"] = stdoutStr
 	result.Metadata["stderr"] = stderrStr
 	result.Metadata["exitCode"] = exitCode
-	
+
 	// Log results using appropriate logger
 	if hasContext {
 		flanksourceCtx.Debugf("Exit code: %d", exitCode)
@@ -214,34 +221,35 @@ func (e *ExecFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, opt
 			logger.Debugf("Stderr: %s", stderrStr)
 		}
 	}
-	
+
 	// Check for expected error
 	if fixture.Expected.Error != "" {
 		if exitCode == 0 {
 			result.Status = "FAIL"
 			result.Error = fmt.Sprintf("expected error containing '%s' but command succeeded", fixture.Expected.Error)
-			result.Duration = time.Since(start).String()
+			result.Duration = time.Since(start)
 			return result
 		}
-		if !strings.Contains(result.Output, fixture.Expected.Error) {
+		output := result.Out()
+		if !strings.Contains(output, fixture.Expected.Error) {
 			result.Status = "FAIL"
-			result.Error = fmt.Sprintf("expected error containing '%s', got: %s", fixture.Expected.Error, result.Output)
-			result.Duration = time.Since(start).String()
+			result.Error = fmt.Sprintf("expected error containing '%s', got: %s", fixture.Expected.Error, output)
+			result.Duration = time.Since(start)
 			return result
 		}
 		result.Status = "PASS"
-		result.Details = fmt.Sprintf("Got expected error with exit code %d", exitCode)
-		result.Duration = time.Since(start).String()
+		result.Metadata["details"] = fmt.Sprintf("Got expected error with exit code %d", exitCode)
+		result.Duration = time.Since(start)
 		return result
 	}
-	
+
 	// For non-error cases, check exit code
 	if fixture.Expected.Properties != nil {
 		if expectedCode, ok := fixture.Expected.Properties["exitCode"].(int); ok {
 			if exitCode != expectedCode {
 				result.Status = "FAIL"
 				result.Error = fmt.Sprintf("expected exit code %d, got %d", expectedCode, exitCode)
-				result.Duration = time.Since(start).String()
+				result.Duration = time.Since(start)
 				return result
 			}
 		}
@@ -249,29 +257,30 @@ func (e *ExecFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, opt
 		// Default: expect success (exit code 0)
 		result.Status = "FAIL"
 		result.Error = fmt.Sprintf("command failed with exit code %d: %s", exitCode, stderrStr)
-		result.Duration = time.Since(start).String()
+		result.Duration = time.Since(start)
 		return result
 	}
-	
+
 	// Check expected output
 	if fixture.Expected.Output != "" {
-		if !strings.Contains(result.Output, fixture.Expected.Output) {
+		output := result.Out()
+		if !strings.Contains(output, fixture.Expected.Output) {
 			result.Status = "FAIL"
-			result.Error = fmt.Sprintf("output should contain '%s', got: %s", fixture.Expected.Output, result.Output)
-			result.Duration = time.Since(start).String()
+			result.Error = fmt.Sprintf("output should contain '%s', got: %s", fixture.Expected.Output, output)
+			result.Duration = time.Since(start)
 			return result
 		}
 	}
-	
+
 	// Prepare CEL evaluation context
 	if fixture.CEL != "" && fixture.CEL != "true" && opts.Evaluator != nil {
 		celContext := map[string]interface{}{
 			"stdout":   stdoutStr,
 			"stderr":   stderrStr,
 			"exitCode": exitCode,
-			"output":   result.Output,
+			"output":   result.Out(),
 		}
-		
+
 		// Try to parse JSON output if it looks like JSON
 		if strings.HasPrefix(strings.TrimSpace(stdoutStr), "{") || strings.HasPrefix(strings.TrimSpace(stdoutStr), "[") {
 			var jsonData interface{}
@@ -280,30 +289,30 @@ func (e *ExecFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, opt
 				result.Metadata["json"] = jsonData
 			}
 		}
-		
+
 		// Add temp file data to CEL context
 		for name, tempFile := range tempFiles {
 			celContext[name] = tempFile.GetCELData()
 		}
-		
+
 		valid, err := opts.Evaluator.EvaluateResult(fixture.CEL, celContext)
 		if err != nil {
 			result.Status = "FAIL"
 			result.Error = fmt.Sprintf("CEL evaluation failed: %v", err)
-			result.Duration = time.Since(start).String()
+			result.Duration = time.Since(start)
 			return result
 		}
 		result.CELResult = valid
 		if !valid {
 			result.Status = "FAIL"
 			result.Error = fmt.Sprintf("CEL validation failed: %s", fixture.CEL)
-			result.Duration = time.Since(start).String()
+			result.Duration = time.Since(start)
 			return result
 		}
 	}
-	
+
 	result.Status = "PASS"
-	result.Duration = time.Since(start).String()
+	result.Duration = time.Since(start)
 	return result
 }
 
@@ -336,17 +345,17 @@ type TempFileInfo struct {
 // GetTemplateData returns data for gomplate templates
 func (t *TempFileInfo) GetTemplateData() map[string]interface{} {
 	return map[string]interface{}{
-		"path":      t.Path,
-		"content":   t.Content,
-		"ext":       t.Extension,
-		"detected":  t.Detected,
+		"path":     t.Path,
+		"content":  t.Content,
+		"ext":      t.Extension,
+		"detected": t.Detected,
 	}
 }
 
 // GetCELData returns data for CEL evaluation
 func (t *TempFileInfo) GetCELData() map[string]interface{} {
 	data := t.GetTemplateData()
-	
+
 	// Try to parse as JSON if it looks like JSON
 	if strings.HasPrefix(strings.TrimSpace(t.Content), "{") || strings.HasPrefix(strings.TrimSpace(t.Content), "[") {
 		var jsonData interface{}
@@ -354,7 +363,7 @@ func (t *TempFileInfo) GetCELData() map[string]interface{} {
 			data["json"] = jsonData
 		}
 	}
-	
+
 	return data
 }
 
@@ -365,13 +374,13 @@ func createTempFile(name, content string) (*TempFileInfo, error) {
 	if ext == "" {
 		ext = ".tmp"
 	}
-	
+
 	// Create temp file
 	tmpFile, err := ioutil.TempFile("", fmt.Sprintf("fixture-%s-*%s", name, ext))
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Write content
 	if _, err := tmpFile.WriteString(content); err != nil {
 		tmpFile.Close()
@@ -379,7 +388,7 @@ func createTempFile(name, content string) (*TempFileInfo, error) {
 		return nil, err
 	}
 	tmpFile.Close()
-	
+
 	// Detect file type (simplified - would use libmagic in production)
 	detected := "text"
 	if strings.HasPrefix(content, "{") || strings.HasPrefix(content, "[") {
@@ -389,7 +398,7 @@ func createTempFile(name, content string) (*TempFileInfo, error) {
 	} else if strings.HasPrefix(content, "---\n") {
 		detected = "yaml"
 	}
-	
+
 	return &TempFileInfo{
 		Path:      tmpFile.Name(),
 		Content:   content,
@@ -404,12 +413,12 @@ func renderTemplate(template string, data map[string]interface{}) (string, error
 	tmpl := gomplate.Template{
 		Template: template,
 	}
-	
+
 	result, err := gomplate.RunTemplate(data, tmpl)
 	if err != nil {
 		return "", fmt.Errorf("failed to render template: %w", err)
 	}
-	
+
 	return result, nil
 }
 

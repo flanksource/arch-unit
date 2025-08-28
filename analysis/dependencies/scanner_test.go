@@ -31,25 +31,25 @@ func TestDeduplication(t *testing.T) {
 	// Create test dependencies with duplicates
 	deps1 := []*models.Dependency{
 		{
-			Name:     "golang.org/x/exp",
-			Version:  "v0.0.0-20241108190413-2d47ceb2692f",
-			Type:     models.DependencyTypeGo,
+			Name:    "golang.org/x/exp",
+			Version: "v0.0.0-20241108190413-2d47ceb2692f",
+			Type:    models.DependencyTypeGo,
 
-			Git:      "https://github.com/golang/exp",
+			Git: "https://github.com/golang/exp",
 		},
 		{
-			Name:     "github.com/stretchr/testify",
-			Version:  "v1.8.0",
-			Type:     models.DependencyTypeGo,
+			Name:    "github.com/stretchr/testify",
+			Version: "v1.8.0",
+			Type:    models.DependencyTypeGo,
 
-			Git:      "https://github.com/stretchr/testify",
+			Git: "https://github.com/stretchr/testify",
 		},
 	}
 
 	deps2 := []*models.Dependency{
 		{
 			Name:     "golang.org/x/exp",
-			Version:  "",  // Missing version to test merge
+			Version:  "",                      // Missing version to test merge
 			Type:     models.DependencyTypeGo, // Same type now for proper deduplication
 			Language: "go",
 			Git:      "", // Missing Git URL - should be filled from deps1
@@ -81,13 +81,13 @@ func TestDeduplication(t *testing.T) {
 
 	// Mock directory scan - we'll manually call the deduplication logic
 	depMap := make(map[string]*models.Dependency)
-	
+
 	// Process first set
 	for _, dep := range deps1 {
 		key := scanner.getDependencyKey(dep)
 		depMap[key] = dep
 	}
-	
+
 	// Process second set with deduplication
 	for _, dep := range deps2 {
 		key := scanner.getDependencyKey(dep)
@@ -106,21 +106,21 @@ func TestDeduplication(t *testing.T) {
 			depMap[key] = dep
 		}
 	}
-	
+
 	// Convert to slice
 	var result []*models.Dependency
 	for _, dep := range depMap {
 		result = append(result, dep)
 	}
-	
+
 	// Assertions
 	assert.Equal(t, 3, len(result), "Should have 3 unique dependencies after deduplication")
-	
+
 	// Check that golang.org/x/exp was properly deduplicated and merged
 	expFound := false
 	testifyFound := false
 	cobraFound := false
-	
+
 	for _, dep := range result {
 		if dep.Name == "golang.org/x/exp" {
 			expFound = true
@@ -146,15 +146,15 @@ func TestDeduplication(t *testing.T) {
 func TestPrettySortTags(t *testing.T) {
 	// Test that the Dependency struct has the correct pretty sort tags
 	// This test uses reflection to verify the struct tags
-	
+
 	dep := models.Dependency{}
 	depType := reflect.TypeOf(dep)
-	
+
 	// Language field removed - check Type field instead
 	typeField, _ := depType.FieldByName("Type")
 	typePrettyTag := typeField.Tag.Get("pretty")
 	assert.Contains(t, typePrettyTag, "Type", "Type field should have pretty tag")
-	
+
 	// Check Name field has sort=2
 	nameField, _ := depType.FieldByName("Name")
 	namePrettyTag := nameField.Tag.Get("pretty")
@@ -173,13 +173,13 @@ func TestSorting(t *testing.T) {
 		{Name: "axios"},
 		{Name: "viper"},
 	}
-	
+
 	// Sort by name only since Language field was removed
 	// This mimics what clicky should do based on the sort tags
 	sort.Slice(deps, func(i, j int) bool {
 		return deps[i].Name < deps[j].Name
 	})
-	
+
 	// Verify the sort order by name
 	expected := []string{
 		"axios",
@@ -191,9 +191,9 @@ func TestSorting(t *testing.T) {
 		"requests",
 		"viper",
 	}
-	
+
 	assert.Equal(t, len(expected), len(deps), "Should have same number of dependencies")
-	
+
 	for i, expName := range expected {
 		assert.Equal(t, expName, deps[i].Name, "Name at position %d should match", i)
 	}
@@ -201,23 +201,23 @@ func TestSorting(t *testing.T) {
 
 func TestFiltering(t *testing.T) {
 	scanner := NewScanner()
-	
+
 	deps := []*models.Dependency{
 		{Name: "github.com/spf13/cobra", Git: "https://github.com/spf13/cobra"},
 		{Name: "golang.org/x/exp", Git: "https://github.com/golang/exp"},
-		{Name: "express", Git: ""},  // npm packages don't have Git URLs
-		{Name: "flask", Git: ""},    // pip packages don't have Git URLs
+		{Name: "express", Git: ""}, // npm packages don't have Git URLs
+		{Name: "flask", Git: ""},   // pip packages don't have Git URLs
 	}
-	
+
 	// Test Git filter with exclusion - only applies to deps with Git URLs
 	scanner.SetFilters(nil, []string{"!*github.com/golang/*"})
 	filtered := scanner.applyFilters(deps)
 	assert.Equal(t, 1, len(filtered), "Should only include cobra (golang excluded, npm/pip have no Git)")
-	
+
 	for _, dep := range filtered {
 		assert.NotContains(t, dep.Git, "github.com/golang/", "Should not contain golang packages")
 	}
-	
+
 	// Test name filter
 	scanner.SetFilters([]string{"*cobra*", "express"}, nil)
 	filtered = scanner.applyFilters(deps)

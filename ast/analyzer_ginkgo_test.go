@@ -25,7 +25,7 @@ var _ = Describe("AST Analyzer", func() {
 		cacheTmpDir := GinkgoT().TempDir()
 		astCache, err = cache.NewASTCacheWithPath(cacheTmpDir)
 		Expect(err).NotTo(HaveOccurred())
-		
+
 		analyzer = ast.NewAnalyzer(astCache, tmpDir)
 	})
 
@@ -175,28 +175,28 @@ func (s *AdminService) GetAdmin(id string) string {
 		It("should find specific type patterns", func() {
 			nodes, err := analyzer.QueryPattern("*Service")
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			var serviceTypes []string
 			for _, node := range nodes {
 				if node.NodeType == "type" {
 					serviceTypes = append(serviceTypes, node.TypeName)
 				}
 			}
-			
+
 			Expect(serviceTypes).To(ContainElements("UserService", "AdminService"))
 		})
 
 		It("should find method patterns", func() {
 			nodes, err := analyzer.QueryPattern("*Service:Get*")
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			var methodNames []string
 			for _, node := range nodes {
 				if node.NodeType == "method" && node.MethodName != "" {
 					methodNames = append(methodNames, node.MethodName)
 				}
 			}
-			
+
 			Expect(methodNames).To(ContainElements("GetUser", "GetAdmin"))
 		})
 	})
@@ -243,15 +243,15 @@ func main() {}`
 			It("should return accurate statistics", func() {
 				stats, err := analyzer.GetCacheStats()
 				Expect(err).NotTo(HaveOccurred())
-				
-				GinkgoWriter.Printf("TotalNodes: %d, CachedFiles: %d, TotalFiles: %d, LastUpdated: %s\n", 
+
+				GinkgoWriter.Printf("TotalNodes: %d, CachedFiles: %d, TotalFiles: %d, LastUpdated: %s\n",
 					stats.TotalNodes, stats.CachedFiles, stats.TotalFiles, stats.LastUpdated)
-				
+
 				// Debug: Check what's actually in the database
 				rows, err := astCache.QueryRaw("SELECT last_modified FROM ast_nodes LIMIT 3")
 				Expect(err).NotTo(HaveOccurred())
 				defer rows.Close()
-				
+
 				var timestamps []string
 				for rows.Next() {
 					var timestamp *time.Time
@@ -264,7 +264,7 @@ func main() {}`
 					}
 				}
 				GinkgoWriter.Printf("Database timestamps: %v\n", timestamps)
-				
+
 				// Debug: Test the exact MAX query that GetCacheStats uses
 				var maxTimestamp *time.Time
 				err = astCache.QueryRow("SELECT MAX(last_modified) FROM ast_nodes").Scan(&maxTimestamp)
@@ -274,7 +274,7 @@ func main() {}`
 				} else {
 					GinkgoWriter.Printf("MAX timestamp: NULL\n")
 				}
-				
+
 				Expect(stats.TotalNodes).To(BeNumerically(">", 0), "Should have AST nodes after analysis")
 				Expect(stats.CachedFiles).To(BeNumerically(">", 0), "Should have cached files")
 				Expect(stats.TotalFiles).To(BeNumerically(">=", stats.CachedFiles), "Total files should be >= cached files")
@@ -293,7 +293,7 @@ func main() {}`
 				emptyCacheTmpDir := GinkgoT().TempDir()
 				emptyCache, err = cache.NewASTCacheWithPath(emptyCacheTmpDir)
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				emptyAnalyzer = ast.NewAnalyzer(emptyCache, emptyTmpDir)
 			})
 
@@ -306,7 +306,7 @@ func main() {}`
 			It("should return zero statistics", func() {
 				stats, err := emptyAnalyzer.GetCacheStats()
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				Expect(stats.TotalNodes).To(Equal(0))
 				Expect(stats.CachedFiles).To(Equal(0))
 			})

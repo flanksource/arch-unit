@@ -451,10 +451,10 @@ func BenchmarkGoASTExtractor_LargeFile(b *testing.B) {
 	// Create large Go file
 	tmpDir := b.TempDir()
 	largeFile := filepath.Join(tmpDir, "large.go")
-	
+
 	var content strings.Builder
 	content.WriteString("package main\n\n")
-	
+
 	// Generate 1000 functions
 	for i := 0; i < 1000; i++ {
 		content.WriteString(fmt.Sprintf(`func function%d() {
@@ -478,12 +478,12 @@ func BenchmarkGoASTExtractor_LargeFile(b *testing.B) {
 	require.NoError(b, os.WriteFile(largeFile, []byte(content.String()), 0644))
 
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		// Clear cache between runs
 		err := astCache.DeleteASTForFile(largeFile)
 		require.NoError(b, err)
-		
+
 		err = extractor.ExtractFile(largeFile)
 		require.NoError(b, err)
 	}

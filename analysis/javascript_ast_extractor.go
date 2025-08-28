@@ -197,7 +197,7 @@ func (e *JavaScriptASTExtractor) ExtractFile(ctx flanksourceContext.Context, fil
 // extractPackageName extracts package name from file path or package.json
 func (e *JavaScriptASTExtractor) extractPackageName(filePath string) string {
 	dir := filepath.Dir(filePath)
-	
+
 	// Look for package.json
 	for currentDir := dir; currentDir != "/" && currentDir != ""; currentDir = filepath.Dir(currentDir) {
 		packageJSONPath := filepath.Join(currentDir, "package.json")
@@ -210,7 +210,7 @@ func (e *JavaScriptASTExtractor) extractPackageName(filePath string) string {
 			}
 		}
 	}
-	
+
 	// Default to directory structure
 	parts := strings.Split(dir, string(filepath.Separator))
 	for i := len(parts) - 1; i >= 0; i-- {
@@ -220,7 +220,7 @@ func (e *JavaScriptASTExtractor) extractPackageName(filePath string) string {
 			}
 		}
 	}
-	
+
 	// Default to last directory name
 	if len(parts) > 0 {
 		return parts[len(parts)-1]
@@ -286,11 +286,11 @@ func (e *JavaScriptASTExtractor) mapRelationshipType(jsRelType string) string {
 // getNodeFullName returns the full qualified name of a JavaScript node
 func (e *JavaScriptASTExtractor) getNodeFullName(node JavaScriptASTNode) string {
 	parts := []string{e.packageName}
-	
+
 	if node.Parent != "" {
 		parts = append(parts, node.Parent)
 	}
-	
+
 	parts = append(parts, node.Name)
 	return strings.Join(parts, ".")
 }

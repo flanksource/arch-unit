@@ -39,27 +39,27 @@ type fileInfo struct {
 // AnalyzeFiles analyzes all source files in the working directory
 func (a *Analyzer) AnalyzeFiles() error {
 	startTime := time.Now()
-	
+
 	// Create a context for the entire analysis
 	ctx := flanksourceContext.NewContext(context.Background())
 	ctx.Infof("🔍 Starting AST analysis in %s", a.workDir)
-	
+
 	// Find all source files
 	var sourceFiles []fileInfo
 	err := filepath.Walk(a.workDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		
+
 		// Skip vendor and .git directories
-		if strings.Contains(path, "/vendor/") || strings.Contains(path, "/.git/") || 
-		   strings.Contains(path, "/node_modules/") || strings.Contains(path, "/__pycache__/") {
+		if strings.Contains(path, "/vendor/") || strings.Contains(path, "/.git/") ||
+			strings.Contains(path, "/node_modules/") || strings.Contains(path, "/__pycache__/") {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		
+
 		if !info.IsDir() {
 			// Detect language based on file extension
 			var lang string
@@ -68,70 +68,70 @@ func (a *Analyzer) AnalyzeFiles() error {
 				lang = "go"
 			case strings.HasSuffix(path, ".py"):
 				lang = "python"
-			case strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".jsx") || 
-			     strings.HasSuffix(path, ".mjs") || strings.HasSuffix(path, ".cjs"):
+			case strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".jsx") ||
+				strings.HasSuffix(path, ".mjs") || strings.HasSuffix(path, ".cjs"):
 				lang = "javascript"
 			case strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".tsx"):
 				lang = "typescript"
-			case strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".markdown") || 
-			     strings.HasSuffix(path, ".mdx"):
+			case strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".markdown") ||
+				strings.HasSuffix(path, ".mdx"):
 				lang = "markdown"
 			default:
 				return nil // Skip unsupported files
 			}
-			
+
 			sourceFiles = append(sourceFiles, fileInfo{path: path, language: lang})
 		}
 		return nil
 	})
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to find source files: %w", err)
 	}
-	
+
 	if len(sourceFiles) == 0 {
 		ctx.Infof("No supported source files found in %s", a.workDir)
 		return nil
 	}
-	
+
 	// Count files by language
 	langCounts := make(map[string]int)
 	for _, file := range sourceFiles {
 		langCounts[file.language]++
 	}
-	
+
 	ctx.Infof("Found %d source files:", len(sourceFiles))
 	for lang, count := range langCounts {
 		ctx.Infof("  %s: %d files", lang, count)
 	}
-	
+
 	// Initialize library resolver
 	libResolver := analysis.NewLibraryResolver(a.cache)
 	if err := libResolver.StoreLibraryNodes(); err != nil {
 		ctx.Warnf("Failed to store library nodes: %v", err)
 	}
-	
+
 	// Create extractors for each language
 	goExtractor := analysis.NewGoASTExtractor(a.cache)
 	pythonExtractor := analysis.NewPythonASTExtractor(a.cache)
 	jsExtractor := analysis.NewJavaScriptASTExtractor(a.cache)
 	tsExtractor := analysis.NewTypeScriptASTExtractor(a.cache)
 	mdExtractor := analysis.NewMarkdownASTExtractor(a.cache)
-	
+
 	ctx.Infof("📊 Analyzing %d source files...", len(sourceFiles))
-	
+
 	// Track statistics
 	processedCount := 0
 	errorCount := 0
 	cachedCount := 0
-	
+
 	// Process files
 	for i, file := range sourceFiles {
 		if i > 0 && i%10 == 0 {
-			ctx.Infof("⏳ Progress: %d/%d files (%.1f%%), %d cached, %d errors", 
+			ctx.Infof("⏳ Progress: %d/%d files (%.1f%%), %d cached, %d errors",
 				i, len(sourceFiles), float64(i)/float64(len(sourceFiles))*100, cachedCount, errorCount)
 		}
-		
+
 		// Check if already cached
 		relPath, _ := filepath.Rel(a.workDir, file.path)
 		needsAnalysis, err := a.cache.NeedsReanalysis(file.path)
@@ -140,7 +140,7 @@ func (a *Analyzer) AnalyzeFiles() error {
 			ctx.Debugf("✓ Using cached AST for %s", relPath)
 			continue
 		}
-		
+
 		ctx.Debugf("🔨 Extracting AST from %s (%s)", relPath, file.language)
 		switch file.language {
 		case "go":
@@ -154,7 +154,7 @@ func (a *Analyzer) AnalyzeFiles() error {
 		case "markdown":
 			err = mdExtractor.ExtractFile(ctx, file.path)
 		}
-		
+
 		if err != nil {
 			errorCount++
 			ctx.Warnf("❌ Failed to extract AST from %s: %v", relPath, err)
@@ -162,10 +162,10 @@ func (a *Analyzer) AnalyzeFiles() error {
 		}
 		processedCount++
 	}
-	
+
 	elapsed := time.Since(startTime)
 	ctx.Infof("✅ AST analysis completed in %.2fs", elapsed.Seconds())
-	ctx.Infof("📈 Processed: %d new, %d cached, %d errors (total: %d files)", 
+	ctx.Infof("📈 Processed: %d new, %d cached, %d errors (total: %d files)",
 		processedCount, cachedCount, errorCount, len(sourceFiles))
 	return nil
 }
@@ -175,29 +175,29 @@ func (a *Analyzer) AnalyzeFilesWithFilter(includePatterns, excludePatterns []str
 	// Create a context for the entire analysis
 	ctx := flanksourceContext.NewContext(context.Background())
 	ctx.Infof("Starting AST analysis in %s", a.workDir)
-	
+
 	// Find all source files
 	var sourceFiles []fileInfo
 	err := filepath.Walk(a.workDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		
+
 		// Skip vendor and .git directories
-		if strings.Contains(path, "/vendor/") || strings.Contains(path, "/.git/") || 
-		   strings.Contains(path, "/node_modules/") || strings.Contains(path, "/__pycache__/") {
+		if strings.Contains(path, "/vendor/") || strings.Contains(path, "/.git/") ||
+			strings.Contains(path, "/node_modules/") || strings.Contains(path, "/__pycache__/") {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		
+
 		if !info.IsDir() {
 			// Check if file should be filtered
 			if !shouldIncludeFile(path, a.workDir, includePatterns, excludePatterns) {
 				return nil
 			}
-			
+
 			// Detect language based on file extension
 			var lang string
 			switch {
@@ -205,27 +205,27 @@ func (a *Analyzer) AnalyzeFilesWithFilter(includePatterns, excludePatterns []str
 				lang = "go"
 			case strings.HasSuffix(path, ".py"):
 				lang = "python"
-			case strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".jsx") || 
-			     strings.HasSuffix(path, ".mjs") || strings.HasSuffix(path, ".cjs"):
+			case strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".jsx") ||
+				strings.HasSuffix(path, ".mjs") || strings.HasSuffix(path, ".cjs"):
 				lang = "javascript"
 			case strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".tsx"):
 				lang = "typescript"
-			case strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".markdown") || 
-			     strings.HasSuffix(path, ".mdx"):
+			case strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".markdown") ||
+				strings.HasSuffix(path, ".mdx"):
 				lang = "markdown"
 			default:
 				return nil // Skip unsupported files
 			}
-			
+
 			sourceFiles = append(sourceFiles, fileInfo{path: path, language: lang})
 		}
 		return nil
 	})
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to find source files: %w", err)
 	}
-	
+
 	if len(sourceFiles) == 0 {
 		ctx.Infof("No supported source files found in %s", a.workDir)
 		if len(includePatterns) > 0 {
@@ -236,13 +236,13 @@ func (a *Analyzer) AnalyzeFilesWithFilter(includePatterns, excludePatterns []str
 		}
 		return nil
 	}
-	
+
 	// Count files by language
 	langCounts := make(map[string]int)
 	for _, file := range sourceFiles {
 		langCounts[file.language]++
 	}
-	
+
 	ctx.Infof("Found %d source files:", len(sourceFiles))
 	for lang, count := range langCounts {
 		ctx.Infof("  %s: %d files", lang, count)
@@ -253,7 +253,7 @@ func (a *Analyzer) AnalyzeFilesWithFilter(includePatterns, excludePatterns []str
 	if len(excludePatterns) > 0 {
 		ctx.Infof("Exclude patterns: %v", excludePatterns)
 	}
-	
+
 	return a.processSourceFiles(ctx, sourceFiles)
 }
 
@@ -264,7 +264,7 @@ func shouldIncludeFile(filePath, workDir string, includePatterns, excludePattern
 	if err != nil {
 		relPath = filePath
 	}
-	
+
 	// If include patterns are specified, file must match at least one
 	if len(includePatterns) > 0 {
 		matched := false
@@ -283,7 +283,7 @@ func shouldIncludeFile(filePath, workDir string, includePatterns, excludePattern
 			return false
 		}
 	}
-	
+
 	// If exclude patterns are specified, file must not match any
 	for _, pattern := range excludePatterns {
 		if match, err := doublestar.Match(pattern, relPath); err == nil && match {
@@ -294,35 +294,35 @@ func shouldIncludeFile(filePath, workDir string, includePatterns, excludePattern
 			return false
 		}
 	}
-	
+
 	return true
 }
 
 // processSourceFiles processes a list of source files
 func (a *Analyzer) processSourceFiles(ctx flanksourceContext.Context, sourceFiles []fileInfo) error {
 	ctx.Infof("Analyzing %d source files...", len(sourceFiles))
-	
+
 	// Progress tracking
 	totalFiles := len(sourceFiles)
 	processedFiles := 0
 	ctx.Infof("Progress: %d/%d files", processedFiles, totalFiles)
-	
+
 	for _, file := range sourceFiles {
 		ctx.Debugf("Processing %s (%s)", file.path, file.language)
-		
+
 		// Check if file needs reanalysis
 		needsAnalysis, err := a.cache.NeedsReanalysis(file.path)
 		if err != nil {
 			ctx.Warnf("Failed to check if %s needs reanalysis: %v", file.path, err)
 			needsAnalysis = true // Default to analyzing if unsure
 		}
-		
+
 		if !needsAnalysis {
 			ctx.Debugf("Skipping %s (cached)", file.path)
 			processedFiles++
 			continue
 		}
-		
+
 		// Extract AST based on file language
 		switch file.language {
 		case "go":
@@ -345,17 +345,17 @@ func (a *Analyzer) processSourceFiles(ctx flanksourceContext.Context, sourceFile
 			continue
 		}
 		processedFiles++
-		
+
 		if processedFiles%10 == 0 || processedFiles == totalFiles {
 			ctx.Infof("Progress: %d/%d files", processedFiles, totalFiles)
 		}
-		
+
 		if err != nil {
 			ctx.Warnf("Failed to extract AST from %s: %v", file.path, err)
 			continue
 		}
 	}
-	
+
 	ctx.Infof("AST analysis completed")
 	return nil
 }
@@ -364,17 +364,17 @@ func (a *Analyzer) processSourceFiles(ctx flanksourceContext.Context, sourceFile
 func (a *Analyzer) RebuildCache() error {
 	ctx := flanksourceContext.NewContext(context.Background())
 	ctx.Infof("Rebuilding AST cache...")
-	
+
 	// Clear existing cache
 	if err := a.cache.ClearCache(); err != nil {
 		return fmt.Errorf("failed to clear cache: %w", err)
 	}
-	
+
 	// Re-analyze all files
 	if err := a.AnalyzeFiles(); err != nil {
 		return fmt.Errorf("failed to analyze files: %w", err)
 	}
-	
+
 	ctx.Infof("AST cache rebuilt successfully")
 	return nil
 }
@@ -387,14 +387,14 @@ func (a *Analyzer) GetCacheStats() (*CacheStats, error) {
 	if err := a.cache.QueryRow(query).Scan(&totalNodes); err != nil {
 		return nil, fmt.Errorf("failed to get node count: %w", err)
 	}
-	
+
 	// Get cached files count
 	query = "SELECT COUNT(DISTINCT file_path) FROM ast_nodes"
 	var cachedFiles int
 	if err := a.cache.QueryRow(query).Scan(&cachedFiles); err != nil {
 		return nil, fmt.Errorf("failed to get file count: %w", err)
 	}
-	
+
 	// Get last update time
 	query = "SELECT MAX(last_modified) FROM ast_nodes"
 	var lastModifiedStr sql.NullString
@@ -402,26 +402,26 @@ func (a *Analyzer) GetCacheStats() (*CacheStats, error) {
 		// Ignore error if no rows
 		lastModifiedStr.Valid = false
 	}
-	
+
 	lastUpdatedStr := "Never"
 	if lastModifiedStr.Valid && lastModifiedStr.String != "" {
-		// The timestamp is stored in Go's time.String() format, so we need to strip monotonic time 
+		// The timestamp is stored in Go's time.String() format, so we need to strip monotonic time
 		// and parse it properly. First, let's try to strip the monotonic time part
 		timestampStr := lastModifiedStr.String
 		if mIdx := strings.Index(timestampStr, " m=+"); mIdx != -1 {
 			timestampStr = timestampStr[:mIdx]
 		}
-		
+
 		// Try multiple possible timestamp formats from SQLite/Go
 		formats := []string{
-			"2006-01-02 15:04:05.999999999 -0700 MST",  // Go format without monotonic
-			"2006-01-02 15:04:05.999999 -0700 MST",     // Go format with less precision  
-			"2006-01-02 15:04:05 -0700 MST",            // Go format without microseconds
-			"2006-01-02 15:04:05",                      // Standard SQL format
-			"2006-01-02 15:04",                         // SQL format without seconds
-			"2006-01-02T15:04:05Z",                     // ISO format
+			"2006-01-02 15:04:05.999999999 -0700 MST", // Go format without monotonic
+			"2006-01-02 15:04:05.999999 -0700 MST",    // Go format with less precision
+			"2006-01-02 15:04:05 -0700 MST",           // Go format without microseconds
+			"2006-01-02 15:04:05",                     // Standard SQL format
+			"2006-01-02 15:04",                        // SQL format without seconds
+			"2006-01-02T15:04:05Z",                    // ISO format
 		}
-		
+
 		for _, format := range formats {
 			if lastModified, err := time.Parse(format, timestampStr); err == nil {
 				lastUpdatedStr = lastModified.Format("2006-01-02 15:04:05")
@@ -429,23 +429,23 @@ func (a *Analyzer) GetCacheStats() (*CacheStats, error) {
 			}
 		}
 	}
-	
+
 	// Count total files in directory (for comparison)
 	totalFiles := 0
 	filepath.Walk(a.workDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
-		
+
 		// Count only supported file types
 		if strings.HasSuffix(path, ".go") || strings.HasSuffix(path, ".py") ||
-		   strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".ts") ||
-		   strings.HasSuffix(path, ".md") {
+			strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".ts") ||
+			strings.HasSuffix(path, ".md") {
 			totalFiles++
 		}
 		return nil
 	})
-	
+
 	return &CacheStats{
 		TotalFiles:  totalFiles,
 		CachedFiles: cachedFiles,
@@ -481,7 +481,6 @@ func (a *Analyzer) GetCache() *cache.ASTCache {
 	return a.cache
 }
 
-
 // GetWorkingDirectory returns the working directory
 func (a *Analyzer) GetWorkingDirectory() string {
 	return a.workDir
@@ -494,12 +493,12 @@ func (a *Analyzer) QueryPatternWithFilter(pattern string, includePatterns, exclu
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// If no file filtering is needed, return all nodes
 	if len(includePatterns) == 0 && len(excludePatterns) == 0 {
 		return nodes, nil
 	}
-	
+
 	// Filter nodes based on file patterns
 	var filteredNodes []*models.ASTNode
 	for _, node := range nodes {
@@ -507,7 +506,7 @@ func (a *Analyzer) QueryPatternWithFilter(pattern string, includePatterns, exclu
 			filteredNodes = append(filteredNodes, node)
 		}
 	}
-	
+
 	return filteredNodes, nil
 }
 
@@ -518,24 +517,24 @@ func (a *Analyzer) GetAllRelationships() ([]*models.ASTRelationship, error) {
 		FROM ast_relationships
 		ORDER BY from_ast_id, line_no
 	`
-	
+
 	rows, err := a.cache.QueryRaw(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query relationships: %w", err)
 	}
 	defer rows.Close()
-	
+
 	var relationships []*models.ASTRelationship
 	for rows.Next() {
 		rel := &models.ASTRelationship{}
-		err := rows.Scan(&rel.ID, &rel.FromASTID, &rel.ToASTID, 
+		err := rows.Scan(&rel.ID, &rel.FromASTID, &rel.ToASTID,
 			&rel.LineNo, &rel.RelationshipType, &rel.Text)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan relationship: %w", err)
 		}
 		relationships = append(relationships, rel)
 	}
-	
+
 	return relationships, rows.Err()
 }
 
@@ -548,30 +547,30 @@ func (a *Analyzer) GetLibraryRelationships() ([]*models.LibraryRelationship, err
 		LEFT JOIN library_nodes ln ON lr.library_id = ln.id
 		ORDER BY lr.ast_id, lr.line_no
 	`
-	
+
 	rows, err := a.cache.QueryRaw(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query library relationships: %w", err)
 	}
 	defer rows.Close()
-	
+
 	var relationships []*models.LibraryRelationship
 	for rows.Next() {
 		rel := &models.LibraryRelationship{}
 		libNode := &models.LibraryNode{}
-		
-		err := rows.Scan(&rel.ID, &rel.ASTID, &rel.LibraryID, &rel.LineNo, 
+
+		err := rows.Scan(&rel.ID, &rel.ASTID, &rel.LibraryID, &rel.LineNo,
 			&rel.RelationshipType, &rel.Text,
-			&libNode.ID, &libNode.Package, &libNode.Class, &libNode.Method, 
+			&libNode.ID, &libNode.Package, &libNode.Class, &libNode.Method,
 			&libNode.Field, &libNode.NodeType, &libNode.Language, &libNode.Framework)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan library relationship: %w", err)
 		}
-		
+
 		rel.LibraryNode = libNode
 		relationships = append(relationships, rel)
 	}
-	
+
 	return relationships, rows.Err()
 }
 
@@ -583,23 +582,23 @@ func (a *Analyzer) GetRelationshipsForNode(nodeID int64) ([]*models.ASTRelations
 		WHERE from_ast_id = ? OR to_ast_id = ?
 		ORDER BY line_no
 	`
-	
+
 	rows, err := a.cache.QueryRaw(query, nodeID, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query relationships for node %d: %w", nodeID, err)
 	}
 	defer rows.Close()
-	
+
 	var relationships []*models.ASTRelationship
 	for rows.Next() {
 		rel := &models.ASTRelationship{}
-		err := rows.Scan(&rel.ID, &rel.FromASTID, &rel.ToASTID, 
+		err := rows.Scan(&rel.ID, &rel.FromASTID, &rel.ToASTID,
 			&rel.LineNo, &rel.RelationshipType, &rel.Text)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan relationship: %w", err)
 		}
 		relationships = append(relationships, rel)
 	}
-	
+
 	return relationships, rows.Err()
 }

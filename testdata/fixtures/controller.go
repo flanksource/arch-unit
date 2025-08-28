@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"example.com/app/model"
 	"example.com/app/service"
+	"github.com/gin-gonic/gin"
 )
 
 // UserController handles user-related HTTP requests
@@ -75,7 +75,7 @@ func (c *UserController) CreateUser(ctx *gin.Context) {
 func (c *UserController) UpdateUser(ctx *gin.Context) {
 	id := ctx.Param("id")
 	var updateReq model.UpdateUserRequest
-	
+
 	if err := ctx.ShouldBindJSON(&updateReq); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -94,7 +94,7 @@ func (c *UserController) UpdateUser(ctx *gin.Context) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid email format"})
 			return
 		}
-		
+
 		// Check for email conflicts
 		if updateReq.Email != existingUser.Email {
 			conflictUser, err := c.userService.GetUserByEmail(updateReq.Email)
@@ -152,12 +152,12 @@ func (c *UserController) UpdateUser(ctx *gin.Context) {
 // SearchUsers searches for users with complex filtering (very high complexity)
 func (c *UserController) SearchUsers(ctx *gin.Context) {
 	var filters model.UserSearchFilters
-	
+
 	// Query parameter parsing with multiple conditions
 	if name := ctx.Query("name"); name != "" {
 		filters.Name = &name
 	}
-	
+
 	if email := ctx.Query("email"); email != "" {
 		if !isValidEmail(email) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid email format"})

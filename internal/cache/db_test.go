@@ -36,16 +36,16 @@ func TestDB_ConcurrentWrites(t *testing.T) {
 	// Test concurrent writes
 	const numGoroutines = 10
 	const writesPerGoroutine = 10
-	
+
 	var wg sync.WaitGroup
 	wg.Add(numGoroutines)
-	
+
 	startTime := time.Now()
-	
+
 	for i := 0; i < numGoroutines; i++ {
 		go func(threadID int) {
 			defer wg.Done()
-			
+
 			for j := 0; j < writesPerGoroutine; j++ {
 				value := fmt.Sprintf("thread-%d-write-%d", threadID, j)
 				_, err := db.Exec(
@@ -56,18 +56,18 @@ func TestDB_ConcurrentWrites(t *testing.T) {
 			}
 		}(i)
 	}
-	
+
 	wg.Wait()
-	
+
 	duration := time.Since(startTime)
 	t.Logf("Concurrent writes completed in %v", duration)
-	
+
 	// Verify all writes succeeded
 	var count int
 	err = db.QueryRow("SELECT COUNT(*) FROM test_table").Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, numGoroutines*writesPerGoroutine, count)
-	
+
 	// Verify writes from each thread
 	for i := 0; i < numGoroutines; i++ {
 		var threadCount int
@@ -107,67 +107,67 @@ func TestDB_TransactionIsolation(t *testing.T) {
 	// Start two transactions concurrently
 	var wg sync.WaitGroup
 	wg.Add(2)
-	
+
 	errors := make(chan error, 2)
-	
+
 	// Transaction 1: Update value
 	go func() {
 		defer wg.Done()
-		
+
 		tx, err := db.Begin()
 		if err != nil {
 			errors <- err
 			return
 		}
 		defer tx.Rollback()
-		
+
 		// Update value
 		_, err = tx.Exec("UPDATE test_table SET value = 'tx1' WHERE id = 1")
 		if err != nil {
 			errors <- err
 			return
 		}
-		
+
 		// Sleep to ensure tx2 tries to access
 		time.Sleep(50 * time.Millisecond)
-		
+
 		err = tx.Commit()
 		errors <- err
 	}()
-	
+
 	// Transaction 2: Try to update same value (should wait)
 	go func() {
 		defer wg.Done()
-		
+
 		// Wait a bit to ensure tx1 starts first
 		time.Sleep(10 * time.Millisecond)
-		
+
 		tx, err := db.Begin()
 		if err != nil {
 			errors <- err
 			return
 		}
 		defer tx.Rollback()
-		
+
 		// This should wait until tx1 completes
 		_, err = tx.Exec("UPDATE test_table SET value = 'tx2' WHERE id = 1")
 		if err != nil {
 			errors <- err
 			return
 		}
-		
+
 		err = tx.Commit()
 		errors <- err
 	}()
-	
+
 	wg.Wait()
 	close(errors)
-	
+
 	// Check for errors
 	for err := range errors {
 		assert.NoError(t, err)
 	}
-	
+
 	// Verify final value (should be tx2 since it committed last)
 	var finalValue string
 	err = db.QueryRow("SELECT value FROM test_table WHERE id = 1").Scan(&finalValue)

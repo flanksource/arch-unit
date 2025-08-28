@@ -10,9 +10,9 @@ import (
 )
 
 var (
-	viewFormat   string
-	viewNoColor  bool
-	viewContext  int
+	viewFormat  string
+	viewNoColor bool
+	viewContext int
 )
 
 var astViewCmd = &cobra.Command{

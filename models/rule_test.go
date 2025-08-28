@@ -82,11 +82,11 @@ func TestRuleMatches(t *testing.T) {
 
 func TestRuleSetIsAllowed(t *testing.T) {
 	tests := []struct {
-		name        string
-		ruleSet     RuleSet
-		pkg         string
-		method      string
-		allowed     bool
+		name         string
+		ruleSet      RuleSet
+		pkg          string
+		method       string
+		allowed      bool
 		hasViolation bool
 	}{
 		{

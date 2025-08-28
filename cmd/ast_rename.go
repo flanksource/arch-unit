@@ -11,10 +11,10 @@ import (
 )
 
 var (
-	renameDryRun    bool
-	renameNoColor   bool
-	renameShowDiff  bool
-	renameBackup    bool
+	renameDryRun   bool
+	renameNoColor  bool
+	renameShowDiff bool
+	renameBackup   bool
 )
 
 // RenameResult represents the result of a rename operation

@@ -19,7 +19,7 @@ var _ = Describe("AQL Metric Queries", func() {
 		var err error
 		astCache, err = cache.NewASTCacheWithPath(GinkgoT().TempDir())
 		Expect(err).NotTo(HaveOccurred())
-		
+
 		analyzer = ast.NewAnalyzer(astCache, "/test")
 	})
 
@@ -89,7 +89,7 @@ var _ = Describe("AQL Metric Queries", func() {
 			nodes, err := analyzer.ExecuteAQLQuery("cyclomatic(*) >= 5")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(nodes).To(HaveLen(2))
-			
+
 			methodNames := []string{nodes[0].MethodName, nodes[1].MethodName}
 			Expect(methodNames).To(ContainElement("GetUserByIDWithComplexValidation"))
 			Expect(methodNames).To(ContainElement("Validate"))

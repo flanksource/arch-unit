@@ -27,7 +27,7 @@ func main() {
 
 	// Set version info function for the cmd package
 	cmd.SetVersionInfo(GetVersionInfo)
-	
+
 	if len(os.Args) > 1 && os.Args[1] == "-version" {
 		printVersion()
 		os.Exit(0)

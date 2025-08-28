@@ -28,14 +28,14 @@ func TestASTIntegration_FullPipeline(t *testing.T) {
 	// Copy test fixtures to temp directory
 	tmpDir := t.TempDir()
 	testFixtures := []string{"controller.go", "service.go", "repository.go", "model.go"}
-	
+
 	for _, fixture := range testFixtures {
 		sourceFile := filepath.Join("../../testdata/fixtures", fixture)
 		destFile := filepath.Join(tmpDir, fixture)
-		
+
 		content, err := os.ReadFile(sourceFile)
 		require.NoError(t, err)
-		
+
 		err = os.WriteFile(destFile, content, 0644)
 		require.NoError(t, err)
 	}
@@ -75,7 +75,7 @@ func TestASTIntegration_FullPipeline(t *testing.T) {
 	for _, node := range allNodes {
 		if node.NodeType == models.NodeTypeMethod && node.CyclomaticComplexity > 10 {
 			complexMethods++
-			t.Logf("Complex method: %s.%s (complexity: %d)", 
+			t.Logf("Complex method: %s.%s (complexity: %d)",
 				node.TypeName, node.MethodName, node.CyclomaticComplexity)
 		}
 	}
@@ -91,14 +91,14 @@ func TestASTIntegration_AQLRuleExecution(t *testing.T) {
 	// Use test fixtures
 	tmpDir := t.TempDir()
 	testFixtures := []string{"controller.go", "service.go", "repository.go"}
-	
+
 	for _, fixture := range testFixtures {
 		sourceFile := filepath.Join("../../testdata/fixtures", fixture)
 		destFile := filepath.Join(tmpDir, fixture)
-		
+
 		content, err := os.ReadFile(sourceFile)
 		require.NoError(t, err)
-		
+
 		err = os.WriteFile(destFile, content, 0644)
 		require.NoError(t, err)
 	}
@@ -177,14 +177,14 @@ func TestASTIntegration_AQLRuleExecution(t *testing.T) {
 			require.NoError(t, err)
 
 			violationCount := len(violations)
-			assert.GreaterOrEqual(t, violationCount, tc.minViolations, 
+			assert.GreaterOrEqual(t, violationCount, tc.minViolations,
 				"Should have at least %d violations for %s", tc.minViolations, tc.description)
 			assert.LessOrEqual(t, violationCount, tc.maxViolations,
 				"Should have at most %d violations for %s", tc.maxViolations, tc.description)
 
 			// Log violations for debugging
 			for _, v := range violations {
-				t.Logf("Violation: %s:%d - %s", 
+				t.Logf("Violation: %s:%d - %s",
 					filepath.Base(v.File), v.Line, v.Message)
 			}
 		})
@@ -200,14 +200,14 @@ func TestASTIntegration_ArchitectureRules(t *testing.T) {
 	// Use test fixtures to simulate a typical web application structure
 	tmpDir := t.TempDir()
 	testFixtures := []string{"controller.go", "service.go", "repository.go", "model.go"}
-	
+
 	for _, fixture := range testFixtures {
 		sourceFile := filepath.Join("../../testdata/fixtures", fixture)
 		destFile := filepath.Join(tmpDir, fixture)
-		
+
 		content, err := os.ReadFile(sourceFile)
 		require.NoError(t, err)
-		
+
 		err = os.WriteFile(destFile, content, 0644)
 		require.NoError(t, err)
 	}
@@ -252,14 +252,14 @@ func TestASTIntegration_ArchitectureRules(t *testing.T) {
 		if strings.Contains(v.Message, "forbidden relationship") {
 			layerViolations++
 		}
-		t.Logf("Architecture violation: %s:%d - %s", 
+		t.Logf("Architecture violation: %s:%d - %s",
 			filepath.Base(v.File), v.Line, v.Message)
 	}
 
 	// We expect some complexity violations but minimal layer violations
 	// (our test fixtures follow good architecture)
 	assert.GreaterOrEqual(t, complexityViolations, 0, "May have complexity violations")
-	t.Logf("Complexity violations: %d, Layer violations: %d", 
+	t.Logf("Complexity violations: %d, Layer violations: %d",
 		complexityViolations, layerViolations)
 }
 
@@ -424,8 +424,8 @@ func connectDB() (*sql.DB, error) {
 	foundLibraries := make(map[string]bool)
 	for _, rel := range libRels {
 		foundLibraries[rel.LibraryNode.Package] = true
-		t.Logf("Library call: %s.%s at line %d (framework: %s)", 
-			rel.LibraryNode.Package, rel.LibraryNode.Method, 
+		t.Logf("Library call: %s.%s at line %d (framework: %s)",
+			rel.LibraryNode.Package, rel.LibraryNode.Method,
 			rel.LineNo, rel.LibraryNode.Framework)
 	}
 
@@ -458,7 +458,7 @@ func TestASTIntegration_PerformanceWithLargeCodebase(t *testing.T) {
 	for i := 0; i < fileCount; i++ {
 		filename := filepath.Join(tmpDir, fmt.Sprintf("file%d.go", i))
 		content := generateLargeGoFile(i, methodsPerFile)
-		
+
 		err := os.WriteFile(filename, []byte(content), 0644)
 		require.NoError(t, err)
 	}
@@ -466,12 +466,12 @@ func TestASTIntegration_PerformanceWithLargeCodebase(t *testing.T) {
 	// Extract AST from all files
 	extractor := analysis.NewGoASTExtractor(astCache)
 	totalNodes := 0
-	
+
 	for i := 0; i < fileCount; i++ {
 		filename := filepath.Join(tmpDir, fmt.Sprintf("file%d.go", i))
 		err := extractor.ExtractFile(filename)
 		require.NoError(t, err)
-		
+
 		nodes, err := astCache.GetASTNodesByFile(filename)
 		require.NoError(t, err)
 		totalNodes += len(nodes)
@@ -496,36 +496,36 @@ func TestASTIntegration_PerformanceWithLargeCodebase(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Logf("Found %d violations in large codebase", len(violations))
-	assert.GreaterOrEqual(t, totalNodes, fileCount*methodsPerFile, 
+	assert.GreaterOrEqual(t, totalNodes, fileCount*methodsPerFile,
 		"Should have processed many nodes")
 }
 
 // Helper function to generate a large Go file for performance testing
 func generateLargeGoFile(fileIndex, methodCount int) string {
 	var content strings.Builder
-	
+
 	content.WriteString(fmt.Sprintf("package file%d\n\n", fileIndex))
 	content.WriteString("import \"fmt\"\n\n")
-	
+
 	// Generate struct types
 	content.WriteString(fmt.Sprintf("type Type%d struct {\n", fileIndex))
 	content.WriteString("    ID int\n")
 	content.WriteString("    Name string\n")
 	content.WriteString("}\n\n")
-	
+
 	content.WriteString(fmt.Sprintf("type Service%d struct {\n", fileIndex))
 	content.WriteString(fmt.Sprintf("    repo *Repository%d\n", fileIndex))
 	content.WriteString("}\n\n")
-	
+
 	content.WriteString(fmt.Sprintf("type Repository%d struct {\n", fileIndex))
 	content.WriteString("    db interface{}\n")
 	content.WriteString("}\n\n")
-	
+
 	// Generate methods with varying complexity
 	for i := 0; i < methodCount; i++ {
 		complexity := i%5 + 1 // Complexity from 1 to 5
 		paramCount := i%4 + 1 // 1 to 4 parameters
-		
+
 		// Generate method signature
 		content.WriteString(fmt.Sprintf("func (s *Service%d) Method%d(", fileIndex, i))
 		for p := 0; p < paramCount; p++ {
@@ -535,7 +535,7 @@ func generateLargeGoFile(fileIndex, methodCount int) string {
 			content.WriteString(fmt.Sprintf("param%d int", p))
 		}
 		content.WriteString(") int {\n")
-		
+
 		// Generate method body with controlled complexity
 		content.WriteString("    result := 0\n")
 		for c := 0; c < complexity; c++ {
@@ -543,7 +543,7 @@ func generateLargeGoFile(fileIndex, methodCount int) string {
 			content.WriteString(fmt.Sprintf("        result += %d\n", c))
 			content.WriteString("    }\n")
 		}
-		
+
 		// Add some method calls
 		if i%3 == 0 {
 			content.WriteString("    s.repo.Save(result)\n")
@@ -551,10 +551,10 @@ func generateLargeGoFile(fileIndex, methodCount int) string {
 		if i%4 == 0 {
 			content.WriteString("    fmt.Printf(\"Result: %d\\n\", result)\n")
 		}
-		
+
 		content.WriteString("    return result\n")
 		content.WriteString("}\n\n")
 	}
-	
+
 	return content.String()
 }

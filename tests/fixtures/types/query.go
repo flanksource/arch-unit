@@ -9,7 +9,7 @@ import (
 
 	"github.com/flanksource/arch-unit/ast"
 	"github.com/flanksource/arch-unit/internal/cache"
-	"github.com/flanksource/arch-unit/tests/fixtures"
+	"github.com/flanksource/arch-unit/fixtures"
 	"github.com/flanksource/commons/logger"
 )
 
@@ -28,8 +28,8 @@ func (q *QueryFixture) Name() string {
 func (q *QueryFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, opts fixtures.RunOptions) fixtures.FixtureResult {
 	start := time.Now()
 	result := fixtures.FixtureResult{
-		Name: fixture.Name,
-		Type: "query",
+		Name:     fixture.Name,
+		Type:     "query",
 		Metadata: make(map[string]interface{}),
 	}
 
@@ -47,14 +47,14 @@ func (q *QueryFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, op
 	}
 
 	// Create AST cache and analyzer
-	cacheDir := filepath.Join(opts.WorkDir, "tmp", "fixtures-cache", 
+	cacheDir := filepath.Join(opts.WorkDir, "tmp", "fixtures-cache",
 		fmt.Sprintf("test-%s", strings.ReplaceAll(fixture.Name, " ", "-")))
-	
+
 	astCache, err := cache.NewASTCacheWithPath(cacheDir)
 	if err != nil {
 		result.Status = "FAIL"
 		result.Error = fmt.Sprintf("failed to create AST cache: %v", err)
-		result.Duration = time.Since(start).String()
+		result.Duration = time.Since(start)
 		return result
 	}
 	defer astCache.Close()
@@ -65,11 +65,11 @@ func (q *QueryFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, op
 	if opts.Verbose {
 		logger.Debugf("Analyzing files in %s", testWorkDir)
 	}
-	
+
 	if err := analyzer.AnalyzeFiles(); err != nil {
 		result.Status = "FAIL"
 		result.Error = fmt.Sprintf("failed to analyze files: %v", err)
-		result.Duration = time.Since(start).String()
+		result.Duration = time.Since(start)
 		return result
 	}
 
@@ -80,14 +80,14 @@ func (q *QueryFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, op
 			// Expected error case
 			if strings.Contains(err.Error(), fixture.Expected.Error) {
 				result.Status = "PASS"
-				result.Details = fmt.Sprintf("Got expected error: %v", err)
-				result.Duration = time.Since(start).String()
+				result.Metadata["details"] = fmt.Sprintf("Got expected error: %v", err)
+				result.Duration = time.Since(start)
 				return result
 			}
 		}
 		result.Status = "FAIL"
 		result.Error = fmt.Sprintf("query failed: %v", err)
-		result.Duration = time.Since(start).String()
+		result.Duration = time.Since(start)
 		return result
 	}
 
@@ -95,7 +95,7 @@ func (q *QueryFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, op
 	actualCount := len(nodes)
 	result.Actual = actualCount
 	result.Metadata["node_count"] = actualCount
-	
+
 	if opts.Verbose {
 		logger.Debugf("Query returned %d nodes", actualCount)
 	}
@@ -106,7 +106,7 @@ func (q *QueryFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, op
 		if actualCount != *fixture.Expected.Count {
 			result.Status = "FAIL"
 			result.Error = fmt.Sprintf("expected %d nodes, got %d", *fixture.Expected.Count, actualCount)
-			result.Duration = time.Since(start).String()
+			result.Duration = time.Since(start)
 			return result
 		}
 	}
@@ -117,20 +117,20 @@ func (q *QueryFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, op
 		if err != nil {
 			result.Status = "FAIL"
 			result.Error = fmt.Sprintf("CEL evaluation failed: %v", err)
-			result.Duration = time.Since(start).String()
+			result.Duration = time.Since(start)
 			return result
 		}
 		result.CELResult = valid
 		if !valid {
 			result.Status = "FAIL"
 			result.Error = fmt.Sprintf("CEL validation failed: %s", fixture.CEL)
-			result.Duration = time.Since(start).String()
+			result.Duration = time.Since(start)
 			return result
 		}
 	}
 
 	result.Status = "PASS"
-	result.Duration = time.Since(start).String()
+	result.Duration = time.Since(start)
 	return result
 }
 

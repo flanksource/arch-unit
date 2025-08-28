@@ -8,13 +8,13 @@ import (
 
 func TestParser_parseLine_FileSpecific(t *testing.T) {
 	tests := []struct {
-		name         string
-		line         string
-		wantErr      bool
-		wantFile     string
-		wantPackage  string
-		wantMethod   string
-		wantType     models.RuleType
+		name        string
+		line        string
+		wantErr     bool
+		wantFile    string
+		wantPackage string
+		wantMethod  string
+		wantType    models.RuleType
 	}{
 		{
 			name:        "file-specific deny rule",

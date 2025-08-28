@@ -54,27 +54,27 @@ func TestCountWords(t *testing.T) {
 
 func TestNewComment(t *testing.T) {
 	comment := NewComment("This is a test comment", 10, 10, CommentTypeSingleLine, "function:test")
-	
+
 	if comment.Text != "This is a test comment" {
 		t.Errorf("Expected text 'This is a test comment', got %q", comment.Text)
 	}
-	
+
 	if comment.StartLine != 10 {
 		t.Errorf("Expected start line 10, got %d", comment.StartLine)
 	}
-	
+
 	if comment.EndLine != 10 {
 		t.Errorf("Expected end line 10, got %d", comment.EndLine)
 	}
-	
+
 	if comment.Type != CommentTypeSingleLine {
 		t.Errorf("Expected type CommentTypeSingleLine, got %s", comment.Type)
 	}
-	
+
 	if comment.Context != "function:test" {
 		t.Errorf("Expected context 'function:test', got %q", comment.Context)
 	}
-	
+
 	if comment.WordCount != 5 {
 		t.Errorf("Expected word count 5, got %d", comment.WordCount)
 	}
@@ -161,11 +161,11 @@ func TestGenericASTGetAllNames(t *testing.T) {
 func TestGenericASTGetLongNames(t *testing.T) {
 	ast := &GenericAST{
 		Functions: []Function{
-			{Name: "short"},                    // 5 chars
-			{Name: "veryLongFunctionName"},     // 20 chars
+			{Name: "short"},                // 5 chars
+			{Name: "veryLongFunctionName"}, // 20 chars
 		},
 		Variables: []Variable{
-			{Name: "a"},                        // 1 char
+			{Name: "a"},                           // 1 char
 			{Name: "anotherVeryLongVariableName"}, // 27 chars
 		},
 	}
@@ -233,7 +233,7 @@ func TestGenericASTGetMultiLineComments(t *testing.T) {
 
 func BenchmarkCountWords(b *testing.B) {
 	text := "This is a sample text with multiple words that we want to benchmark the word counting function with"
-	
+
 	for i := 0; i < b.N; i++ {
 		CountWords(text)
 	}
@@ -245,7 +245,7 @@ func BenchmarkGetAllNames(b *testing.B) {
 		Types:     make([]TypeDefinition, 50),
 		Variables: make([]Variable, 200),
 	}
-	
+
 	// Populate with dummy data
 	for i := range ast.Functions {
 		ast.Functions[i].Name = "function" + string(rune(i))
@@ -256,7 +256,7 @@ func BenchmarkGetAllNames(b *testing.B) {
 	for i := range ast.Variables {
 		ast.Variables[i].Name = "variable" + string(rune(i))
 	}
-	
+
 	for i := 0; i < b.N; i++ {
 		ast.GetAllNames()
 	}

@@ -55,7 +55,7 @@ func (h *GoHandler) GetFilePattern() string {
 // GetBestPractices returns Go-specific best practices
 func (h *GoHandler) GetBestPractices(strictness string) map[string]interface{} {
 	practices := make(map[string]interface{})
-	
+
 	practices["max_file_length"] = getValueByStrictness(strictness, 300, 400, 500)
 	practices["max_function_length"] = getValueByStrictness(strictness, 40, 50, 70)
 	practices["max_cyclomatic_complexity"] = getValueByStrictness(strictness, 5, 10, 15)
@@ -64,7 +64,7 @@ func (h *GoHandler) GetBestPractices(strictness string) map[string]interface{} {
 	practices["max_interface_methods"] = getValueByStrictness(strictness, 5, 10, 15)
 	practices["max_package_files"] = getValueByStrictness(strictness, 10, 20, 30)
 	practices["min_test_coverage"] = getValueByStrictness(strictness, 80, 70, 60)
-	
+
 	return practices
 }
 

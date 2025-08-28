@@ -12,10 +12,10 @@ import (
 
 // ASTAnalysisReport represents the complete AST analysis with proper clicky tags
 type ASTAnalysisReport struct {
-	Summary    ASTSummary      `json:"summary" pretty:"struct"`
-	Files      []FileAnalysis  `json:"files" pretty:"table,title=Analyzed Files,sort=file"`
+	Summary    ASTSummary         `json:"summary" pretty:"struct"`
+	Files      []FileAnalysis     `json:"files" pretty:"table,title=Analyzed Files,sort=file"`
 	Complexity []MethodComplexity `json:"complexity,omitempty" pretty:"table,title=High Complexity Methods,sort=complexity,dir=desc"`
-	Parameters []MethodSignature `json:"parameters,omitempty" pretty:"table,title=Method Signatures"`
+	Parameters []MethodSignature  `json:"parameters,omitempty" pretty:"table,title=Method Signatures"`
 }
 
 // ASTSummary contains summary statistics with pretty formatting
@@ -67,10 +67,10 @@ type ASTQueryResult struct {
 
 // ASTQuerySummary contains query summary information
 type ASTQuerySummary struct {
-	Query       string `json:"query" pretty:"label=Query Pattern"`
-	TotalNodes  int    `json:"total_nodes" pretty:"color,green,label=Total Matches"`
-	FileCount   int    `json:"file_count" pretty:"color,blue,label=Files Matched"`
-	PackageCount int   `json:"package_count" pretty:"color,cyan,label=Packages"`
+	Query        string `json:"query" pretty:"label=Query Pattern"`
+	TotalNodes   int    `json:"total_nodes" pretty:"color,green,label=Total Matches"`
+	FileCount    int    `json:"file_count" pretty:"color,blue,label=Files Matched"`
+	PackageCount int    `json:"package_count" pretty:"color,cyan,label=Packages"`
 }
 
 // ASTQueryNode represents a single AST node result
@@ -100,9 +100,9 @@ func (n ASTQueryNode) Pretty() api.Text {
 
 // ASTResultFormatter formats AST analysis results using clicky
 type ASTResultFormatter struct {
-	Results      []FileResult
-	NoColor      bool
-	CompactMode  bool
+	Results     []FileResult
+	NoColor     bool
+	CompactMode bool
 }
 
 // NewASTResultFormatter creates a new formatter
@@ -117,27 +117,27 @@ func CreateQueryResult(nodes []*models.ASTNode, query string, workingDir string)
 	if len(nodes) == 0 {
 		return ASTQueryResult{
 			Summary: ASTQuerySummary{
-				Query:       query,
-				TotalNodes:  0,
-				FileCount:   0,
+				Query:        query,
+				TotalNodes:   0,
+				FileCount:    0,
 				PackageCount: 0,
 			},
 			Results: []ASTQueryNode{},
 		}
 	}
-	
+
 	// Build summary statistics
 	fileSet := make(map[string]bool)
 	packageSet := make(map[string]bool)
 	var queryNodes []ASTQueryNode
-	
+
 	for _, node := range nodes {
 		// Track unique files and packages
 		fileSet[node.FilePath] = true
 		if node.PackageName != "" {
 			packageSet[node.PackageName] = true
 		}
-		
+
 		// Convert to relative path
 		fileName := node.FilePath
 		if workingDir != "" {
@@ -151,13 +151,13 @@ func CreateQueryResult(nodes []*models.ASTNode, query string, workingDir string)
 			// No working dir provided, use just the filename
 			fileName = filepath.Base(node.FilePath)
 		}
-		
+
 		// Build parameter and return strings
 		var params []string
 		for _, p := range node.Parameters {
 			params = append(params, fmt.Sprintf("%s %s", p.Name, p.Type))
 		}
-		
+
 		var returns []string
 		for _, r := range node.ReturnValues {
 			if r.Name != "" {
@@ -166,7 +166,7 @@ func CreateQueryResult(nodes []*models.ASTNode, query string, workingDir string)
 				returns = append(returns, r.Type)
 			}
 		}
-		
+
 		queryNode := ASTQueryNode{
 			File:       fileName,
 			Package:    node.PackageName,
@@ -181,10 +181,10 @@ func CreateQueryResult(nodes []*models.ASTNode, query string, workingDir string)
 			Parameters: strings.Join(params, ", "),
 			Returns:    strings.Join(returns, ", "),
 		}
-		
+
 		queryNodes = append(queryNodes, queryNode)
 	}
-	
+
 	return ASTQueryResult{
 		Summary: ASTQuerySummary{
 			Query:        query,
@@ -200,10 +200,12 @@ func CreateQueryResult(nodes []*models.ASTNode, query string, workingDir string)
 func FormatQueryWithClicky(nodes []*models.ASTNode, query string, workingDir string, formatter interface{}) (string, error) {
 	// Create the query result struct
 	result := CreateQueryResult(nodes, query, workingDir)
-	
+
 	// Use the formatter interface to format the result directly
 	switch fmtr := formatter.(type) {
-	case interface{ Format(interface{}) (string, error) }:
+	case interface {
+		Format(interface{}) (string, error)
+	}:
 		return fmtr.Format(result)
 	default:
 		return "", fmt.Errorf("unsupported formatter type: %T", formatter)
@@ -217,12 +219,12 @@ func (f *ASTResultFormatter) CreateReport() ASTAnalysisReport {
 		Files:      f.buildFileAnalysisList(),
 		Complexity: f.buildComplexityList(),
 	}
-	
+
 	// Add parameters only if not in compact mode
 	if !f.CompactMode {
 		report.Parameters = f.buildParametersList()
 	}
-	
+
 	return report
 }
 
@@ -230,10 +232,12 @@ func (f *ASTResultFormatter) CreateReport() ASTAnalysisReport {
 func (f *ASTResultFormatter) FormatWithClicky(formatter interface{}) (string, error) {
 	// Create the report struct
 	report := f.CreateReport()
-	
+
 	// Use the formatter interface to format the report directly
 	switch fmtr := formatter.(type) {
-	case interface{ Format(interface{}) (string, error) }:
+	case interface {
+		Format(interface{}) (string, error)
+	}:
 		return fmtr.Format(report)
 	default:
 		return "", fmt.Errorf("unsupported formatter type: %T", formatter)
@@ -250,16 +254,16 @@ func (f *ASTResultFormatter) buildSummaryStruct() ASTSummary {
 	totalComplexity := 0
 	maxComplexity := 0
 	methodCount := 0
-	
+
 	for _, result := range f.Results {
 		if result.Result == nil {
 			continue
 		}
-		
+
 		totalFiles++
 		totalNodes += len(result.Result.Nodes)
 		totalRelationships += len(result.Result.Relationships)
-		
+
 		for _, node := range result.Result.Nodes {
 			switch node.NodeType {
 			case models.NodeTypeMethod:
@@ -274,12 +278,12 @@ func (f *ASTResultFormatter) buildSummaryStruct() ASTSummary {
 			}
 		}
 	}
-	
+
 	avgComplexity := 0.0
 	if methodCount > 0 {
 		avgComplexity = float64(totalComplexity) / float64(methodCount)
 	}
-	
+
 	return ASTSummary{
 		TotalFiles:         totalFiles,
 		TotalNodes:         totalNodes,
@@ -294,18 +298,18 @@ func (f *ASTResultFormatter) buildSummaryStruct() ASTSummary {
 // buildFileAnalysisList creates a list of file analysis data
 func (f *ASTResultFormatter) buildFileAnalysisList() []FileAnalysis {
 	var files []FileAnalysis
-	
+
 	for _, result := range f.Results {
 		if result.Result == nil {
 			continue
 		}
-		
+
 		// Count different node types
 		methods := 0
 		types := 0
 		fields := 0
 		vars := 0
-		
+
 		for _, node := range result.Result.Nodes {
 			switch node.NodeType {
 			case models.NodeTypeMethod:
@@ -318,13 +322,13 @@ func (f *ASTResultFormatter) buildFileAnalysisList() []FileAnalysis {
 				vars++
 			}
 		}
-		
+
 		// Get file name only
 		path := result.Path
 		if idx := strings.LastIndex(path, "/"); idx >= 0 {
 			path = path[idx+1:]
 		}
-		
+
 		files = append(files, FileAnalysis{
 			File:          path,
 			Package:       result.Result.PackageName,
@@ -336,19 +340,19 @@ func (f *ASTResultFormatter) buildFileAnalysisList() []FileAnalysis {
 			Libraries:     len(result.Result.Libraries),
 		})
 	}
-	
+
 	return files
 }
 
 // buildComplexityList creates a list of high complexity methods
 func (f *ASTResultFormatter) buildComplexityList() []MethodComplexity {
 	var methods []MethodComplexity
-	
+
 	for _, result := range f.Results {
 		if result.Result == nil {
 			continue
 		}
-		
+
 		for _, node := range result.Result.Nodes {
 			if node.NodeType == models.NodeTypeMethod && node.CyclomaticComplexity > 5 {
 				// Get file name only
@@ -356,12 +360,12 @@ func (f *ASTResultFormatter) buildComplexityList() []MethodComplexity {
 				if idx := strings.LastIndex(path, "/"); idx >= 0 {
 					path = path[idx+1:]
 				}
-				
+
 				fullName := node.MethodName
 				if node.TypeName != "" {
 					fullName = fmt.Sprintf("%s.%s", node.TypeName, node.MethodName)
 				}
-				
+
 				methods = append(methods, MethodComplexity{
 					File:       path,
 					Method:     fullName,
@@ -373,24 +377,24 @@ func (f *ASTResultFormatter) buildComplexityList() []MethodComplexity {
 			}
 		}
 	}
-	
+
 	// Sort by complexity descending
 	sort.Slice(methods, func(i, j int) bool {
 		return methods[i].Complexity > methods[j].Complexity
 	})
-	
+
 	return methods
 }
 
 // buildParametersList creates a list of method signatures with parameters
 func (f *ASTResultFormatter) buildParametersList() []MethodSignature {
 	var signatures []MethodSignature
-	
+
 	for _, result := range f.Results {
 		if result.Result == nil {
 			continue
 		}
-		
+
 		for _, node := range result.Result.Nodes {
 			if node.NodeType == models.NodeTypeMethod && len(node.Parameters) > 0 {
 				// Get file name only
@@ -398,18 +402,18 @@ func (f *ASTResultFormatter) buildParametersList() []MethodSignature {
 				if idx := strings.LastIndex(path, "/"); idx >= 0 {
 					path = path[idx+1:]
 				}
-				
+
 				fullName := node.MethodName
 				if node.TypeName != "" {
 					fullName = fmt.Sprintf("%s.%s", node.TypeName, node.MethodName)
 				}
-				
+
 				// Build parameter list
 				var params []string
 				for _, p := range node.Parameters {
 					params = append(params, fmt.Sprintf("%s %s", p.Name, p.Type))
 				}
-				
+
 				// Build return list
 				var returns []string
 				for _, r := range node.ReturnValues {
@@ -419,7 +423,7 @@ func (f *ASTResultFormatter) buildParametersList() []MethodSignature {
 						returns = append(returns, r.Type)
 					}
 				}
-				
+
 				signatures = append(signatures, MethodSignature{
 					File:       path,
 					Method:     fullName,
@@ -429,7 +433,7 @@ func (f *ASTResultFormatter) buildParametersList() []MethodSignature {
 			}
 		}
 	}
-	
+
 	return signatures
 }
 

@@ -43,7 +43,7 @@ func init() {
 
 func runExclusions(cmd *cobra.Command, args []string) error {
 	var patterns []string
-	
+
 	switch exclusionType {
 	case "builtin":
 		patterns = models.GetBuiltinExcludePatterns()
@@ -52,7 +52,7 @@ func runExclusions(cmd *cobra.Command, args []string) error {
 	default:
 		return fmt.Errorf("unknown exclusion type: %s (valid: builtin, test)", exclusionType)
 	}
-	
+
 	switch exclusionFormat {
 	case "grep":
 		// Format for use with grep -v in go list commands
@@ -64,13 +64,13 @@ func runExclusions(cmd *cobra.Command, args []string) error {
 			grepPatterns[i] = fmt.Sprintf("'/%s/'", grepPattern)
 		}
 		fmt.Print(strings.Join(grepPatterns, " | grep -v "))
-		
+
 	case "list":
 		// Simple list format
 		for _, pattern := range patterns {
 			fmt.Println(pattern)
 		}
-		
+
 	case "json":
 		// JSON format for programmatic use
 		fmt.Print("[")
@@ -81,10 +81,10 @@ func runExclusions(cmd *cobra.Command, args []string) error {
 			fmt.Printf("\"%s\"", pattern)
 		}
 		fmt.Print("]")
-		
+
 	default:
 		return fmt.Errorf("unknown format: %s (valid: grep, list, json)", exclusionFormat)
 	}
-	
+
 	return nil
 }

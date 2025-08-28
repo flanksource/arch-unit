@@ -111,7 +111,7 @@ func (s *UserService) UpdateUser(user *model.User) (*model.User, error) {
 		if !isValidEmail(user.Email) {
 			return nil, fmt.Errorf("invalid email format: %s", user.Email)
 		}
-		
+
 		// Check for email conflicts
 		existing, _ := s.userRepo.FindByEmail(user.Email)
 		if existing != nil && existing.ID != user.ID {
@@ -185,10 +185,10 @@ func (s *UserService) SearchUsers(filters model.UserSearchFilters, limit, offset
 
 	// Validate sort parameters
 	validSortFields := map[string]bool{
-		"name": true, "email": true, "age": true, 
+		"name": true, "email": true, "age": true,
 		"created_at": true, "updated_at": true,
 	}
-	
+
 	if !validSortFields[sortBy] {
 		return nil, 0, fmt.Errorf("invalid sort field: %s", sortBy)
 	}
@@ -517,9 +517,9 @@ func (e *EmailService) SendDeletionNotification(email, name string) error {
 
 type AuditLogger struct{}
 
-func (a *AuditLogger) LogUserCreated(userID, email string) {}
-func (a *AuditLogger) LogUserUpdated(userID, email string) {}
-func (a *AuditLogger) LogUserDeleted(userID, email string) {}
+func (a *AuditLogger) LogUserCreated(userID, email string)                            {}
+func (a *AuditLogger) LogUserUpdated(userID, email string)                            {}
+func (a *AuditLogger) LogUserDeleted(userID, email string)                            {}
 func (a *AuditLogger) LogUserSearch(filters model.UserSearchFilters, resultCount int) {}
-func (a *AuditLogger) LogBatchProcessed(total, processed, errors int) {}
-func (a *AuditLogger) LogError(message string, err error) {}
+func (a *AuditLogger) LogBatchProcessed(total, processed, errors int)                 {}
+func (a *AuditLogger) LogError(message string, err error)                             {}

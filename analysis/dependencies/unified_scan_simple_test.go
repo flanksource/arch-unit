@@ -34,7 +34,7 @@ require (
 
 	// Create scanner with registry
 	scanner := NewScanner()
-	
+
 	// Get all registered scanners and verify Go scanner exists
 	languages := scanner.Registry.List()
 	hasGoScanner := false
@@ -79,7 +79,7 @@ func TestUnifiedScannerPhases(t *testing.T) {
 
 	// Create git manager
 	gitManager := git.NewGitRepositoryManager(filepath.Join(tmpDir, ".cache"))
-	
+
 	// Create unified scanner
 	unifiedScanner := NewUnifiedScanner(scanner, gitManager, 1)
 
@@ -92,7 +92,7 @@ func TestUnifiedScannerPhases(t *testing.T) {
 	for _, job := range scanJobs {
 		scannerInterface, ok := scanner.Registry.Get(job.ScannerType)
 		assert.True(t, ok, "Should have scanner for type: %s", job.ScannerType)
-		
+
 		if ok {
 			filePath := filepath.Join(tmpDir, job.FilePath)
 			content, err := os.ReadFile(filePath)
@@ -158,11 +158,11 @@ numpy==1.24.3`
 // TestScannerDiscovery tests the file discovery mechanism
 func TestScannerDiscovery(t *testing.T) {
 	scanner := NewScanner()
-	
+
 	// Test with current directory
 	scanJobs, err := scanner.discoverScanFiles(".")
 	require.NoError(t, err)
-	
+
 	// Should find at least go.mod in current directory
 	foundGoMod := false
 	for _, job := range scanJobs {

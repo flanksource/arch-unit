@@ -170,6 +170,6 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-// replace github.com/flanksource/clicky => /Users/moshe/work/omi/clicky
+replace github.com/flanksource/clicky => /Users/moshe/work/omi/clicky
 
 // replace github.com/flanksource/commons => /Users/moshe/go/src/github.com/flanksource/commons

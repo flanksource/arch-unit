@@ -14,7 +14,7 @@ import (
 func TestAnalyzer_AnalyzeFiles(t *testing.T) {
 	// Create temporary test directory
 	tmpDir := t.TempDir()
-	
+
 	// Create test Go file
 	goFile := filepath.Join(tmpDir, "test.go")
 	goContent := `package main
@@ -41,7 +41,7 @@ func main() {
 `
 	err := os.WriteFile(goFile, []byte(goContent), 0644)
 	require.NoError(t, err)
-	
+
 	// Create test Python file
 	pyFile := filepath.Join(tmpDir, "test.py")
 	pyContent := `
@@ -66,25 +66,25 @@ if __name__ == "__main__":
 `
 	err = os.WriteFile(pyFile, []byte(pyContent), 0644)
 	require.NoError(t, err)
-	
+
 	// Create AST cache
 	cacheDir := t.TempDir()
 	astCache, err := cache.NewASTCacheWithPath(cacheDir)
 	require.NoError(t, err)
 	defer astCache.Close()
-	
+
 	// Create analyzer
 	analyzer := NewAnalyzer(astCache, tmpDir)
-	
+
 	// Analyze files
 	err = analyzer.AnalyzeFiles()
 	assert.NoError(t, err)
-	
+
 	// Verify nodes were created
 	nodes, err := analyzer.QueryPattern("*")
 	require.NoError(t, err)
 	assert.NotEmpty(t, nodes)
-	
+
 	// Check for specific nodes
 	var foundGoCalculator bool
 	for _, node := range nodes {
@@ -92,7 +92,7 @@ if __name__ == "__main__":
 			foundGoCalculator = true
 		}
 	}
-	
+
 	assert.True(t, foundGoCalculator, "Should find Go Calculator type")
 }
 
@@ -102,7 +102,7 @@ func TestAnalyzer_QueryPattern(t *testing.T) {
 	astCache, err := cache.NewASTCacheWithPath(cacheDir)
 	require.NoError(t, err)
 	defer astCache.Close()
-	
+
 	// Insert test data
 	_, err = astCache.StoreASTNode(&models.ASTNode{
 		FilePath:    "/test/src/controller.go",
@@ -114,7 +114,7 @@ func TestAnalyzer_QueryPattern(t *testing.T) {
 		EndLine:     20,
 	})
 	require.NoError(t, err)
-	
+
 	_, err = astCache.StoreASTNode(&models.ASTNode{
 		FilePath:    "/test/src/service.go",
 		PackageName: "services",
@@ -125,10 +125,10 @@ func TestAnalyzer_QueryPattern(t *testing.T) {
 		EndLine:     30,
 	})
 	require.NoError(t, err)
-	
+
 	// Create analyzer
 	analyzer := NewAnalyzer(astCache, "/test")
-	
+
 	tests := []struct {
 		name     string
 		pattern  string
@@ -155,7 +155,7 @@ func TestAnalyzer_QueryPattern(t *testing.T) {
 			expected: 1,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nodes, err := analyzer.QueryPattern(tt.pattern)
@@ -172,7 +172,7 @@ func TestFilterByComplexity(t *testing.T) {
 		{MethodName: "complex", CyclomaticComplexity: 10},
 		{MethodName: "veryComplex", CyclomaticComplexity: 20},
 	}
-	
+
 	filtered := FilterByComplexity(nodes, 10)
 	assert.Len(t, filtered, 2)
 	assert.Equal(t, "complex", filtered[0].MethodName)
@@ -186,7 +186,7 @@ func TestFilterByNodeType(t *testing.T) {
 		{MethodName: "method2", NodeType: "method"},
 		{FieldName: "field1", NodeType: "field"},
 	}
-	
+
 	filtered := FilterByNodeType(nodes, "method")
 	assert.Len(t, filtered, 2)
 	for _, node := range filtered {
@@ -200,46 +200,46 @@ func TestAnalyzer_ExecuteMetricQuery(t *testing.T) {
 	astCache, err := cache.NewASTCacheWithPath(cacheDir)
 	require.NoError(t, err)
 	defer astCache.Close()
-	
+
 	// Insert test data with various line counts and complexity
 	testNodes := []models.ASTNode{
 		{
-			FilePath:    "/test/src/small.go",
-			PackageName: "test",
-			MethodName:  "SmallMethod",
-			NodeType:    "method",
-			LineCount:   50,
+			FilePath:             "/test/src/small.go",
+			PackageName:          "test",
+			MethodName:           "SmallMethod",
+			NodeType:             "method",
+			LineCount:            50,
 			CyclomaticComplexity: 3,
-			ParameterCount: 2,
+			ParameterCount:       2,
 		},
 		{
-			FilePath:    "/test/src/large.go",
-			PackageName: "test",
-			MethodName:  "LargeMethod",
-			NodeType:    "method",
-			LineCount:   150,
+			FilePath:             "/test/src/large.go",
+			PackageName:          "test",
+			MethodName:           "LargeMethod",
+			NodeType:             "method",
+			LineCount:            150,
 			CyclomaticComplexity: 15,
-			ParameterCount: 5,
+			ParameterCount:       5,
 		},
 		{
-			FilePath:    "/test/src/complex.go",
-			PackageName: "test",
-			MethodName:  "ComplexMethod",
-			NodeType:    "method",
-			LineCount:   80,
+			FilePath:             "/test/src/complex.go",
+			PackageName:          "test",
+			MethodName:           "ComplexMethod",
+			NodeType:             "method",
+			LineCount:            80,
 			CyclomaticComplexity: 20,
-			ParameterCount: 3,
+			ParameterCount:       3,
 		},
 	}
-	
+
 	for _, node := range testNodes {
 		_, err = astCache.StoreASTNode(&node)
 		require.NoError(t, err)
 	}
-	
+
 	// Create analyzer
 	analyzer := NewAnalyzer(astCache, "/test")
-	
+
 	tests := []struct {
 		name     string
 		query    string
@@ -266,19 +266,19 @@ func TestAnalyzer_ExecuteMetricQuery(t *testing.T) {
 			expected: []string{"SmallMethod", "ComplexMethod"},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nodes, err := analyzer.ExecuteAQLQuery(tt.query)
 			require.NoError(t, err)
-			
+
 			var methodNames []string
 			for _, node := range nodes {
 				if node.MethodName != "" {
 					methodNames = append(methodNames, node.MethodName)
 				}
 			}
-			
+
 			assert.ElementsMatch(t, tt.expected, methodNames)
 		})
 	}

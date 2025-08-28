@@ -11,18 +11,18 @@ func TestParseMarkdownFixtures(t *testing.T) {
 	// Test parsing the ast_queries.md file
 	fixturesDir := "."
 	fixtureFile := filepath.Join(fixturesDir, "ast_queries.md")
-	
+
 	tests, err := fixtures.ParseMarkdownFixtures(fixtureFile)
 	if err != nil {
 		t.Fatalf("Failed to parse fixtures: %v", err)
 	}
-	
+
 	if len(tests) == 0 {
 		t.Fatal("No test fixtures were parsed")
 	}
-	
+
 	t.Logf("Parsed %d test fixtures", len(tests))
-	
+
 	// Check first test has expected fields
 	first := tests[0]
 	if first.Name == "" {
@@ -37,6 +37,6 @@ func TestParseMarkdownFixtures(t *testing.T) {
 	if first.CEL == "" {
 		t.Error("First test has no CEL validation")
 	}
-	
+
 	t.Logf("First test: Name=%s, CWD=%s, Query=%s", first.Name, first.CWD, first.Query)
 }

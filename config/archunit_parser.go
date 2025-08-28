@@ -28,14 +28,14 @@ func NewArchUnitParser(rootDir string) *ArchUnitParser {
 // LoadArchUnitRules loads all .ARCHUNIT files in the directory tree
 func (p *ArchUnitParser) LoadArchUnitRules() ([]models.RuleSet, error) {
 	var ruleSets []models.RuleSet
-	
+
 	logger.Debugf("Searching for .ARCHUNIT files in %s", p.rootDir)
-	
+
 	err := filepath.Walk(p.rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // Skip files with errors
 		}
-		
+
 		if info.Name() == ArchUnitFileName {
 			logger.Debugf("Found .ARCHUNIT file at %s", path)
 			ruleSet, err := p.parseArchUnitFile(path)
@@ -45,14 +45,14 @@ func (p *ArchUnitParser) LoadArchUnitRules() ([]models.RuleSet, error) {
 			}
 			ruleSets = append(ruleSets, *ruleSet)
 		}
-		
+
 		return nil
 	})
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	logger.Infof("Loaded %d .ARCHUNIT rule sets", len(ruleSets))
 	return ruleSets, nil
 }
@@ -64,45 +64,45 @@ func (p *ArchUnitParser) parseArchUnitFile(path string) (*models.RuleSet, error)
 		return nil, err
 	}
 	defer file.Close()
-	
+
 	// Use relative path for rule source
 	relPath, err := filepath.Rel(".", path)
 	if err != nil || strings.HasPrefix(relPath, "..") {
 		relPath = path
 	}
-	
+
 	ruleSet := &models.RuleSet{
 		Path:  filepath.Dir(path),
 		Rules: []models.Rule{},
 	}
-	
+
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
-	
+
 	for scanner.Scan() {
 		lineNum++
 		line := strings.TrimSpace(scanner.Text())
-		
+
 		// Skip empty lines and comments
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		
+
 		rule, err := p.parseArchUnitLine(line, relPath, lineNum, ruleSet.Path)
 		if err != nil {
 			logger.Warnf("Line %d in %s: %v", lineNum, path, err)
 			continue
 		}
-		
+
 		if rule != nil {
 			ruleSet.Rules = append(ruleSet.Rules, *rule)
 		}
 	}
-	
+
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
-	
+
 	logger.Debugf("Parsed %d rules from %s", len(ruleSet.Rules), path)
 	return ruleSet, nil
 }
@@ -117,7 +117,7 @@ func (p *ArchUnitParser) parseArchUnitLine(line, sourceFile string, lineNum int,
 		OriginalLine: originalLine,
 		Type:         models.RuleTypeAllow,
 	}
-	
+
 	// Check for file-specific pattern [file-pattern] at the beginning
 	if strings.HasPrefix(line, "[") {
 		endIdx := strings.Index(line, "]")
@@ -133,7 +133,7 @@ func (p *ArchUnitParser) parseArchUnitLine(line, sourceFile string, lineNum int,
 			return nil, fmt.Errorf("invalid file-specific rule format (missing rule after pattern): %s", originalLine)
 		}
 	}
-	
+
 	// Determine rule type based on prefix
 	if strings.HasPrefix(line, "+") {
 		rule.Type = models.RuleTypeOverride
@@ -142,17 +142,17 @@ func (p *ArchUnitParser) parseArchUnitLine(line, sourceFile string, lineNum int,
 		rule.Type = models.RuleTypeDeny
 		line = line[1:]
 	}
-	
+
 	// Check if it's a method-specific rule (contains :)
 	if strings.Contains(line, ":") {
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid method rule format: %s", originalLine)
 		}
-		
+
 		rule.Package = strings.TrimSpace(parts[0])
 		methodPart := strings.TrimSpace(parts[1])
-		
+
 		// Handle method negation
 		if strings.HasPrefix(methodPart, "!") {
 			rule.Method = methodPart[1:]
@@ -166,7 +166,7 @@ func (p *ArchUnitParser) parseArchUnitLine(line, sourceFile string, lineNum int,
 		// It's a package/folder rule
 		rule.Pattern = line
 	}
-	
+
 	return rule, nil
 }
 
@@ -176,17 +176,17 @@ func ConvertArchUnitToYAML(ruleSets []models.RuleSet) *models.Config {
 		Version: "1.0",
 		Rules:   make(map[string]models.RuleConfig),
 	}
-	
+
 	// Group rules by file pattern
 	rulesByPattern := make(map[string][]string)
-	
+
 	for _, ruleSet := range ruleSets {
 		for _, rule := range ruleSet.Rules {
 			pattern := "**"
 			if rule.FilePattern != "" {
 				pattern = rule.FilePattern
 			}
-			
+
 			// Convert rule to import string
 			importStr := ConvertRuleToImportString(&rule)
 			if importStr != "" {
@@ -194,7 +194,7 @@ func ConvertArchUnitToYAML(ruleSets []models.RuleSet) *models.Config {
 			}
 		}
 	}
-	
+
 	// Convert to RuleConfig
 	for pattern, imports := range rulesByPattern {
 		config.Rules[pattern] = models.RuleConfig{
@@ -202,7 +202,7 @@ func ConvertArchUnitToYAML(ruleSets []models.RuleSet) *models.Config {
 		}
 		logger.Debugf("Created rule pattern: %s with %d imports", pattern, len(imports))
 	}
-	
+
 	return config
 }
 
@@ -215,7 +215,7 @@ func ConvertRuleToImportString(rule *models.Rule) string {
 	case models.RuleTypeOverride:
 		prefix = "+"
 	}
-	
+
 	if rule.Method != "" {
 		// Method-specific rule
 		pkg := rule.Package
@@ -227,7 +227,7 @@ func ConvertRuleToImportString(rule *models.Rule) string {
 		// Package/pattern rule
 		return prefix + rule.Pattern
 	}
-	
+
 	return ""
 }
 
@@ -235,21 +235,21 @@ func ConvertRuleToImportString(rule *models.Rule) string {
 // This can be used in YAML files to support mixed syntax
 func ParseArchUnitSyntax(syntax string) []string {
 	var imports []string
-	
+
 	// Split by whitespace or newlines
 	lines := strings.Fields(syntax)
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		
+
 		// Parse each line as a simple .ARCHUNIT rule
 		// (without file-specific patterns in this context)
 		imports = append(imports, line)
 	}
-	
+
 	return imports
 }
 
@@ -258,10 +258,10 @@ func MergeArchUnitWithYAML(yamlConfig *models.Config, archunitRules []models.Rul
 	if yamlConfig.Rules == nil {
 		yamlConfig.Rules = make(map[string]models.RuleConfig)
 	}
-	
+
 	// Convert and merge .ARCHUNIT rules
 	archunitConfig := ConvertArchUnitToYAML(archunitRules)
-	
+
 	for pattern, ruleConfig := range archunitConfig.Rules {
 		if existing, exists := yamlConfig.Rules[pattern]; exists {
 			// Merge imports
@@ -271,6 +271,6 @@ func MergeArchUnitWithYAML(yamlConfig *models.Config, archunitRules []models.Rul
 			yamlConfig.Rules[pattern] = ruleConfig
 		}
 	}
-	
+
 	logger.Debugf("Merged %d .ARCHUNIT rule patterns into config", len(archunitConfig.Rules))
 }

@@ -16,7 +16,7 @@ func TestE2EFileOverrides(t *testing.T) {
 		t.Fatalf("Failed to build arch-unit: %v\nOutput: %s", err, output)
 	}
 	defer os.Remove("../test-arch-unit")
-	
+
 	testCases := []struct {
 		name          string
 		files         map[string]string
@@ -78,12 +78,12 @@ func GetOrder() { var db *sql.DB; _ = db }`,
 			notExpect:    []string{"user_repository.go", "order_repository.go"},
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create temp directory
 			tempDir := t.TempDir()
-			
+
 			// Write test files
 			for path, content := range tc.files {
 				fullPath := filepath.Join(tempDir, path)
@@ -95,18 +95,18 @@ func GetOrder() { var db *sql.DB; _ = db }`,
 					t.Fatalf("Failed to write file %s: %v", path, err)
 				}
 			}
-			
+
 			// Write .ARCHUNIT file
 			archunitPath := filepath.Join(tempDir, ".ARCHUNIT")
 			if err := os.WriteFile(archunitPath, []byte(tc.archunitRules), 0644); err != nil {
 				t.Fatalf("Failed to write .ARCHUNIT: %v", err)
 			}
-			
+
 			// Run arch-unit check
 			cmd := exec.Command("../test-arch-unit", "check", tempDir)
 			output, err := cmd.CombinedOutput()
 			outputStr := string(output)
-			
+
 			// Check exit code
 			if tc.expectFail && err == nil {
 				t.Errorf("Expected command to fail but it succeeded")
@@ -114,14 +114,14 @@ func GetOrder() { var db *sql.DB; _ = db }`,
 			if !tc.expectFail && err != nil {
 				t.Errorf("Expected command to succeed but it failed: %v\nOutput: %s", err, outputStr)
 			}
-			
+
 			// Check expected output
 			for _, expected := range tc.expectOutput {
 				if !strings.Contains(outputStr, expected) {
 					t.Errorf("Expected output to contain %q but it didn't.\nOutput: %s", expected, outputStr)
 				}
 			}
-			
+
 			// Check not expected output
 			for _, notExpected := range tc.notExpect {
 				if strings.Contains(outputStr, notExpected) {

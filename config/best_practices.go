@@ -16,13 +16,13 @@ const (
 
 // StyleGuide represents a predefined style guide configuration
 type StyleGuide struct {
-	Name        string
-	Description string
-	Languages   []string
-	Variables   map[string]interface{}
+	Name         string
+	Description  string
+	Languages    []string
+	Variables    map[string]interface{}
 	BuiltinRules map[string]models.BuiltinRuleConfig
-	Rules       map[string]models.RuleConfig
-	Linters     map[string]models.LinterConfig
+	Rules        map[string]models.RuleConfig
+	Linters      map[string]models.LinterConfig
 }
 
 // StyleGuides contains all predefined style guides
@@ -65,8 +65,8 @@ var StyleGuides = map[string]StyleGuide{
 			},
 			"**/*_test.go": {
 				Quality: &models.QualityConfig{
-					MaxFileLength:       600,
-					MaxFunctionNameLen:  80,
+					MaxFileLength:      600,
+					MaxFunctionNameLen: 80,
 				},
 				Imports: []string{
 					"+fmt:Print*",
@@ -144,9 +144,9 @@ var StyleGuides = map[string]StyleGuide{
 		Rules: map[string]models.RuleConfig{
 			"**/*.py": {
 				Quality: &models.QualityConfig{
-					MaxFileLength:       400,
-					MaxFunctionNameLen:  50,
-					MaxVariableNameLen:  30,
+					MaxFileLength:      400,
+					MaxFunctionNameLen: 50,
+					MaxVariableNameLen: 30,
 				},
 			},
 		},
@@ -163,11 +163,11 @@ var StyleGuides = map[string]StyleGuide{
 		Description: "Based on Google's Java Style Guide",
 		Languages:   []string{"java"},
 		Variables: map[string]interface{}{
-			"max_line_length":          100,
-			"max_file_length":          2000,
-			"max_method_length":        40,
-			"max_params":               7,
-			"max_class_dependencies":   20,
+			"max_line_length":           100,
+			"max_file_length":           2000,
+			"max_method_length":         40,
+			"max_params":                7,
+			"max_class_dependencies":    20,
 			"max_cyclomatic_complexity": 10,
 		},
 		BuiltinRules: map[string]models.BuiltinRuleConfig{
@@ -189,7 +189,7 @@ var StyleGuides = map[string]StyleGuide{
 					},
 				},
 				Imports: []string{
-					"!java.util.Date",     // Use java.time instead
+					"!java.util.Date", // Use java.time instead
 					"!System.out:print*",
 					"!System.err:print*",
 				},
@@ -207,15 +207,15 @@ var StyleGuides = map[string]StyleGuide{
 		Description: "Popular JavaScript style guide by Airbnb",
 		Languages:   []string{"javascript", "typescript"},
 		Variables: map[string]interface{}{
-			"max_line_length":          100,
-			"max_file_length":          300,
-			"max_function_length":      50,
-			"max_params":               3,
-			"max_nested_callbacks":     3,
+			"max_line_length":           100,
+			"max_file_length":           300,
+			"max_function_length":       50,
+			"max_params":                3,
+			"max_nested_callbacks":      3,
 			"max_cyclomatic_complexity": 10,
 		},
 		BuiltinRules: map[string]models.BuiltinRuleConfig{
-			"no_console_log":        {Enabled: true},
+			"no_console_log":         {Enabled: true},
 			"secure_imports":         {Enabled: true},
 			"test_naming_convention": {Enabled: true},
 		},
@@ -255,9 +255,9 @@ var StyleGuides = map[string]StyleGuide{
 		Rules: map[string]models.RuleConfig{
 			"**/*.rs": {
 				Quality: &models.QualityConfig{
-					MaxFileLength:       400,
-					MaxFunctionNameLen:  50,
-					MaxVariableNameLen:  30,
+					MaxFileLength:      400,
+					MaxFunctionNameLen: 50,
+					MaxVariableNameLen: 30,
 				},
 			},
 		},
@@ -283,15 +283,15 @@ func GetBestPracticesForLanguage(language string, strictness StrictnessLevel) ma
 	case StrictnessLenient:
 		strictnessStr = "relaxed"
 	}
-	
+
 	// Try to get from registry first
 	if practices := languages.DefaultRegistry.GetBestPractices(language, strictnessStr); len(practices) > 0 {
 		return practices
 	}
-	
+
 	// Fallback for languages not yet in registry
 	practices := make(map[string]interface{})
-	
+
 	switch language {
 	case "java":
 		practices["max_file_length"] = getValueByStrictness(strictness, 1500, 2000, 3000)

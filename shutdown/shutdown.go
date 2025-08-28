@@ -92,7 +92,7 @@ func Shutdown() {
 	for hooks.Len() > 0 {
 		hook := heap.Pop(&hooks).(*Hook)
 		logger.Debugf("Executing shutdown hook: %s (priority=%d)", hook.label, hook.priority)
-		
+
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -102,7 +102,7 @@ func Shutdown() {
 			hook.fn()
 		}()
 	}
-	
+
 	logger.Infof("All shutdown hooks executed")
 }
 
@@ -115,7 +115,7 @@ func WaitForSignal() {
 		sig := <-sigChan
 		fmt.Fprintf(os.Stderr, "\n🛑 Received %s - initiating graceful shutdown...\n", sig)
 		fmt.Fprintf(os.Stderr, "   Press Ctrl+C again to force immediate exit\n\n")
-		
+
 		// Set up force exit on second signal
 		go func() {
 			<-sigChan

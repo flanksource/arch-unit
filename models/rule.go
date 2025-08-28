@@ -9,13 +9,13 @@ import (
 type RuleType string
 
 const (
-	RuleTypeAllow            RuleType = "allow"
-	RuleTypeDeny             RuleType = "deny"
-	RuleTypeOverride         RuleType = "override"
-	RuleTypeMaxFileLength    RuleType = "max_file_length"
-	RuleTypeMaxNameLength    RuleType = "max_name_length"
-	RuleTypeDisallowedName   RuleType = "disallowed_name"
-	RuleTypeCommentQuality   RuleType = "comment_quality"
+	RuleTypeAllow          RuleType = "allow"
+	RuleTypeDeny           RuleType = "deny"
+	RuleTypeOverride       RuleType = "override"
+	RuleTypeMaxFileLength  RuleType = "max_file_length"
+	RuleTypeMaxNameLength  RuleType = "max_name_length"
+	RuleTypeDisallowedName RuleType = "disallowed_name"
+	RuleTypeCommentQuality RuleType = "comment_quality"
 )
 
 type Rule struct {
@@ -28,7 +28,7 @@ type Rule struct {
 	Scope        string // Directory where this rule applies
 	OriginalLine string
 	FilePattern  string // File-specific pattern (e.g., "*_test.go", "cmd/*/main.go")
-	
+
 	// Quality rule parameters
 	MaxFileLines        int      `yaml:"max_file_lines,omitempty"`
 	MaxNameLength       int      `yaml:"max_name_length,omitempty"`
@@ -46,7 +46,7 @@ func (r Rule) String() string {
 	case RuleTypeOverride:
 		prefix = "+"
 	}
-	
+
 	if r.Method != "" {
 		return fmt.Sprintf("%s%s:%s", prefix, r.Package, r.Method)
 	}
@@ -63,7 +63,7 @@ func (r Rule) Matches(pkg, method string) bool {
 		}
 		return false
 	}
-	
+
 	return matchesPattern(pkg, r.Pattern) || matchesPattern(filepath.ToSlash(pkg), r.Pattern)
 }
 
@@ -71,38 +71,38 @@ func (r Rule) AppliesToFile(filePath string) bool {
 	if r.FilePattern == "" {
 		return true
 	}
-	
+
 	// Clean the file path for consistent matching
 	cleanPath := filepath.Clean(filePath)
-	
+
 	// Try matching against just the filename
 	matched, err := filepath.Match(r.FilePattern, filepath.Base(cleanPath))
 	if err == nil && matched {
 		return true
 	}
-	
+
 	// Try matching against the full path
 	matched, err = filepath.Match(r.FilePattern, cleanPath)
 	if err == nil && matched {
 		return true
 	}
-	
+
 	// For patterns with path separators, try different path formats
 	if strings.Contains(r.FilePattern, "/") || strings.Contains(r.FilePattern, string(filepath.Separator)) {
 		pattern := filepath.ToSlash(r.FilePattern)
 		path := filepath.ToSlash(cleanPath)
-		
+
 		// Try direct match
 		matched, err = filepath.Match(pattern, path)
 		if err == nil && matched {
 			return true
 		}
-		
+
 		// Try matching against relative path from various common roots
 		// This handles cases where the file path might be absolute or have different prefixes
 		pathParts := strings.Split(path, "/")
 		patternParts := strings.Split(pattern, "/")
-		
+
 		// If pattern is shorter, try to match it against the end of the path
 		if len(patternParts) <= len(pathParts) {
 			for i := 0; i <= len(pathParts)-len(patternParts); i++ {
@@ -114,7 +114,7 @@ func (r Rule) AppliesToFile(filePath string) bool {
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -122,17 +122,17 @@ func matchesPattern(text, pattern string) bool {
 	if pattern == "*" {
 		return true
 	}
-	
+
 	if strings.HasPrefix(pattern, "!") {
 		return !matchesPattern(text, pattern[1:])
 	}
-	
+
 	// Handle trailing slash pattern (e.g., "internal/")
 	if strings.HasSuffix(pattern, "/") {
 		prefix := pattern[:len(pattern)-1]
 		return text == prefix || strings.HasPrefix(text, pattern)
 	}
-	
+
 	if strings.Contains(pattern, "*") {
 		parts := strings.Split(pattern, "*")
 		if len(parts) == 2 {
@@ -144,7 +144,7 @@ func matchesPattern(text, pattern string) bool {
 			return hasPrefix && hasSuffix
 		}
 	}
-	
+
 	return text == pattern || strings.HasPrefix(text, pattern+"/") || strings.HasPrefix(text, pattern+".")
 }
 
@@ -156,7 +156,7 @@ type RuleSet struct {
 func (rs *RuleSet) IsAllowed(pkg, method string) (bool, *Rule) {
 	var lastMatchingRule *Rule
 	allowed := true
-	
+
 	for i := range rs.Rules {
 		rule := &rs.Rules[i]
 		if rule.Matches(pkg, method) {
@@ -169,25 +169,25 @@ func (rs *RuleSet) IsAllowed(pkg, method string) (bool, *Rule) {
 			}
 		}
 	}
-	
+
 	if !allowed && lastMatchingRule != nil {
 		return false, lastMatchingRule
 	}
-	
+
 	return true, nil
 }
 
 func (rs *RuleSet) IsAllowedForFile(pkg, method, filePath string) (bool, *Rule) {
 	var lastMatchingRule *Rule
 	allowed := true
-	
+
 	for i := range rs.Rules {
 		rule := &rs.Rules[i]
 		// Check if rule applies to this specific file
 		if !rule.AppliesToFile(filePath) {
 			continue
 		}
-		
+
 		if rule.Matches(pkg, method) {
 			lastMatchingRule = rule
 			switch rule.Type {
@@ -198,11 +198,11 @@ func (rs *RuleSet) IsAllowedForFile(pkg, method, filePath string) (bool, *Rule) 
 			}
 		}
 	}
-	
+
 	if !allowed && lastMatchingRule != nil {
 		return false, lastMatchingRule
 	}
-	
+
 	return true, nil
 }
 
@@ -218,7 +218,7 @@ func NewQualityRule(ruleType RuleType) *QualityRule {
 			Type: ruleType,
 		},
 	}
-	
+
 	// Set defaults based on rule type
 	switch ruleType {
 	case RuleTypeMaxFileLength:
@@ -230,7 +230,7 @@ func NewQualityRule(ruleType RuleType) *QualityRule {
 		rule.CommentAIModel = "claude-3-haiku-20240307"
 		rule.MinDescriptiveScore = 0.7
 	}
-	
+
 	return rule
 }
 
@@ -255,7 +255,7 @@ func (qr *QualityRule) ValidateDisallowedName(name string) bool {
 	if qr.Type != RuleTypeDisallowedName {
 		return true
 	}
-	
+
 	for _, pattern := range qr.DisallowedPatterns {
 		if matchesPattern(name, pattern) {
 			return false
@@ -330,7 +330,7 @@ func (qrs *QualityRuleSet) GetMaxFileLength() int {
 	return 0 // No limit
 }
 
-// GetMaxNameLength returns the maximum name length allowed  
+// GetMaxNameLength returns the maximum name length allowed
 func (qrs *QualityRuleSet) GetMaxNameLength() int {
 	rules := qrs.GetQualityRules(RuleTypeMaxNameLength)
 	if len(rules) > 0 {

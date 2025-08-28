@@ -11,7 +11,7 @@ import (
 
 func TestGoDependencyScanner_ScanGoMod(t *testing.T) {
 	scanner := NewGoDependencyScanner()
-	
+
 	t.Run("simple go.mod", func(t *testing.T) {
 		content := []byte(`module github.com/example/project
 
@@ -31,16 +31,16 @@ require (
 
 		deps, err := scanner.ScanFile(nil, "/test/go.mod", content)
 		require.NoError(t, err)
-		
+
 		// Should find 6 dependencies (3 direct + 3 indirect)
 		assert.Len(t, deps, 6)
-		
+
 		// Check specific dependencies
 		depNames := make(map[string]*models.Dependency)
 		for _, dep := range deps {
 			depNames[dep.Name] = dep
 		}
-		
+
 		// Check flanksource/commons
 		commons := depNames["github.com/flanksource/commons"]
 		require.NotNil(t, commons)
@@ -48,7 +48,7 @@ require (
 		assert.Equal(t, models.DependencyTypeGo, commons.Type)
 		assert.Contains(t, commons.Source, "go.mod:")
 		assert.Empty(t, commons.Git) // No resolver configured, so Git should be empty
-		
+
 		// Check golang.org/x/mod (should be stdlib type)
 		xMod := depNames["golang.org/x/mod"]
 		require.NotNil(t, xMod)
@@ -57,7 +57,7 @@ require (
 		assert.Contains(t, xMod.Source, "go.mod:")
 		assert.Empty(t, xMod.Git) // No resolver configured, so Git should be empty
 	})
-	
+
 	t.Run("go.mod with replace directives", func(t *testing.T) {
 		content := []byte(`module github.com/example/project
 
@@ -74,26 +74,26 @@ replace github.com/flanksource/commons => github.com/flanksource/commons v1.3.0`
 
 		deps, err := scanner.ScanFile(nil, "/test/go.mod", content)
 		require.NoError(t, err)
-		
+
 		assert.Len(t, deps, 2)
-		
+
 		// Check that replacements are applied
 		depNames := make(map[string]*models.Dependency)
 		for _, dep := range deps {
 			depNames[dep.Name] = dep
 		}
-		
+
 		// Check replaced commons version
 		commons := depNames["github.com/flanksource/commons"]
 		require.NotNil(t, commons)
 		assert.Equal(t, "v1.3.0", commons.Version) // Should be replaced version
-		
+
 		// Check local replacement
 		localPkg := depNames["github.com/local/package"]
 		require.NotNil(t, localPkg)
 		assert.Equal(t, "local:../local-package", localPkg.Version) // Should indicate local path
 	})
-	
+
 	t.Run("go.mod with various local replacements", func(t *testing.T) {
 		content := []byte(`module github.com/example/project
 
@@ -113,31 +113,31 @@ replace github.com/current/package => ./current-package`)
 
 		deps, err := scanner.ScanFile(nil, "/test/go.mod", content)
 		require.NoError(t, err)
-		
+
 		assert.Len(t, deps, 3)
-		
+
 		// Check that all local replacements are handled
 		depNames := make(map[string]*models.Dependency)
 		for _, dep := range deps {
 			depNames[dep.Name] = dep
 		}
-		
+
 		// Check relative path replacement
 		relativePkg := depNames["github.com/relative/package"]
 		require.NotNil(t, relativePkg)
 		assert.Equal(t, "local:../relative-package", relativePkg.Version)
-		
+
 		// Check absolute path replacement
 		absolutePkg := depNames["github.com/absolute/package"]
 		require.NotNil(t, absolutePkg)
 		assert.Equal(t, "local:/absolute/path/to/package", absolutePkg.Version)
-		
+
 		// Check current directory replacement
 		currentPkg := depNames["github.com/current/package"]
 		require.NotNil(t, currentPkg)
 		assert.Equal(t, "local:./current-package", currentPkg.Version)
 	})
-	
+
 	t.Run("empty go.mod", func(t *testing.T) {
 		content := []byte(`module github.com/example/project
 
@@ -147,7 +147,7 @@ go 1.21`)
 		require.NoError(t, err)
 		assert.Empty(t, deps)
 	})
-	
+
 	t.Run("malformed go.mod", func(t *testing.T) {
 		content := []byte(`this is not a valid go.mod file`)
 
@@ -164,7 +164,7 @@ func TestGoDependencyScanner_WithResolver(t *testing.T) {
 
 	resolver := NewResolutionService(astCache)
 	scanner := NewGoDependencyScannerWithResolver(resolver)
-	
+
 	t.Run("go.mod with resolver", func(t *testing.T) {
 		content := []byte(`module github.com/example/project
 
@@ -178,19 +178,19 @@ require (
 		deps, err := scanner.ScanFile(nil, "/test/go.mod", content)
 		require.NoError(t, err)
 		assert.Len(t, deps, 2)
-		
+
 		depNames := make(map[string]*models.Dependency)
 		for _, dep := range deps {
 			depNames[dep.Name] = dep
 		}
-		
+
 		// Check flanksource/commons - should have Git URL resolved
 		commons := depNames["github.com/flanksource/commons"]
 		require.NotNil(t, commons)
 		assert.Equal(t, models.DependencyTypeGo, commons.Type)
 		assert.Equal(t, "https://github.com/flanksource/commons", commons.Git)
 		assert.Contains(t, commons.Source, "go.mod:")
-		
+
 		// Check golang.org/x/mod - should be stdlib and have Git URL resolved
 		xMod := depNames["golang.org/x/mod"]
 		require.NotNil(t, xMod)
@@ -202,7 +202,7 @@ require (
 
 func TestGoDependencyScanner_ScanGoSum(t *testing.T) {
 	scanner := NewGoDependencyScanner()
-	
+
 	t.Run("simple go.sum", func(t *testing.T) {
 		content := []byte(`github.com/flanksource/commons v1.2.3 h1:abc123/def456
 github.com/flanksource/commons v1.2.3/go.mod h1:xyz789/uvw012
@@ -213,27 +213,27 @@ golang.org/x/mod v0.12.0/go.mod h1:bcd234/efg567`)
 
 		deps, err := scanner.ScanFile(nil, "/test/go.sum", content)
 		require.NoError(t, err)
-		
+
 		// Should find 3 unique modules (excluding /go.mod entries)
 		assert.Len(t, deps, 3)
-		
+
 		depNames := make(map[string]*models.Dependency)
 		for _, dep := range deps {
 			depNames[dep.Name] = dep
 		}
-		
+
 		// Check specific dependencies
 		commons := depNames["github.com/flanksource/commons"]
 		require.NotNil(t, commons)
 		assert.Equal(t, "v1.2.3", commons.Version)
 		assert.Equal(t, models.DependencyTypeGo, commons.Type)
 		assert.Empty(t, commons.Git) // No resolver configured, so Git should be empty
-		
+
 		testify := depNames["github.com/stretchr/testify"]
 		require.NotNil(t, testify)
 		assert.Equal(t, "v1.8.4", testify.Version)
 	})
-	
+
 	t.Run("empty go.sum", func(t *testing.T) {
 		content := []byte(``)
 
@@ -241,7 +241,7 @@ golang.org/x/mod v0.12.0/go.mod h1:bcd234/efg567`)
 		require.NoError(t, err)
 		assert.Empty(t, deps)
 	})
-	
+
 	t.Run("go.sum with comments", func(t *testing.T) {
 		content := []byte(`// This is a comment
 github.com/flanksource/commons v1.2.3 h1:abc123/def456
@@ -251,14 +251,14 @@ github.com/stretchr/testify v1.8.4 h1:ghi345/jkl678`)
 
 		deps, err := scanner.ScanFile(nil, "/test/go.sum", content)
 		require.NoError(t, err)
-		
+
 		assert.Len(t, deps, 2)
 	})
 }
 
 func TestGoDependencyScanner_SupportedFiles(t *testing.T) {
 	scanner := NewGoDependencyScanner()
-	
+
 	supported := scanner.SupportedFiles()
 	assert.Contains(t, supported, "go.mod")
 	assert.Contains(t, supported, "go.sum")
@@ -267,13 +267,13 @@ func TestGoDependencyScanner_SupportedFiles(t *testing.T) {
 
 func TestGoDependencyScanner_Language(t *testing.T) {
 	scanner := NewGoDependencyScanner()
-	
+
 	assert.Equal(t, "go", scanner.Language())
 }
 
 func TestGoDependencyScanner_NonGoFile(t *testing.T) {
 	scanner := NewGoDependencyScanner()
-	
+
 	// Test with a non-Go file
 	deps, err := scanner.ScanFile(nil, "/test/package.json", []byte(`{"name": "test"}`))
 	assert.Error(t, err)

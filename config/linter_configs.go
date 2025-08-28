@@ -12,7 +12,7 @@ import (
 var LinterConfigPatterns = map[string][]string{
 	"golangci-lint": {
 		".golangci.yml",
-		".golangci.yaml", 
+		".golangci.yaml",
 		".golangci.toml",
 		".golangci.json",
 	},
@@ -53,17 +53,17 @@ var LinterConfigPatterns = map[string][]string{
 // Returns a map of linter names to whether their config was found
 func DetectLinterConfigs(rootDir string) (map[string]bool, error) {
 	configsFound := make(map[string]bool)
-	
+
 	// Initialize all linters as not found
 	for linter := range LinterConfigPatterns {
 		configsFound[linter] = false
 	}
-	
+
 	// Check for each linter's config files
 	for linter, patterns := range LinterConfigPatterns {
 		for _, pattern := range patterns {
 			configPath := filepath.Join(rootDir, pattern)
-			
+
 			// Check if file exists
 			if info, err := os.Stat(configPath); err == nil && !info.IsDir() {
 				// Special handling for pyproject.toml
@@ -81,7 +81,7 @@ func DetectLinterConfigs(rootDir string) (map[string]bool, error) {
 			}
 		}
 	}
-	
+
 	// Also check parent directories for some configs (like .markdownlintrc)
 	// that can be inherited from parent directories
 	if !configsFound["markdownlint"] {
@@ -90,7 +90,7 @@ func DetectLinterConfigs(rootDir string) (map[string]bool, error) {
 			logger.Debugf("Found markdownlint config in parent directory")
 		}
 	}
-	
+
 	return configsFound, nil
 }
 
@@ -100,16 +100,16 @@ func hasToolSection(pyprojectPath string, linter string) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	// Convert content to string for simple searching
 	content := string(data)
-	
+
 	// Map linter names to their tool sections
 	toolSections := map[string][]string{
-		"ruff": {"[tool.ruff]", "[tool.ruff."},
+		"ruff":    {"[tool.ruff]", "[tool.ruff."},
 		"pyright": {"[tool.pyright]", "[tool.pyright."},
 	}
-	
+
 	if sections, ok := toolSections[linter]; ok {
 		for _, section := range sections {
 			if strings.Contains(content, section) {
@@ -117,7 +117,7 @@ func hasToolSection(pyprojectPath string, linter string) bool {
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -127,13 +127,13 @@ func searchParentDirs(startDir string, filename string) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	for {
 		configPath := filepath.Join(currentDir, filename)
 		if info, err := os.Stat(configPath); err == nil && !info.IsDir() {
 			return true
 		}
-		
+
 		parent := filepath.Dir(currentDir)
 		if parent == currentDir {
 			// Reached root directory
@@ -141,7 +141,7 @@ func searchParentDirs(startDir string, filename string) bool {
 		}
 		currentDir = parent
 	}
-	
+
 	return false
 }
 
@@ -149,7 +149,7 @@ func searchParentDirs(startDir string, filename string) bool {
 func GetLinterConfigInfo(configs map[string]bool) string {
 	var found []string
 	var notFound []string
-	
+
 	for linter, hasConfig := range configs {
 		if hasConfig {
 			found = append(found, linter)
@@ -157,7 +157,7 @@ func GetLinterConfigInfo(configs map[string]bool) string {
 			notFound = append(notFound, linter)
 		}
 	}
-	
+
 	info := ""
 	if len(found) > 0 {
 		info += "Found configs for: " + strings.Join(found, ", ")
@@ -168,7 +168,7 @@ func GetLinterConfigInfo(configs map[string]bool) string {
 		}
 		info += "No configs found for: " + strings.Join(notFound, ", ")
 	}
-	
+
 	return info
 }
 
@@ -181,7 +181,7 @@ func ShouldEnableLinter(linterName string, hasConfig bool, explicitlyEnabled *bo
 	if explicitlyEnabled != nil {
 		return *explicitlyEnabled
 	}
-	
+
 	// Otherwise, only enable if:
 	// 1. Config file exists, AND
 	// 2. The linter supports one of the detected languages
@@ -191,16 +191,16 @@ func ShouldEnableLinter(linterName string, hasConfig bool, explicitlyEnabled *bo
 // MergeLinterConfigs merges detected config-based enablement with explicit config
 func MergeLinterConfigs(detected map[string]bool, explicit map[string]bool) map[string]bool {
 	result := make(map[string]bool)
-	
+
 	// Start with detected configs
 	for linter, hasConfig := range detected {
 		result[linter] = hasConfig
 	}
-	
+
 	// Override with explicit settings
 	for linter, enabled := range explicit {
 		result[linter] = enabled
 	}
-	
+
 	return result
 }

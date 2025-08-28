@@ -63,10 +63,10 @@ type PythonRelationship struct {
 
 // PythonASTResult contains the complete AST analysis result
 type PythonASTResult struct {
-	Module        string                `json:"module"`
-	Nodes         []PythonASTNode       `json:"nodes"`
-	Imports       []PythonImport        `json:"imports"`
-	Relationships []PythonRelationship  `json:"relationships"`
+	Module        string               `json:"module"`
+	Nodes         []PythonASTNode      `json:"nodes"`
+	Imports       []PythonImport       `json:"imports"`
+	Relationships []PythonRelationship `json:"relationships"`
 }
 
 // ExtractFile extracts AST information from a Python file
@@ -174,7 +174,7 @@ func (e *PythonASTExtractor) ExtractFile(ctx flanksourceContext.Context, filePat
 			// Find the node that contains this import (usually module level)
 			for fullName, nodeID := range nodeMap {
 				if strings.HasPrefix(fullName, e.packageName) {
-					e.cache.StoreLibraryRelationship(nodeID, libID, imp.Line, 
+					e.cache.StoreLibraryRelationship(nodeID, libID, imp.Line,
 						models.RelationshipImport, fmt.Sprintf("import %s", imp.Module))
 					break
 				}
@@ -194,7 +194,7 @@ func (e *PythonASTExtractor) ExtractFile(ctx flanksourceContext.Context, filePat
 func (e *PythonASTExtractor) extractPackageName(filePath string) string {
 	dir := filepath.Dir(filePath)
 	parts := strings.Split(dir, string(filepath.Separator))
-	
+
 	// Look for common Python package indicators
 	for i := len(parts) - 1; i >= 0; i-- {
 		if parts[i] == "src" || parts[i] == "lib" || parts[i] == "app" {
@@ -208,7 +208,7 @@ func (e *PythonASTExtractor) extractPackageName(filePath string) string {
 			return strings.Join(parts[i:], ".")
 		}
 	}
-	
+
 	// Default to last directory name
 	if len(parts) > 0 {
 		return parts[len(parts)-1]
@@ -284,11 +284,11 @@ func (e *PythonASTExtractor) mapRelationshipType(pythonRelType string) string {
 // getNodeFullName returns the full qualified name of a Python node
 func (e *PythonASTExtractor) getNodeFullName(node PythonASTNode) string {
 	parts := []string{e.packageName}
-	
+
 	if node.Parent != "" {
 		parts = append(parts, node.Parent)
 	}
-	
+
 	parts = append(parts, node.Name)
 	return strings.Join(parts, ".")
 }

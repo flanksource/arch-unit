@@ -32,11 +32,11 @@ func (a *GoAnalyzer) AnalyzeFile(filePath string, rules *models.RuleSet) ([]mode
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse Go file: %w", err)
 	}
-	
+
 	a.filePath = filePath
 	a.pkgName = src.Name.Name
 	a.imports = make(map[string]string)
-	
+
 	// Collect imports
 	for _, imp := range src.Imports {
 		path := strings.Trim(imp.Path.Value, `"`)
@@ -48,7 +48,7 @@ func (a *GoAnalyzer) AnalyzeFile(filePath string, rules *models.RuleSet) ([]mode
 			a.imports[name] = path
 		}
 	}
-	
+
 	// Find violations
 	var violations []models.Violation
 	ast.Inspect(src, func(n ast.Node) bool {
@@ -57,7 +57,7 @@ func (a *GoAnalyzer) AnalyzeFile(filePath string, rules *models.RuleSet) ([]mode
 		}
 		return true
 	})
-	
+
 	return violations, nil
 }
 
@@ -65,23 +65,23 @@ func (a *GoAnalyzer) checkNode(n ast.Node, rules *models.RuleSet) *models.Violat
 	if rules == nil {
 		return nil
 	}
-	
+
 	// Only check CallExpr nodes - this handles both method calls and field access
 	// when the field is being called as a function
 	if call, ok := n.(*ast.CallExpr); ok {
 		return a.checkCallExpr(call, rules)
 	}
-	
+
 	return nil
 }
 
 func (a *GoAnalyzer) checkCallExpr(call *ast.CallExpr, rules *models.RuleSet) *models.Violation {
 	var pkgName, methodName string
-	
+
 	switch fn := call.Fun.(type) {
 	case *ast.SelectorExpr:
 		methodName = fn.Sel.Name
-		
+
 		if ident, ok := fn.X.(*ast.Ident); ok {
 			pkgName = a.resolvePackage(ident.Name)
 		} else if sel, ok := fn.X.(*ast.SelectorExpr); ok {
@@ -90,17 +90,17 @@ func (a *GoAnalyzer) checkCallExpr(call *ast.CallExpr, rules *models.RuleSet) *m
 				methodName = sel.Sel.Name + "." + methodName
 			}
 		}
-		
+
 	case *ast.Ident:
 		// Function call in same package
 		pkgName = a.pkgName
 		methodName = fn.Name
 	}
-	
+
 	if pkgName == "" {
 		return nil
 	}
-	
+
 	allowed, rule := rules.IsAllowedForFile(pkgName, methodName, a.filePath)
 	if !allowed {
 		pos := a.fileSet.Position(call.Pos())
@@ -120,22 +120,20 @@ func (a *GoAnalyzer) checkCallExpr(call *ast.CallExpr, rules *models.RuleSet) *m
 			Message:       violationMsg,
 		}
 	}
-	
+
 	return nil
 }
-
-
 
 func (a *GoAnalyzer) resolvePackage(name string) string {
 	if pkg, ok := a.imports[name]; ok {
 		return pkg
 	}
-	
+
 	// Check if it's a type in the current package
 	if strings.ToUpper(name[:1]) == name[:1] {
 		return a.pkgName
 	}
-	
+
 	return name
 }
 
@@ -183,7 +181,7 @@ func (a *GoAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) {
 		if imp.Name != nil {
 			alias = imp.Name.Name
 		}
-		
+
 		genericImport := models.Import{
 			Path:  importPath,
 			Alias: alias,
@@ -197,7 +195,7 @@ func (a *GoAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) {
 		for _, comment := range commentGroup.List {
 			pos := a.fileSet.Position(comment.Pos())
 			endPos := a.fileSet.Position(comment.End())
-			
+
 			// Determine comment type
 			commentType := models.CommentTypeSingleLine
 			if strings.HasPrefix(comment.Text, "/*") {
@@ -236,7 +234,7 @@ func (a *GoAnalyzer) ExportAST(filePath string) (*models.GenericAST, error) {
 func (a *GoAnalyzer) extractFunction(fn *ast.FuncDecl) models.Function {
 	startPos := a.fileSet.Position(fn.Pos())
 	endPos := a.fileSet.Position(fn.End())
-	
+
 	function := models.Function{
 		Name:       fn.Name.Name,
 		NameLength: len(fn.Name.Name),
@@ -252,7 +250,7 @@ func (a *GoAnalyzer) extractFunction(fn *ast.FuncDecl) models.Function {
 	if fn.Type.Params != nil {
 		for _, param := range fn.Type.Params.List {
 			paramType := a.exprToString(param.Type)
-			
+
 			// Handle multiple names for same type: func(a, b int)
 			for _, name := range param.Names {
 				parameter := models.Parameter{
@@ -279,7 +277,7 @@ func (a *GoAnalyzer) extractFunction(fn *ast.FuncDecl) models.Function {
 		for _, comment := range fn.Doc.List {
 			pos := a.fileSet.Position(comment.Pos())
 			endPos := a.fileSet.Position(comment.End())
-			
+
 			genericComment := models.NewComment(
 				comment.Text,
 				pos.Line,
@@ -312,7 +310,7 @@ func (a *GoAnalyzer) extractGenDecl(genDecl *ast.GenDecl, genericAST *models.Gen
 func (a *GoAnalyzer) extractType(typeSpec *ast.TypeSpec, genDecl *ast.GenDecl) models.TypeDefinition {
 	startPos := a.fileSet.Position(typeSpec.Pos())
 	endPos := a.fileSet.Position(typeSpec.End())
-	
+
 	typeDef := models.TypeDefinition{
 		Name:       typeSpec.Name.Name,
 		NameLength: len(typeSpec.Name.Name),
@@ -353,7 +351,7 @@ func (a *GoAnalyzer) extractType(typeSpec *ast.TypeSpec, genDecl *ast.GenDecl) m
 		for _, comment := range genDecl.Doc.List {
 			pos := a.fileSet.Position(comment.Pos())
 			endPos := a.fileSet.Position(comment.End())
-			
+
 			genericComment := models.NewComment(
 				comment.Text,
 				pos.Line,
@@ -372,7 +370,7 @@ func (a *GoAnalyzer) extractType(typeSpec *ast.TypeSpec, genDecl *ast.GenDecl) m
 func (a *GoAnalyzer) extractFields(field *ast.Field) []models.Field {
 	var fields []models.Field
 	fieldType := a.exprToString(field.Type)
-	
+
 	// Handle anonymous fields (embedded types)
 	if len(field.Names) == 0 {
 		fields = append(fields, models.Field{
@@ -403,16 +401,16 @@ func (a *GoAnalyzer) extractFields(field *ast.Field) []models.Field {
 func (a *GoAnalyzer) extractVariables(valueSpec *ast.ValueSpec, genDecl *ast.GenDecl) []models.Variable {
 	var variables []models.Variable
 	pos := a.fileSet.Position(valueSpec.Pos())
-	
+
 	// Determine if this is a constant
 	isConstant := genDecl.Tok == token.CONST
-	
+
 	// Get type if specified
 	var varType string
 	if valueSpec.Type != nil {
 		varType = a.exprToString(valueSpec.Type)
 	}
-	
+
 	// Extract each variable name
 	for _, name := range valueSpec.Names {
 		variable := models.Variable{
@@ -435,7 +433,7 @@ func (a *GoAnalyzer) exprToString(expr ast.Expr) string {
 	if expr == nil {
 		return ""
 	}
-	
+
 	switch e := expr.(type) {
 	case *ast.Ident:
 		return e.Name
@@ -474,21 +472,21 @@ func AnalyzeGoFiles(rootDir string, files []string, ruleSets []models.RuleSet) (
 	result := &models.AnalysisResult{
 		FileCount: len(files),
 	}
-	
+
 	for _, file := range files {
 		rules := parser.GetRulesForFile(file, ruleSets)
 		if rules != nil {
 			result.RuleCount += len(rules.Rules)
 		}
-		
+
 		violations, err := analyzer.AnalyzeFile(file, rules)
 		if err != nil {
 			return nil, fmt.Errorf("failed to analyze %s: %w", file, err)
 		}
-		
+
 		result.Violations = append(result.Violations, violations...)
 	}
-	
+
 	return result, nil
 }
 
@@ -503,14 +501,14 @@ type Parser struct {
 func (p *Parser) GetRulesForFile(filePath string, ruleSets []models.RuleSet) *models.RuleSet {
 	var bestMatch *models.RuleSet
 	bestMatchDepth := -1
-	
+
 	absPath, _ := filepath.Abs(filePath)
 	dir := filepath.Dir(absPath)
-	
+
 	for i := range ruleSets {
 		ruleSet := &ruleSets[i]
 		absRulePath, _ := filepath.Abs(ruleSet.Path)
-		
+
 		if strings.HasPrefix(dir, absRulePath) {
 			depth := strings.Count(absRulePath, string(filepath.Separator))
 			if depth > bestMatchDepth {
@@ -519,7 +517,7 @@ func (p *Parser) GetRulesForFile(filePath string, ruleSets []models.RuleSet) *mo
 			}
 		}
 	}
-	
+
 	if bestMatch == nil && len(ruleSets) > 0 {
 		for i := range ruleSets {
 			if ruleSets[i].Path == p.rootDir || ruleSets[i].Path == "." {
@@ -527,6 +525,6 @@ func (p *Parser) GetRulesForFile(filePath string, ruleSets []models.RuleSet) *mo
 			}
 		}
 	}
-	
+
 	return bestMatch
 }

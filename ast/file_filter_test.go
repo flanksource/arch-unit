@@ -13,7 +13,7 @@ import (
 
 func TestShouldIncludeFile(t *testing.T) {
 	workDir := "/project"
-	
+
 	tests := []struct {
 		name            string
 		filePath        string
@@ -106,7 +106,7 @@ func TestShouldIncludeFile(t *testing.T) {
 			expected:        false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := shouldIncludeFile(tt.filePath, workDir, tt.includePatterns, tt.excludePatterns)
@@ -118,7 +118,7 @@ func TestShouldIncludeFile(t *testing.T) {
 func TestAnalyzeFilesWithFilter(t *testing.T) {
 	// Create a temporary directory structure
 	tempDir := t.TempDir()
-	
+
 	// Create test files
 	testFiles := []string{
 		"main.go",
@@ -130,14 +130,14 @@ func TestAnalyzeFilesWithFilter(t *testing.T) {
 		"test/utils.go",
 		"vendor/lib.go",
 	}
-	
+
 	for _, file := range testFiles {
 		fullPath := filepath.Join(tempDir, file)
 		dir := filepath.Dir(fullPath)
-		
+
 		err := os.MkdirAll(dir, 0755)
 		require.NoError(t, err)
-		
+
 		// Create file with minimal Go/Python content
 		var content string
 		if filepath.Ext(file) == ".go" {
@@ -147,18 +147,18 @@ func TestAnalyzeFilesWithFilter(t *testing.T) {
 		} else {
 			content = "{}\n"
 		}
-		
+
 		err = os.WriteFile(fullPath, []byte(content), 0644)
 		require.NoError(t, err)
 	}
-	
+
 	// Create AST cache
 	astCache, err := cache.NewASTCacheWithPath(t.TempDir())
 	require.NoError(t, err)
 	defer astCache.Close()
-	
+
 	analyzer := NewAnalyzer(astCache, tempDir)
-	
+
 	tests := []struct {
 		name            string
 		includePatterns []string
@@ -196,14 +196,14 @@ func TestAnalyzeFilesWithFilter(t *testing.T) {
 			description:     "Should only include Go files in src directory",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear cache before each test
 			astCache.ClearCache()
-			
+
 			err := analyzer.AnalyzeFilesWithFilter(tt.includePatterns, tt.excludePatterns)
-			
+
 			// Should not error (files might not be valid Go/Python but that's ok for this test)
 			// We're mainly testing the filtering logic
 			assert.NoError(t, err, tt.description)
@@ -214,7 +214,7 @@ func TestAnalyzeFilesWithFilter(t *testing.T) {
 func TestFileFilteringIntegration(t *testing.T) {
 	// Create a temporary Go project structure
 	tempDir := t.TempDir()
-	
+
 	// Create a realistic Go project structure
 	structure := map[string]string{
 		"main.go": `package main
@@ -249,53 +249,53 @@ func TestUserService_GetUser(t *testing.T) {
 
 func ExternalFunc() {}`,
 	}
-	
+
 	for filePath, content := range structure {
 		fullPath := filepath.Join(tempDir, filePath)
 		dir := filepath.Dir(fullPath)
-		
+
 		err := os.MkdirAll(dir, 0755)
 		require.NoError(t, err)
-		
+
 		err = os.WriteFile(fullPath, []byte(content), 0644)
 		require.NoError(t, err)
 	}
-	
+
 	// Create AST cache
 	astCache, err := cache.NewASTCacheWithPath(t.TempDir())
 	require.NoError(t, err)
 	defer astCache.Close()
-	
+
 	analyzer := NewAnalyzer(astCache, tempDir)
-	
+
 	// Test 1: Include only internal directory Go files, exclude tests
 	t.Run("Filter internal Go files excluding tests", func(t *testing.T) {
 		astCache.ClearCache()
-		
+
 		err := analyzer.AnalyzeFilesWithFilter(
 			[]string{"internal/**/*.go"},
 			[]string{"*_test.go"},
 		)
 		require.NoError(t, err)
-		
+
 		// Query for all nodes to see what was analyzed
 		nodes, err := analyzer.QueryPattern("*")
 		require.NoError(t, err)
-		
+
 		// Should find nodes from internal/service/user.go but not from test files
 		foundMainUserService := false
 		foundTestCode := false
-		
+
 		for _, node := range nodes {
 			if node.FilePath == filepath.Join(tempDir, "internal/service/user.go") {
 				foundMainUserService = true
 			}
 			if node.FilePath == filepath.Join(tempDir, "internal/service/user_test.go") ||
-			   node.FilePath == filepath.Join(tempDir, "main_test.go") {
+				node.FilePath == filepath.Join(tempDir, "main_test.go") {
 				foundTestCode = true
 			}
 		}
-		
+
 		assert.True(t, foundMainUserService, "Should find code from internal/service/user.go")
 		assert.False(t, foundTestCode, "Should not find any test code")
 	})
@@ -305,7 +305,7 @@ func ExternalFunc() {}`,
 func TestQueryWithFiltering(t *testing.T) {
 	// Create a temporary directory with mixed file types
 	tempDir := t.TempDir()
-	
+
 	// Create test files
 	structure := map[string]string{
 		"main.go": `package main
@@ -338,33 +338,33 @@ Final line.`,
     y = 2
     print(f"Sum: {x+y}")`,
 	}
-	
+
 	for filePath, content := range structure {
 		fullPath := filepath.Join(tempDir, filePath)
 		dir := filepath.Dir(fullPath)
-		
+
 		err := os.MkdirAll(dir, 0755)
 		require.NoError(t, err)
-		
+
 		err = os.WriteFile(fullPath, []byte(content), 0644)
 		require.NoError(t, err)
 	}
-	
+
 	// Create AST cache
 	astCache, err := cache.NewASTCacheWithPath(t.TempDir())
 	require.NoError(t, err)
 	defer astCache.Close()
-	
+
 	analyzer := NewAnalyzer(astCache, tempDir)
-	
+
 	// First, analyze all files normally to populate cache
 	err = analyzer.AnalyzeFiles()
 	require.NoError(t, err)
-	
+
 	// Verify all files are in cache (should include README.md)
 	allNodes, err := analyzer.QueryPattern("*")
 	require.NoError(t, err)
-	
+
 	hasMarkdownNodes := false
 	for _, node := range allNodes {
 		if strings.HasSuffix(node.FilePath, ".md") {
@@ -373,18 +373,18 @@ Final line.`,
 		}
 	}
 	assert.True(t, hasMarkdownNodes, "Should have markdown nodes in full analysis")
-	
+
 	// Now clear cache and analyze with filtering
 	err = astCache.ClearCache()
 	require.NoError(t, err)
-	
+
 	err = analyzer.AnalyzeFilesWithFilter([]string{}, []string{"*.md"})
 	require.NoError(t, err)
-	
+
 	// Query again - should not have markdown files
 	filteredNodes, err := analyzer.QueryPattern("*")
 	require.NoError(t, err)
-	
+
 	hasMarkdownNodesAfterFilter := false
 	for _, node := range filteredNodes {
 		if strings.HasSuffix(node.FilePath, ".md") {
@@ -393,18 +393,18 @@ Final line.`,
 		}
 	}
 	assert.False(t, hasMarkdownNodesAfterFilter, "Should not have markdown nodes after filtering")
-	
+
 	// Test metric query with filtering
 	err = astCache.ClearCache()
 	require.NoError(t, err)
-	
+
 	err = analyzer.AnalyzeFilesWithFilter([]string{}, []string{"*.md"})
 	require.NoError(t, err)
-	
+
 	// Execute a metric query that would match markdown files if they were included
 	metricNodes, err := analyzer.ExecuteAQLQuery("lines(*) > 3")
 	require.NoError(t, err)
-	
+
 	hasMarkdownInMetricQuery := false
 	for _, node := range metricNodes {
 		if strings.HasSuffix(node.FilePath, ".md") {

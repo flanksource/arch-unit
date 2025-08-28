@@ -114,7 +114,6 @@ func TestExecuteMetricQuery_NewSyntax(t *testing.T) {
 				assert.Equal(t, "Send", nodes[0].MethodName)
 			},
 		},
-
 	}
 
 	for _, tt := range tests {
@@ -168,7 +167,6 @@ func TestExecuteMetricQuery_InvalidQueries(t *testing.T) {
 			query:       "*.lines > 100",
 			expectedErr: "invalid metric query format",
 		},
-
 	}
 
 	for _, tt := range tests {

@@ -27,21 +27,21 @@ func CreateSmartDefaultConfig(rootDir string) (*models.Config, error) {
 		// Fall back to a minimal default config
 		return CreateMinimalDefaultConfig(), nil
 	}
-	
+
 	if len(detectedLanguages) == 0 {
 		logger.Infof("No supported languages detected, using minimal configuration")
 		return CreateMinimalDefaultConfig(), nil
 	}
-	
+
 	logger.Infof("Detected languages: %v", detectedLanguages)
-	
+
 	// Detect linter configuration files
 	linterConfigs, err := DetectLinterConfigs(rootDir)
 	if err != nil {
 		logger.Warnf("Failed to detect linter configs: %v", err)
 		linterConfigs = make(map[string]bool)
 	}
-	
+
 	config := &models.Config{
 		Version:   "1.0",
 		Debounce:  "30s",
@@ -49,17 +49,17 @@ func CreateSmartDefaultConfig(rootDir string) (*models.Config, error) {
 		Linters:   make(map[string]models.LinterConfig),
 		Rules:     make(map[string]models.RuleConfig),
 	}
-	
+
 	// Track which linters we're enabling
 	enabledLinters := make(map[string]bool)
-	
+
 	// Add language configs and enable appropriate linters based on config detection
 	for _, lang := range detectedLanguages {
 		// Add language configuration
 		config.Languages[lang] = models.LanguageConfig{
 			Includes: languages.GetDefaultIncludesForLanguage(lang),
 		}
-		
+
 		// Check which linters to enable for this language
 		if linters, ok := DefaultLintersByLanguage[lang]; ok {
 			for _, linterName := range linters {
@@ -79,22 +79,22 @@ func CreateSmartDefaultConfig(rootDir string) (*models.Config, error) {
 			}
 		}
 	}
-	
+
 	// Add a default rule configuration for all files
 	config.Rules["**"] = models.RuleConfig{
 		// Rules can be added by users as needed
 	}
-	
+
 	return config, nil
 }
 
 // CreateMinimalDefaultConfig creates a minimal default configuration when no languages are detected
 func CreateMinimalDefaultConfig() *models.Config {
 	return &models.Config{
-		Version:  "1.0",
-		Debounce: "30s",
-		Rules:    make(map[string]models.RuleConfig),
-		Linters:  make(map[string]models.LinterConfig),
+		Version:   "1.0",
+		Debounce:  "30s",
+		Rules:     make(map[string]models.RuleConfig),
+		Linters:   make(map[string]models.LinterConfig),
 		Languages: map[string]models.LanguageConfig{
 			// Minimal config - users can add languages as needed
 		},

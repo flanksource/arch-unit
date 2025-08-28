@@ -125,7 +125,7 @@ func ExpandVariablesInString(s string, variables map[string]interface{}) string 
 	if variables == nil || len(variables) == 0 {
 		return s
 	}
-	
+
 	return variableRegex.ReplaceAllStringFunc(s, func(match string) string {
 		varName := strings.TrimPrefix(strings.TrimSuffix(match, "}"), "${")
 		if val, ok := variables[varName]; ok {

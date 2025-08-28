@@ -57,12 +57,12 @@ func (v *Vale) DefaultIncludes() []string {
 // handled by the all_language_excludes macro. This only returns Vale-specific excludes.
 func (v *Vale) DefaultExcludes() []string {
 	return []string{
-		"LICENSE*",         // License files (prose quality not relevant)
-		"CHANGELOG*",       // Changelog files (different writing style)
+		"LICENSE*",          // License files (prose quality not relevant)
+		"CHANGELOG*",        // Changelog files (different writing style)
 		"package-lock.json", // Lock files (generated content)
-		"yarn.lock",        // Lock files (generated content)
-		"go.sum",           // Lock files (generated content)
-		"Cargo.lock",       // Lock files (generated content)
+		"yarn.lock",         // Lock files (generated content)
+		"go.sum",            // Lock files (generated content)
+		"Cargo.lock",        // Lock files (generated content)
 	}
 }
 
@@ -78,7 +78,7 @@ func (v *Vale) GetEffectiveExcludes(language string, config *models.Config) []st
 		// Fallback to default excludes if no config
 		return v.DefaultExcludes()
 	}
-	
+
 	// Use the all_language_excludes macro
 	return config.GetAllLanguageExcludes(language, v.DefaultExcludes())
 }
@@ -90,7 +90,7 @@ func (v *Vale) GetEffectiveIncludes(language string, config *models.Config) []st
 		// Fallback to default includes if no config
 		return v.DefaultIncludes()
 	}
-	
+
 	// Use the combined includes system
 	return config.GetAllLanguageIncludes(language, v.DefaultIncludes())
 }
@@ -126,11 +126,11 @@ func (v *Vale) ValidateConfig(config *models.LinterConfig) error {
 // Run executes vale and returns violations
 func (v *Vale) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Violation, error) {
 	var args []string
-	
+
 	// Generate dynamic Vale configuration that respects all_language_excludes
 	var configPath string
 	var cleanupNeeded bool
-	
+
 	// Check if a custom config is already specified in args
 	hasCustomConfig := false
 	if v.Config != nil {
@@ -141,7 +141,7 @@ func (v *Vale) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Viol
 			}
 		}
 	}
-	
+
 	// If no custom config, generate one with all_language_excludes
 	if !hasCustomConfig && v.ArchConfig != nil {
 		generatedConfig, err := GenerateValeConfig(v.WorkDir, v.ArchConfig, "markdown", v.DefaultExcludes())
@@ -158,20 +158,20 @@ func (v *Vale) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Viol
 			}()
 		}
 	}
-	
+
 	// Add configured args
 	if v.Config != nil {
 		args = append(args, v.Config.Args...)
 	}
-	
+
 	// Add JSON format if requested and not already present
 	if v.ForceJSON && !v.hasOutputArg(args) {
 		args = append(args, "--output=JSON")
 	}
-	
+
 	// Add extra args
 	args = append(args, v.ExtraArgs...)
-	
+
 	// Add files or default to current directory
 	if len(v.Files) > 0 {
 		args = append(args, v.Files...)
@@ -179,15 +179,15 @@ func (v *Vale) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Viol
 		// Vale works best with explicit paths
 		args = append(args, ".")
 	}
-	
+
 	// Execute command
 	cmd := exec.CommandContext(ctx, "vale", args...)
 	cmd.Dir = v.WorkDir
-	
+
 	logger.Infof("Executing: vale %s", strings.Join(args, " "))
-	
+
 	output, err := cmd.CombinedOutput()
-	
+
 	// Handle vale exit codes
 	// Vale exits with 1 when there are errors
 	// Vale exits with 2 when there are warnings (configurable)
@@ -201,16 +201,16 @@ func (v *Vale) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Viol
 			}
 		}
 	}
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("vale execution failed: %w\nOutput:\n%s", err, string(output))
 	}
-	
+
 	// Parse JSON output if we have any
 	if len(output) == 0 {
 		return []models.Violation{}, nil
 	}
-	
+
 	return v.parseViolations(output)
 }
 
@@ -251,7 +251,7 @@ func (v *Vale) parseViolations(output []byte) ([]models.Violation, error) {
 		logger.Debugf("Vale error response: %s", errorResponse.Text)
 		return []models.Violation{}, nil
 	}
-	
+
 	// Vale JSON output is a map of filename to array of violations
 	var results map[string][]ValeMessage
 	if err := json.Unmarshal(output, &results); err != nil {
@@ -259,7 +259,7 @@ func (v *Vale) parseViolations(output []byte) ([]models.Violation, error) {
 		logger.Debugf("Failed to parse vale JSON output: %v\nOutput: %s", err, string(output))
 		return nil, fmt.Errorf("failed to parse vale JSON output: %w", err)
 	}
-	
+
 	var violations []models.Violation
 	for filename, messages := range results {
 		for _, message := range messages {
@@ -267,7 +267,7 @@ func (v *Vale) parseViolations(output []byte) ([]models.Violation, error) {
 			violations = append(violations, violation)
 		}
 	}
-	
+
 	return violations, nil
 }
 
@@ -293,25 +293,25 @@ func (m *ValeMessage) ToViolation(workDir, filename string) models.Violation {
 	if !filepath.IsAbs(filename) {
 		filename = filepath.Join(workDir, filename)
 	}
-	
+
 	// Build the rule/method name
 	calledMethod := m.Check
 	if calledMethod == "" {
 		calledMethod = m.Severity
 	}
-	
+
 	// Build message with match context if available
 	message := m.Message
 	if m.Match != "" {
 		message = fmt.Sprintf("%s [%s]", m.Message, m.Match)
 	}
-	
+
 	// Use span for more precise column if available
 	column := m.Column
 	if len(m.Span) > 0 {
 		column = m.Span[0]
 	}
-	
+
 	return models.Violation{
 		File:          filename,
 		Line:          m.Line,

@@ -14,12 +14,10 @@ import (
 	"github.com/flanksource/commons/logger"
 )
 
-
-
 // runYAMLBasedCheck runs the new arch-unit.yaml based check
 func runYAMLBasedCheck(rootDir string, config *models.Config, specificFiles []string) (*models.AnalysisResult, error) {
 	var goFiles, pythonFiles []string
-	
+
 	if len(specificFiles) > 0 {
 		// Run only on specific files
 		for _, file := range specificFiles {
@@ -38,7 +36,7 @@ func runYAMLBasedCheck(rootDir string, config *models.Config, specificFiles []st
 			return nil, fmt.Errorf("failed to find source files: %w", err)
 		}
 		logger.Infof("Found %d Go files and %d Python files", len(goFiles), len(pythonFiles))
-		
+
 		// Apply filters
 		goFiles = filterFiles(goFiles, includePattern, excludePattern)
 		pythonFiles = filterFiles(pythonFiles, includePattern, excludePattern)
@@ -101,7 +99,7 @@ func runYAMLBasedCheck(rootDir string, config *models.Config, specificFiles []st
 				violations = archViolations
 			}
 		}
-		
+
 		// Log cache statistics
 		if stats, err := violationCache.GetStats(); err == nil {
 			logger.Debugf("Cache stats: %v", stats)
@@ -158,7 +156,7 @@ func analyzeGoFilesWithCache(rootDir string, files []string, config *models.Conf
 		if err != nil {
 			return nil, fmt.Errorf("failed to get rules for file %s: %w", file, err)
 		}
-		
+
 		if rules != nil {
 			result.RuleCount += len(rules.Rules)
 		}
@@ -183,8 +181,6 @@ func analyzeGoFilesWithCache(rootDir string, files []string, config *models.Conf
 	// Don't return violations here - they will be fetched from DB
 	return result, nil
 }
-
-
 
 // analyzePythonFilesWithCache analyzes Python files with caching support
 func analyzePythonFilesWithCache(rootDir string, files []string, config *models.Config, violationCache *cache.ViolationCache) (*models.AnalysisResult, error) {
@@ -227,7 +223,7 @@ func analyzePythonFilesWithCache(rootDir string, files []string, config *models.
 		if err != nil {
 			return nil, fmt.Errorf("failed to get rules for file %s: %w", file, err)
 		}
-		
+
 		if rules != nil {
 			result.RuleCount += len(rules.Rules)
 		}
@@ -254,18 +250,16 @@ func analyzePythonFilesWithCache(rootDir string, files []string, config *models.
 	return result, nil
 }
 
-
-
 // outputConsolidatedResults outputs consolidated results from arch-unit and linters
 func outputConsolidatedResults(result *models.ConsolidatedResult) error {
 	outputFormat := getOutputFormat()
-	
+
 	if outputFormat == "json" {
 		data, err := stdjson.MarshalIndent(result, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
-		
+
 		if outputFile != "" {
 			return os.WriteFile(outputFile, data, 0644)
 		}
@@ -279,7 +273,7 @@ func outputConsolidatedResults(result *models.ConsolidatedResult) error {
 		FileCount:  result.Summary.FilesAnalyzed,
 		RuleCount:  result.Summary.RulesApplied,
 	}
-	
+
 	outputManager := output.NewOutputManager(outputFormat)
 	outputManager.SetOutputFile(outputFile)
 	outputManager.SetCompact(compact)
@@ -340,9 +334,9 @@ func printConsolidatedSummary(result *models.ConsolidatedResult) {
 		fmt.Println()
 		if result.Summary.TotalViolations == 0 {
 			fmt.Printf("✓ No violations found!\n")
-			fmt.Printf("  Analyzed %d file(s) with %d rule(s)\n", 
+			fmt.Printf("  Analyzed %d file(s) with %d rule(s)\n",
 				result.Summary.FilesAnalyzed, result.Summary.RulesApplied)
-			fmt.Printf("  Ran %d linter(s) (%d successful)\n", 
+			fmt.Printf("  Ran %d linter(s) (%d successful)\n",
 				result.Summary.LintersRun, result.Summary.LintersSuccessful)
 		} else {
 			fmt.Printf("✗ Found %d total violation(s)\n", result.Summary.TotalViolations)
@@ -352,9 +346,9 @@ func printConsolidatedSummary(result *models.ConsolidatedResult) {
 			if result.Summary.LinterViolations > 0 {
 				fmt.Printf("  - %d linter violation(s)\n", result.Summary.LinterViolations)
 			}
-			fmt.Printf("  Analyzed %d file(s) with %d rule(s)\n", 
+			fmt.Printf("  Analyzed %d file(s) with %d rule(s)\n",
 				result.Summary.FilesAnalyzed, result.Summary.RulesApplied)
-			fmt.Printf("  Ran %d linter(s) (%d successful)\n", 
+			fmt.Printf("  Ran %d linter(s) (%d successful)\n",
 				result.Summary.LintersRun, result.Summary.LintersSuccessful)
 		}
 		if len(summary.FailedLinters) > 0 {

@@ -50,7 +50,7 @@ func (h *PythonHandler) GetFilePattern() string {
 // GetBestPractices returns Python-specific best practices
 func (h *PythonHandler) GetBestPractices(strictness string) map[string]interface{} {
 	practices := make(map[string]interface{})
-	
+
 	practices["max_file_length"] = getValueByStrictness(strictness, 300, 500, 700)
 	practices["max_function_length"] = getValueByStrictness(strictness, 30, 50, 75)
 	practices["max_cyclomatic_complexity"] = getValueByStrictness(strictness, 5, 10, 15)
@@ -59,7 +59,7 @@ func (h *PythonHandler) GetBestPractices(strictness string) map[string]interface
 	practices["max_module_members"] = getValueByStrictness(strictness, 12, 20, 30)
 	practices["max_line_length"] = getValueByStrictness(strictness, 79, 88, 120)
 	practices["min_test_coverage"] = getValueByStrictness(strictness, 80, 70, 60)
-	
+
 	return practices
 }
 
@@ -87,10 +87,10 @@ func (h *PythonHandler) GetStyleGuideOptions() []languages.StyleGuideOption {
 // IsTestFile determines if a file is a test file
 func (h *PythonHandler) IsTestFile(filename string) bool {
 	base := strings.TrimSuffix(filename, ".py")
-	return strings.HasPrefix(base, "test_") || 
-	       strings.HasSuffix(base, "_test") ||
-	       strings.Contains(filename, "/tests/") ||
-	       strings.Contains(filename, "/test/")
+	return strings.HasPrefix(base, "test_") ||
+		strings.HasSuffix(base, "_test") ||
+		strings.Contains(filename, "/tests/") ||
+		strings.Contains(filename, "/test/")
 }
 
 // GetExtensions returns file extensions

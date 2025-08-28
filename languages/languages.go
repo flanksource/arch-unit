@@ -25,12 +25,12 @@ var DefaultRegistry *Registry
 
 func init() {
 	DefaultRegistry = NewRegistry()
-	
+
 	// Create Go analyzer
 	goAnalyzer := &goAnalyzerAdapter{
 		analyzer: analysis.NewGoAnalyzer(),
 	}
-	
+
 	// Register Go language
 	DefaultRegistry.Register(&LanguageConfig{
 		Name:       "go",
@@ -41,7 +41,7 @@ func init() {
 		},
 		Analyzer: goAnalyzer,
 	})
-	
+
 	// Register Python language
 	DefaultRegistry.Register(&LanguageConfig{
 		Name:       "python",
@@ -52,7 +52,7 @@ func init() {
 		},
 		Analyzer: nil, // Will be set when analyzer is created
 	})
-	
+
 	// Register JavaScript language
 	DefaultRegistry.Register(&LanguageConfig{
 		Name:       "javascript",
@@ -62,7 +62,7 @@ func init() {
 		},
 		Analyzer: nil, // Will be set when analyzer is created
 	})
-	
+
 	// Register TypeScript language
 	DefaultRegistry.Register(&LanguageConfig{
 		Name:       "typescript",
@@ -72,7 +72,7 @@ func init() {
 		},
 		Analyzer: nil, // Will be set when analyzer is created
 	})
-	
+
 	// Register Markdown language
 	DefaultRegistry.Register(&LanguageConfig{
 		Name:       "markdown",
@@ -83,7 +83,7 @@ func init() {
 		},
 		Analyzer: nil, // Will be set when analyzer is created
 	})
-	
+
 	// Register YAML language
 	DefaultRegistry.Register(&LanguageConfig{
 		Name:       "yaml",
@@ -93,7 +93,7 @@ func init() {
 		},
 		Analyzer: nil, // Will be set when analyzer is created
 	})
-	
+
 	// Register JSON language
 	DefaultRegistry.Register(&LanguageConfig{
 		Name:       "json",
@@ -103,7 +103,7 @@ func init() {
 		},
 		Analyzer: nil, // Will be set when analyzer is created
 	})
-	
+
 	// Register Rust language
 	DefaultRegistry.Register(&LanguageConfig{
 		Name:       "rust",
@@ -114,7 +114,7 @@ func init() {
 		},
 		Analyzer: nil, // Will be set when analyzer is created
 	})
-	
+
 	// Register Java language
 	DefaultRegistry.Register(&LanguageConfig{
 		Name:       "java",
@@ -125,7 +125,7 @@ func init() {
 		},
 		Analyzer: nil, // Will be set when analyzer is created
 	})
-	
+
 	// Register C/C++ languages
 	DefaultRegistry.Register(&LanguageConfig{
 		Name:       "c",
@@ -136,7 +136,7 @@ func init() {
 		},
 		Analyzer: nil, // Will be set when analyzer is created
 	})
-	
+
 	DefaultRegistry.Register(&LanguageConfig{
 		Name:       "cpp",
 		Extensions: []string{".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx"},

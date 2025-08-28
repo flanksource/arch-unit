@@ -26,7 +26,7 @@ func TestAQLParser_SimpleRule(t *testing.T) {
 	stmt := rule.Statements[0]
 	assert.Equal(t, models.AQLStatementLimit, stmt.Type)
 	require.NotNil(t, stmt.Condition)
-	
+
 	// Verify the condition structure
 	assert.Equal(t, models.OpGreaterThan, stmt.Condition.Operator)
 	assert.Equal(t, "cyclomatic", stmt.Condition.Property)
@@ -107,27 +107,27 @@ func TestAQLParser_PatternVariants(t *testing.T) {
 		expected models.AQLPattern
 	}{
 		{
-			pattern: "*",
+			pattern:  "*",
 			expected: models.AQLPattern{Package: "*", Type: "*", Method: "*"},
 		},
 		{
-			pattern: "pkg.*",
+			pattern:  "pkg.*",
 			expected: models.AQLPattern{Package: "pkg", Type: "*", Method: "*"},
 		},
 		{
-			pattern: "*.UserService",
+			pattern:  "*.UserService",
 			expected: models.AQLPattern{Package: "*", Type: "UserService", Method: "*"},
 		},
 		{
-			pattern: "*.UserService:Create*",
+			pattern:  "*.UserService:Create*",
 			expected: models.AQLPattern{Package: "*", Type: "UserService", Method: "Create*"},
 		},
 		{
-			pattern: "api.controller.*",
+			pattern:  "api.controller.*",
 			expected: models.AQLPattern{Package: "api.controller", Type: "*", Method: "*"},
 		},
 		{
-			pattern: "main.Calculator:Add",
+			pattern:  "main.Calculator:Add",
 			expected: models.AQLPattern{Package: "main", Type: "Calculator", Method: "Add"},
 		},
 	}
@@ -145,7 +145,7 @@ func TestAQLParser_PatternVariants(t *testing.T) {
 
 			stmt := ruleSet.Rules[0].Statements[0]
 			pattern := stmt.Pattern
-			
+
 			assert.Equal(t, test.expected.Package, pattern.Package)
 			assert.Equal(t, test.expected.Type, pattern.Type)
 			assert.Equal(t, test.expected.Method, pattern.Method)
@@ -193,8 +193,8 @@ func TestAQLParser_ConditionOperators(t *testing.T) {
 
 func TestAQLParser_ErrorCases(t *testing.T) {
 	errorCases := []struct {
-		name string
-		aql  string
+		name          string
+		aql           string
 		expectedError string
 	}{
 		{
@@ -317,7 +317,7 @@ func TestAQLParser_Comments(t *testing.T) {
 
 func TestAQLParser_LargeRuleSet(t *testing.T) {
 	var aqlBuilder strings.Builder
-	
+
 	// Generate a large rule set
 	for i := 0; i < 100; i++ {
 		aqlBuilder.WriteString(fmt.Sprintf(`
@@ -395,7 +395,7 @@ func BenchmarkAQLParser_SingleRule(b *testing.B) {
 
 func BenchmarkAQLParser_LargeRuleSet(b *testing.B) {
 	var aqlBuilder strings.Builder
-	
+
 	// Generate rule set with 1000 rules
 	for i := 0; i < 1000; i++ {
 		aqlBuilder.WriteString(fmt.Sprintf(`
@@ -409,7 +409,7 @@ func BenchmarkAQLParser_LargeRuleSet(b *testing.B) {
 
 	aql := aqlBuilder.String()
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		_, err := ParseAQLFile(aql)
 		if err != nil {

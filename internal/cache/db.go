@@ -17,7 +17,7 @@ func NewDB(driverName, dataSourceName string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Configure SQLite for better concurrency
 	if driverName == "sqlite" {
 		// Enable WAL mode for better concurrent access
@@ -25,26 +25,26 @@ func NewDB(driverName, dataSourceName string) (*DB, error) {
 			conn.Close()
 			return nil, err
 		}
-		
+
 		// Set busy timeout to 5 seconds (5000ms)
 		if _, err := conn.Exec("PRAGMA busy_timeout=5000"); err != nil {
 			conn.Close()
 			return nil, err
 		}
-		
+
 		// Enable foreign keys
 		if _, err := conn.Exec("PRAGMA foreign_keys=ON"); err != nil {
 			conn.Close()
 			return nil, err
 		}
-		
+
 		// Set synchronous to NORMAL for better performance
 		if _, err := conn.Exec("PRAGMA synchronous=NORMAL"); err != nil {
 			conn.Close()
 			return nil, err
 		}
 	}
-	
+
 	return &DB{conn: conn}, nil
 }
 

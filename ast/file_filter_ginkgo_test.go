@@ -38,7 +38,7 @@ var _ = Describe("File Filtering", func() {
 
 		BeforeEach(func() {
 			tempDir = GinkgoT().TempDir()
-			
+
 			// Create test files
 			testFiles = []string{
 				"main.go",
@@ -50,14 +50,14 @@ var _ = Describe("File Filtering", func() {
 				"test/utils.go",
 				"vendor/lib.go",
 			}
-			
+
 			for _, file := range testFiles {
 				fullPath := filepath.Join(tempDir, file)
 				dir := filepath.Dir(fullPath)
-				
+
 				err := os.MkdirAll(dir, 0755)
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				// Create file with minimal content
 				var content string
 				switch filepath.Ext(file) {
@@ -68,11 +68,11 @@ var _ = Describe("File Filtering", func() {
 				default:
 					content = "{}\n"
 				}
-				
+
 				err = os.WriteFile(fullPath, []byte(content), 0644)
 				Expect(err).NotTo(HaveOccurred())
 			}
-			
+
 			analyzer = ast.NewAnalyzer(astCache, tempDir)
 		})
 
@@ -81,9 +81,9 @@ var _ = Describe("File Filtering", func() {
 				// Clear cache before each test
 				err := astCache.ClearCache()
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				err = analyzer.AnalyzeFilesWithFilter(includePatterns, excludePatterns)
-				
+
 				// Should not error (files might not be valid Go/Python but that's ok for this test)
 				// We're mainly testing the filtering logic
 				Expect(err).NotTo(HaveOccurred(), description)
@@ -107,7 +107,7 @@ var _ = Describe("File Filtering", func() {
 
 		BeforeEach(func() {
 			tempDir = GinkgoT().TempDir()
-			
+
 			// Create a realistic Go project structure
 			structure = map[string]string{
 				"main.go": `package main
@@ -142,49 +142,49 @@ func TestUserService_GetUser(t *testing.T) {
 
 func ExternalFunc() {}`,
 			}
-			
+
 			for filePath, content := range structure {
 				fullPath := filepath.Join(tempDir, filePath)
 				dir := filepath.Dir(fullPath)
-				
+
 				err := os.MkdirAll(dir, 0755)
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				err = os.WriteFile(fullPath, []byte(content), 0644)
 				Expect(err).NotTo(HaveOccurred())
 			}
-			
+
 			analyzer = ast.NewAnalyzer(astCache, tempDir)
 		})
 
 		It("should filter internal Go files excluding tests", func() {
 			err := astCache.ClearCache()
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			err = analyzer.AnalyzeFilesWithFilter(
 				[]string{"internal/**/*.go"},
 				[]string{"*_test.go"},
 			)
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			// Query for all nodes to see what was analyzed
 			nodes, err := analyzer.QueryPattern("*")
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			// Should find nodes from internal/service/user.go but not from test files
 			foundMainUserService := false
 			foundTestCode := false
-			
+
 			for _, node := range nodes {
 				if node.FilePath == filepath.Join(tempDir, "internal/service/user.go") {
 					foundMainUserService = true
 				}
 				if node.FilePath == filepath.Join(tempDir, "internal/service/user_test.go") ||
-				   node.FilePath == filepath.Join(tempDir, "main_test.go") {
+					node.FilePath == filepath.Join(tempDir, "main_test.go") {
 					foundTestCode = true
 				}
 			}
-			
+
 			Expect(foundMainUserService).To(BeTrue(), "Should find code from internal/service/user.go")
 			Expect(foundTestCode).To(BeFalse(), "Should not find any test code")
 		})
@@ -196,7 +196,7 @@ func ExternalFunc() {}`,
 
 		BeforeEach(func() {
 			tempDir = GinkgoT().TempDir()
-			
+
 			// Create test files with mixed types
 			structure = map[string]string{
 				"main.go": `package main
@@ -229,18 +229,18 @@ Final line.`,
     y = 2
     print(f"Sum: {x+y}")`,
 			}
-			
+
 			for filePath, content := range structure {
 				fullPath := filepath.Join(tempDir, filePath)
 				dir := filepath.Dir(fullPath)
-				
+
 				err := os.MkdirAll(dir, 0755)
 				Expect(err).NotTo(HaveOccurred())
-				
+
 				err = os.WriteFile(fullPath, []byte(content), 0644)
 				Expect(err).NotTo(HaveOccurred())
 			}
-			
+
 			analyzer = ast.NewAnalyzer(astCache, tempDir)
 		})
 
@@ -248,11 +248,11 @@ Final line.`,
 			// First, analyze all files normally to populate cache
 			err := analyzer.AnalyzeFiles()
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			// Verify all files are in cache (should include README.md)
 			allNodes, err := analyzer.QueryPattern("*")
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			hasMarkdownNodes := false
 			for _, node := range allNodes {
 				if strings.HasSuffix(node.FilePath, ".md") {
@@ -267,14 +267,14 @@ Final line.`,
 			// Clear cache and analyze with filtering
 			err := astCache.ClearCache()
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			err = analyzer.AnalyzeFilesWithFilter([]string{}, []string{"*.md"})
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			// Query again - should not have markdown files
 			filteredNodes, err := analyzer.QueryPattern("*")
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			hasMarkdownNodesAfterFilter := false
 			for _, node := range filteredNodes {
 				if strings.HasSuffix(node.FilePath, ".md") {
@@ -289,14 +289,14 @@ Final line.`,
 			// Test metric query with filtering
 			err := astCache.ClearCache()
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			err = analyzer.AnalyzeFilesWithFilter([]string{}, []string{"*.md"})
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			// Execute a metric query that would match markdown files if they were included
 			metricNodes, err := analyzer.ExecuteAQLQuery("lines(*) > 3")
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			hasMarkdownInMetricQuery := false
 			for _, node := range metricNodes {
 				if strings.HasSuffix(node.FilePath, ".md") {

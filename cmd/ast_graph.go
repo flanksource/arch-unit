@@ -11,11 +11,11 @@ import (
 )
 
 var (
-	graphFormat     string
-	graphNoColor    bool
-	graphDepth      int
-	graphShowLibs   bool
-	graphRootOnly   bool
+	graphFormat   string
+	graphNoColor  bool
+	graphDepth    int
+	graphShowLibs bool
+	graphRootOnly bool
 )
 
 var astGraphCmd = &cobra.Command{
@@ -124,7 +124,7 @@ func runASTGraph(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	logger.Debugf("Found %d relationships and %d library relationships", 
+	logger.Debugf("Found %d relationships and %d library relationships",
 		len(relationships), len(libraryRels))
 
 	// Build call graph
@@ -150,7 +150,7 @@ func runASTGraph(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	logger.Infof("Built call graph with %d nodes, %d relationships", 
+	logger.Infof("Built call graph with %d nodes, %d relationships",
 		len(callGraph.Nodes), len(callGraph.Relationships))
 
 	// Format and display the call graph

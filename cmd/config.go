@@ -196,41 +196,41 @@ func init() {
 func runConfig(cmd *cobra.Command, args []string) error {
 	// Generate config content
 	content := generateDefaultConfig()
-	
+
 	// Handle stdout output
 	if configOutputPath == "-" {
 		fmt.Print(content)
 		return nil
 	}
-	
+
 	// Determine output path
 	outputPath := "arch-unit.yaml"
 	if configOutputPath != "" {
 		outputPath = configOutputPath
 	}
-	
+
 	// Make absolute path
 	absPath, err := filepath.Abs(outputPath)
 	if err != nil {
 		return fmt.Errorf("invalid output path: %w", err)
 	}
-	
+
 	// Check if file exists
 	if _, err := os.Stat(absPath); err == nil && !configForce {
 		return fmt.Errorf("config file already exists at %s (use --force to overwrite)", absPath)
 	}
-	
+
 	// Create directory if needed
 	dir := filepath.Dir(absPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
-	
+
 	// Write file
 	if err := os.WriteFile(absPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
-	
+
 	fmt.Printf("✓ Generated default configuration file: %s\n", absPath)
 	fmt.Println()
 	fmt.Println("The configuration includes:")
@@ -240,13 +240,13 @@ func runConfig(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println("Edit the file to customize includes/excludes for your project.")
 	fmt.Println("Built-in patterns are always applied in addition to your custom patterns.")
-	
+
 	return nil
 }
 
 func generateDefaultConfig() string {
 	var sb strings.Builder
-	
+
 	// Header with explanation
 	sb.WriteString(`# arch-unit.yaml - Architecture Analysis Configuration
 #
@@ -361,8 +361,8 @@ linters:
 
 	// Generate linter configurations with built-in defaults
 	linters := []struct {
-		name        string
-		instance    interface {
+		name     string
+		instance interface {
 			Name() string
 			DefaultIncludes() []string
 			DefaultExcludes() []string
@@ -378,22 +378,22 @@ linters:
 		{"markdownlint", markdownlint.NewMarkdownlint("."), false, "Markdown style checker", []string{"markdown"}},
 		{"vale", vale.NewVale("."), false, "Prose and documentation linter", []string{"markdown"}},
 	}
-	
+
 	for _, linter := range linters {
 		sb.WriteString(fmt.Sprintf("  %s:\n", linter.name))
 		sb.WriteString(fmt.Sprintf("    # %s\n", linter.description))
 		sb.WriteString(fmt.Sprintf("    enabled: %t\n", linter.enabled))
-		
+
 		// Add languages
 		sb.WriteString("    languages:\n")
 		for _, lang := range linter.languages {
 			sb.WriteString(fmt.Sprintf("      - %s\n", lang))
 		}
-		
+
 		sb.WriteString("    # Language patterns are inherited from the languages section above\n")
 		sb.WriteString("    # Additional linter-specific patterns:\n")
 		sb.WriteString("    includes:\n")
-		
+
 		// Add any linter-specific built-in includes that aren't language-based
 		builtinIncludes := linter.instance.DefaultIncludes()
 		if len(builtinIncludes) > 0 {
@@ -403,9 +403,9 @@ linters:
 			}
 		}
 		sb.WriteString("      # Add your custom includes here\n")
-		
+
 		sb.WriteString("    excludes:\n")
-		
+
 		// Add linter-specific built-in excludes
 		builtinExcludes := linter.instance.DefaultExcludes()
 		if len(builtinExcludes) > 0 {
@@ -415,42 +415,42 @@ linters:
 			}
 		}
 		sb.WriteString("      # Add your custom excludes here\n")
-		
+
 		// Add common configuration options
 		switch linter.name {
 		case "golangci-lint":
 			sb.WriteString("    args:\n")
 			sb.WriteString("      # - \"--config=.golangci.yml\"  # Custom golangci-lint config\n")
 			sb.WriteString("      # - \"--enable=gosec,gocritic\" # Enable specific linters\n")
-			
+
 		case "ruff":
 			sb.WriteString("    args:\n")
 			sb.WriteString("      # - \"--select=E,W,F\"    # Select specific rule categories\n")
 			sb.WriteString("      # - \"--ignore=E501\"     # Ignore specific rules\n")
-			
+
 		case "pyright":
 			sb.WriteString("    args:\n")
 			sb.WriteString("      # - \"--project=pyrpoject.toml\"  # Custom pyproject.toml config\n")
-			
+
 		case "eslint":
 			sb.WriteString("    args:\n")
 			sb.WriteString("      # - \"--config=.eslintrc.js\"     # Custom ESLint config\n")
 			sb.WriteString("      # - \"--ext=.js,.jsx,.ts,.tsx\"   # File extensions\n")
-			
+
 		case "markdownlint":
 			sb.WriteString("    args:\n")
 			sb.WriteString("      # - \"--config=.markdownlint.json\"  # Custom config file\n")
 			sb.WriteString("      # - \"--disable MD013\"             # Disable specific rules\n")
-			
+
 		case "vale":
 			sb.WriteString("    args:\n")
 			sb.WriteString("      # - \"--config=.vale.ini\"     # Custom Vale config\n")
 			sb.WriteString("      # - \"--minAlertLevel=error\"  # Minimum alert level\n")
 		}
-		
+
 		sb.WriteString("\n")
 	}
-	
+
 	// Add footer with additional information
 	sb.WriteString(`
 # Advanced Configuration Options

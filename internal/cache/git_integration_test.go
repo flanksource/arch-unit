@@ -11,7 +11,7 @@ func TestNewGitIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GitIntegration: %v", err)
 	}
-	
+
 	if gi.cache == nil {
 		t.Error("GitIntegration cache should not be nil")
 	}
@@ -19,7 +19,7 @@ func TestNewGitIntegration(t *testing.T) {
 
 func TestIsRemoteRepo(t *testing.T) {
 	gi := &GitIntegration{}
-	
+
 	tests := []struct {
 		name     string
 		path     string
@@ -36,7 +36,7 @@ func TestIsRemoteRepo(t *testing.T) {
 		{"Relative Path", "./repo", false},
 		{"Relative Parent", "../repo", false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := gi.isRemoteRepo(tt.path)
@@ -51,14 +51,14 @@ func TestPrepareRepository_LocalPath(t *testing.T) {
 	tmpDir := t.TempDir()
 	gc := NewGitCacheWithOptions(tmpDir, 1*time.Hour)
 	gi := NewGitIntegrationWithCache(gc)
-	
+
 	localPath := "/home/user/local/repo"
 	result, err := gi.PrepareRepository(localPath)
-	
+
 	if err != nil {
 		t.Errorf("PrepareRepository failed for local path: %v", err)
 	}
-	
+
 	if result != localPath {
 		t.Errorf("Expected %s, got %s", localPath, result)
 	}
@@ -68,14 +68,14 @@ func TestPrepareRepositoryWithRef_LocalPath(t *testing.T) {
 	tmpDir := t.TempDir()
 	gc := NewGitCacheWithOptions(tmpDir, 1*time.Hour)
 	gi := NewGitIntegrationWithCache(gc)
-	
+
 	localPath := "/home/user/local/repo"
 	result, err := gi.PrepareRepositoryWithRef(localPath, "main")
-	
+
 	if err != nil {
 		t.Errorf("PrepareRepositoryWithRef failed for local path: %v", err)
 	}
-	
+
 	if result != localPath {
 		t.Errorf("Expected %s, got %s", localPath, result)
 	}
@@ -85,14 +85,14 @@ func TestGetCachedPath_LocalPath(t *testing.T) {
 	tmpDir := t.TempDir()
 	gc := NewGitCacheWithOptions(tmpDir, 1*time.Hour)
 	gi := NewGitIntegrationWithCache(gc)
-	
+
 	localPath := "/home/user/local/repo"
 	result, err := gi.GetCachedPath(localPath)
-	
+
 	if err != nil {
 		t.Errorf("GetCachedPath failed for local path: %v", err)
 	}
-	
+
 	if result != localPath {
 		t.Errorf("Expected %s, got %s", localPath, result)
 	}
@@ -102,9 +102,9 @@ func TestIsCached_LocalPath(t *testing.T) {
 	tmpDir := t.TempDir()
 	gc := NewGitCacheWithOptions(tmpDir, 1*time.Hour)
 	gi := NewGitIntegrationWithCache(gc)
-	
+
 	localPath := "/home/user/local/repo"
-	
+
 	if !gi.IsCached(localPath) {
 		t.Error("Local paths should always be considered cached")
 	}
@@ -114,9 +114,9 @@ func TestIsCached_RemoteRepo(t *testing.T) {
 	tmpDir := t.TempDir()
 	gc := NewGitCacheWithOptions(tmpDir, 1*time.Hour)
 	gi := NewGitIntegrationWithCache(gc)
-	
+
 	remoteURL := "https://github.com/user/repo.git"
-	
+
 	if gi.IsCached(remoteURL) {
 		t.Error("Remote repo should not be cached initially")
 	}
@@ -126,10 +126,10 @@ func TestCleanRepoCache_LocalPath(t *testing.T) {
 	tmpDir := t.TempDir()
 	gc := NewGitCacheWithOptions(tmpDir, 1*time.Hour)
 	gi := NewGitIntegrationWithCache(gc)
-	
+
 	localPath := "/home/user/local/repo"
 	err := gi.CleanRepoCache(localPath)
-	
+
 	if err != nil {
 		t.Errorf("CleanRepoCache should not fail for local paths: %v", err)
 	}
@@ -139,13 +139,13 @@ func TestPrepareRepository_RelativePath(t *testing.T) {
 	tmpDir := t.TempDir()
 	gc := NewGitCacheWithOptions(tmpDir, 1*time.Hour)
 	gi := NewGitIntegrationWithCache(gc)
-	
+
 	tests := []string{
 		"./local/repo",
 		"../parent/repo",
 		"relative/path/to/repo",
 	}
-	
+
 	for _, path := range tests {
 		t.Run(path, func(t *testing.T) {
 			result, err := gi.PrepareRepository(path)
@@ -163,10 +163,10 @@ func TestGetCachedPath_RemoteRepo_NotCached(t *testing.T) {
 	tmpDir := t.TempDir()
 	gc := NewGitCacheWithOptions(tmpDir, 1*time.Hour)
 	gi := NewGitIntegrationWithCache(gc)
-	
+
 	remoteURL := "https://github.com/user/repo.git"
 	_, err := gi.GetCachedPath(remoteURL)
-	
+
 	if err == nil {
 		t.Error("GetCachedPath should return error for non-cached remote repo")
 	}
@@ -177,7 +177,7 @@ func TestCleanCache(t *testing.T) {
 	cacheDir := filepath.Join(tmpDir, "test-cache")
 	gc := NewGitCacheWithOptions(cacheDir, 1*time.Hour)
 	gi := NewGitIntegrationWithCache(gc)
-	
+
 	err := gi.CleanCache()
 	if err != nil {
 		t.Errorf("CleanCache failed: %v", err)
@@ -188,7 +188,7 @@ func TestCleanStaleCache(t *testing.T) {
 	tmpDir := t.TempDir()
 	gc := NewGitCacheWithOptions(tmpDir, 1*time.Hour)
 	gi := NewGitIntegrationWithCache(gc)
-	
+
 	err := gi.CleanStaleCache()
 	if err != nil {
 		t.Errorf("CleanStaleCache failed: %v", err)

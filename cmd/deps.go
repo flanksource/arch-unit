@@ -8,6 +8,7 @@ import (
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/task"
+	"github.com/flanksource/commons/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -102,28 +103,28 @@ func runDepsScan(cmd *cobra.Command, args []string) error {
 
 	// Defensive check: ensure result is not nil
 	if deps == nil {
-		fmt.Println("No dependencies found")
+		logger.Infof("No dependencies found")
 		return nil
 	}
 
 	if len(deps.Dependencies) == 0 {
-		fmt.Println("No dependencies found")
+		logger.Infof("No dependencies found")
 		return nil
 	}
 
 	// Display results
 	if depsShowConflicts && len(deps.Conflicts) > 0 {
-		fmt.Printf("⚠️  Version conflicts detected (%d)\n\n", len(deps.Conflicts))
+		logger.Warnf("Version conflicts detected (%d)", len(deps.Conflicts))
 		for _, conflict := range deps.Conflicts {
-			fmt.Printf("📦 %s:\n", conflict.DependencyName)
+			logger.Warnf("📦 %s:", conflict.DependencyName)
 			for _, version := range conflict.Versions {
-				fmt.Printf("  - %s (depth %d from %s)\n", version.Version, version.Depth, version.Source)
+				logger.Warnf("  - %s (depth %d from %s)", version.Version, version.Depth, version.Source)
 			}
-			fmt.Printf("  Resolution: %s\n\n", conflict.ResolutionStrategy)
+			logger.Warnf("  Resolution: %s", conflict.ResolutionStrategy)
 		}
 	}
 
-	fmt.Println(clicky.MustFormat(deps.Dependencies, clicky.FormatOptions{Format: "tree"}))
+	fmt.Println(clicky.MustFormat(deps.Dependencies))
 	return nil
 }
 
