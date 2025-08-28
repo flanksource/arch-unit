@@ -16,9 +16,8 @@ import (
 )
 
 func TestGoASTExtractor_ExtractSimpleFile(t *testing.T) {
-	astCache, err := cache.NewASTCache()
-	require.NoError(t, err)
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
+	require.NoError(t, astCache.ClearAllData())
 
 	extractor := NewGoASTExtractor(astCache)
 
@@ -46,7 +45,7 @@ func main() {
 	require.NoError(t, os.WriteFile(testFile, []byte(content), 0644))
 
 	// Extract AST
-	err = extractor.ExtractFile(testFile)
+	err := extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), testFile)
 	require.NoError(t, err)
 
 	// Verify extracted nodes
@@ -91,9 +90,8 @@ func main() {
 }
 
 func TestGoASTExtractor_CyclomaticComplexity(t *testing.T) {
-	astCache, err := cache.NewASTCache()
-	require.NoError(t, err)
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
+	require.NoError(t, astCache.ClearAllData())
 
 	extractor := NewGoASTExtractor(astCache)
 
@@ -136,7 +134,7 @@ func complex(x, y int) int {
 	require.NoError(t, os.WriteFile(testFile, []byte(content), 0644))
 
 	// Extract AST
-	err = extractor.ExtractFile(testFile)
+	err := extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), testFile)
 	require.NoError(t, err)
 
 	// Verify complexity calculations
@@ -156,9 +154,8 @@ func complex(x, y int) int {
 }
 
 func TestGoASTExtractor_InterfaceExtraction(t *testing.T) {
-	astCache, err := cache.NewASTCache()
-	require.NoError(t, err)
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
+	require.NoError(t, astCache.ClearAllData())
 
 	extractor := NewGoASTExtractor(astCache)
 
@@ -184,7 +181,7 @@ type ReadWriter interface {
 	require.NoError(t, os.WriteFile(testFile, []byte(content), 0644))
 
 	// Extract AST
-	err = extractor.ExtractFile(testFile)
+	err := extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), testFile)
 	require.NoError(t, err)
 
 	// Verify extracted nodes
@@ -226,9 +223,8 @@ type ReadWriter interface {
 }
 
 func TestGoASTExtractor_LibraryCalls(t *testing.T) {
-	astCache, err := cache.NewASTCache()
-	require.NoError(t, err)
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
+	require.NoError(t, astCache.ClearAllData())
 
 	extractor := NewGoASTExtractor(astCache)
 
@@ -258,7 +254,7 @@ func main() {
 	require.NoError(t, os.WriteFile(testFile, []byte(content), 0644))
 
 	// Extract AST
-	err = extractor.ExtractFile(testFile)
+	err := extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), testFile)
 	require.NoError(t, err)
 
 	// Verify library relationships were created
@@ -291,9 +287,8 @@ func main() {
 }
 
 func TestGoASTExtractor_CallRelationships(t *testing.T) {
-	astCache, err := cache.NewASTCache()
-	require.NoError(t, err)
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
+	require.NoError(t, astCache.ClearAllData())
 
 	extractor := NewGoASTExtractor(astCache)
 
@@ -322,7 +317,7 @@ func main() {
 	require.NoError(t, os.WriteFile(testFile, []byte(content), 0644))
 
 	// Extract AST
-	err = extractor.ExtractFile(testFile)
+	err := extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), testFile)
 	require.NoError(t, err)
 
 	// Find the Multiply method
@@ -355,9 +350,8 @@ func main() {
 }
 
 func TestGoASTExtractor_FileUpdateHandling(t *testing.T) {
-	astCache, err := cache.NewASTCache()
-	require.NoError(t, err)
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
+	require.NoError(t, astCache.ClearAllData())
 
 	extractor := NewGoASTExtractor(astCache)
 
@@ -373,7 +367,7 @@ func original() {
 	require.NoError(t, os.WriteFile(testFile, []byte(originalContent), 0644))
 
 	// First extraction
-	err = extractor.ExtractFile(testFile)
+	err := extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), testFile)
 	require.NoError(t, err)
 
 	// Check initial nodes
@@ -395,7 +389,7 @@ func newFunction() {
 	require.NoError(t, os.WriteFile(testFile, []byte(updatedContent), 0644))
 
 	// Second extraction should detect changes and update
-	err = extractor.ExtractFile(testFile)
+	err = extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), testFile)
 	require.NoError(t, err)
 
 	// Check updated nodes
@@ -415,14 +409,13 @@ func newFunction() {
 }
 
 func TestGoASTExtractor_ErrorHandling(t *testing.T) {
-	astCache, err := cache.NewASTCache()
-	require.NoError(t, err)
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
+	require.NoError(t, astCache.ClearAllData())
 
 	extractor := NewGoASTExtractor(astCache)
 
 	// Test with non-existent file
-	err = extractor.ExtractFile("/non/existent/file.go")
+	err := extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), "/non/existent/file.go")
 	assert.Error(t, err)
 
 	// Test with invalid Go syntax
@@ -436,15 +429,14 @@ func invalid( {
 
 	require.NoError(t, os.WriteFile(invalidFile, []byte(invalidContent), 0644))
 
-	err = extractor.ExtractFile(invalidFile)
+	err = extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), invalidFile)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse Go file")
 }
 
 func BenchmarkGoASTExtractor_LargeFile(b *testing.B) {
-	astCache, err := cache.NewASTCache()
-	require.NoError(b, err)
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
+	require.NoError(b, astCache.ClearAllData())
 
 	extractor := NewGoASTExtractor(astCache)
 
@@ -484,7 +476,7 @@ func BenchmarkGoASTExtractor_LargeFile(b *testing.B) {
 		err := astCache.DeleteASTForFile(largeFile)
 		require.NoError(b, err)
 
-		err = extractor.ExtractFile(largeFile)
+		err = extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), largeFile)
 		require.NoError(b, err)
 	}
 }

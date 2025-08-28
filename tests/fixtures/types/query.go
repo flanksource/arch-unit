@@ -46,18 +46,8 @@ func (q *QueryFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, op
 		}
 	}
 
-	// Create AST cache and analyzer
-	cacheDir := filepath.Join(opts.WorkDir, "tmp", "fixtures-cache",
-		fmt.Sprintf("test-%s", strings.ReplaceAll(fixture.Name, " ", "-")))
-
-	astCache, err := cache.NewASTCacheWithPath(cacheDir)
-	if err != nil {
-		result.Status = "FAIL"
-		result.Error = fmt.Sprintf("failed to create AST cache: %v", err)
-		result.Duration = time.Since(start)
-		return result
-	}
-	defer astCache.Close()
+	// Get the singleton AST cache
+	astCache := cache.MustGetASTCache()
 
 	analyzer := ast.NewAnalyzer(astCache, testWorkDir)
 

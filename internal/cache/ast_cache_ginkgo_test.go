@@ -16,20 +16,17 @@ import (
 var _ = Describe("ASTCache", func() {
 	var (
 		astCache *cache.ASTCache
-		tmpDir   string
 	)
 
 	BeforeEach(func() {
-		tmpDir = GinkgoT().TempDir()
-		var err error
-		astCache, err = cache.NewASTCacheWithPath(tmpDir)
+		astCache = cache.MustGetASTCache()
+		// Clear data for test isolation
+		err := astCache.ClearAllData()
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	AfterEach(func() {
-		if astCache != nil {
-			astCache.Close()
-		}
+		// AST cache is now a singleton, no need to close
 	})
 
 	Describe("NewASTCache", func() {

@@ -81,12 +81,8 @@ func runASTAnalyze(cmd *cobra.Command, args []string) error {
 		cacheTTL = duration
 	}
 
-	// Get cache singleton
-	astCache, err := cache.NewASTCache()
-	if err != nil {
-		return fmt.Errorf("failed to get cache: %w", err)
-	}
-	defer astCache.Close()
+	// Initialize AST cache
+	astCache := cache.MustGetASTCache()
 
 	// Create coordinator options
 	opts := ast.CoordinatorOptions{

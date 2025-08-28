@@ -12,6 +12,10 @@ import (
 )
 
 func TestAnalyzer_AnalyzeFiles(t *testing.T) {
+	// Clear cache data to ensure test isolation
+	astCache := cache.MustGetASTCache()
+	require.NoError(t, astCache.ClearAllData())
+	
 	// Create temporary test directory
 	tmpDir := t.TempDir()
 
@@ -67,11 +71,7 @@ if __name__ == "__main__":
 	err = os.WriteFile(pyFile, []byte(pyContent), 0644)
 	require.NoError(t, err)
 
-	// Create AST cache
-	cacheDir := t.TempDir()
-	astCache, err := cache.NewASTCacheWithPath(cacheDir)
-	require.NoError(t, err)
-	defer astCache.Close()
+	// astCache was already obtained above
 
 	// Create analyzer
 	analyzer := NewAnalyzer(astCache, tmpDir)
@@ -97,14 +97,12 @@ if __name__ == "__main__":
 }
 
 func TestAnalyzer_QueryPattern(t *testing.T) {
-	// Create test cache with sample data
-	cacheDir := t.TempDir()
-	astCache, err := cache.NewASTCacheWithPath(cacheDir)
-	require.NoError(t, err)
-	defer astCache.Close()
+	// Get singleton cache and clear data for test isolation
+	astCache := cache.MustGetASTCache()
+	require.NoError(t, astCache.ClearAllData())
 
 	// Insert test data
-	_, err = astCache.StoreASTNode(&models.ASTNode{
+	_, err := astCache.StoreASTNode(&models.ASTNode{
 		FilePath:    "/test/src/controller.go",
 		PackageName: "controllers",
 		TypeName:    "UserController",
@@ -195,11 +193,9 @@ func TestFilterByNodeType(t *testing.T) {
 }
 
 func TestAnalyzer_ExecuteMetricQuery(t *testing.T) {
-	// Create test cache with sample data
-	cacheDir := t.TempDir()
-	astCache, err := cache.NewASTCacheWithPath(cacheDir)
-	require.NoError(t, err)
-	defer astCache.Close()
+	// Get singleton cache and clear data for test isolation
+	astCache := cache.MustGetASTCache()
+	require.NoError(t, astCache.ClearAllData())
 
 	// Insert test data with various line counts and complexity
 	testNodes := []models.ASTNode{
@@ -233,7 +229,7 @@ func TestAnalyzer_ExecuteMetricQuery(t *testing.T) {
 	}
 
 	for _, node := range testNodes {
-		_, err = astCache.StoreASTNode(&node)
+		_, err := astCache.StoreASTNode(&node)
 		require.NoError(t, err)
 	}
 

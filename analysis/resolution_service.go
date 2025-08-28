@@ -31,14 +31,14 @@ var (
 )
 
 // NewResolutionService creates a new resolution service with default 24-hour cache TTL
-func NewResolutionService(astCache *cache.ASTCache) *ResolutionService {
-	return NewResolutionServiceWithTTL(astCache, 24*time.Hour)
+func NewResolutionService() *ResolutionService {
+	return NewResolutionServiceWithTTL(24 * time.Hour)
 }
 
 // NewResolutionServiceWithTTL creates a new resolution service with configurable cache TTL
-func NewResolutionServiceWithTTL(astCache *cache.ASTCache, cacheTTL time.Duration) *ResolutionService {
+func NewResolutionServiceWithTTL(cacheTTL time.Duration) *ResolutionService {
 	return &ResolutionService{
-		cache: astCache,
+		cache: cache.MustGetASTCache(),
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -51,12 +51,7 @@ func NewResolutionServiceWithTTL(astCache *cache.ASTCache, cacheTTL time.Duratio
 func GetResolutionService() (*ResolutionService, error) {
 	var err error
 	resolutionServiceOnce.Do(func() {
-		astCache, astErr := cache.NewASTCache()
-		if astErr != nil {
-			err = astErr
-			return
-		}
-		resolutionServiceInstance = NewResolutionServiceWithTTL(astCache, resolutionServiceTTL)
+		resolutionServiceInstance = NewResolutionServiceWithTTL(resolutionServiceTTL)
 	})
 	return resolutionServiceInstance, err
 }
@@ -81,7 +76,7 @@ func ResetResolutionService() {
 func (r *ResolutionService) ResolveGitURL(packageName, packageType string) (string, error) {
 	// Check cache first (if cache is available and TTL > 0)
 	if r.cache != nil && r.cacheTTL > 0 {
-		if cached, err := r.getCachedAlias(packageName, packageType); err == nil && !cached.IsExpiredWithTTL(r.cacheTTL) {
+		if cached, err := r.getCachedAlias(packageName, packageType); err == nil && cached != nil && !cached.IsExpiredWithTTL(r.cacheTTL) {
 			return cached.GitURL, nil
 		}
 	}
@@ -310,8 +305,18 @@ func (r *ResolutionService) extractHelmGitURL(packageName string) (string, error
 	return "", nil
 }
 
-// ValidateGitURL checks if a Git URL is accessible and returns the final URL after redirects
 func (r *ResolutionService) ValidateGitURL(gitURL string) (bool, string, error) {
+	valid, finalURL, err := r.validateGitURL(gitURL)
+	if gitURL != finalURL {
+		logger.Debugf("%s -> %s (valid: %t, err: %v)", gitURL, finalURL, valid, err)
+	} else {
+		logger.Debugf("%s (valid: %t, err: %v)", gitURL, valid, err)
+	}
+	return valid, finalURL, err
+}
+
+// ValidateGitURL checks if a Git URL is accessible and returns the final URL after redirects
+func (r *ResolutionService) validateGitURL(gitURL string) (bool, string, error) {
 	// Rate limit validation requests
 	ctx := context.Background()
 	if err := r.rateLimiter.Wait(ctx); err != nil {

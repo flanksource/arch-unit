@@ -48,25 +48,22 @@ func TestDeduplication(t *testing.T) {
 
 	deps2 := []*models.Dependency{
 		{
-			Name:     "golang.org/x/exp",
-			Version:  "",                      // Missing version to test merge
-			Type:     models.DependencyTypeGo, // Same type now for proper deduplication
-			Language: "go",
-			Git:      "", // Missing Git URL - should be filled from deps1
+			Name:    "golang.org/x/exp",
+			Version: "",                      // Missing version to test merge
+			Type:    models.DependencyTypeGo, // Same type now for proper deduplication
+			Git:     "",                      // Missing Git URL - should be filled from deps1
 		},
 		{
-			Name:     "github.com/stretchr/testify",
-			Version:  "", // Missing version - should be filled from deps1
-			Type:     models.DependencyTypeGo,
-			Language: "go",
-			Git:      "https://github.com/stretchr/testify",
+			Name:    "github.com/stretchr/testify",
+			Version: "", // Missing version - should be filled from deps1
+			Type:    models.DependencyTypeGo,
+			Git:     "https://github.com/stretchr/testify",
 		},
 		{
-			Name:     "github.com/spf13/cobra",
-			Version:  "v1.7.0",
-			Type:     models.DependencyTypeGo,
-			Language: "go",
-			Git:      "https://github.com/spf13/cobra",
+			Name:    "github.com/spf13/cobra",
+			Version: "v1.7.0",
+			Type:    models.DependencyTypeGo,
+			Git:     "https://github.com/spf13/cobra",
 		},
 	}
 

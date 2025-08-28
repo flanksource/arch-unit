@@ -8,16 +8,12 @@ import (
 	"github.com/flanksource/arch-unit/analysis"
 	"github.com/flanksource/arch-unit/git"
 	"github.com/flanksource/clicky"
+	"github.com/flanksource/commons/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestUnifiedScanner_TwoPhaseScanning(t *testing.T) {
-	// Initialize global task manager for testing
-	if task.Global == nil {
-		task.Global = task.NewManager()
-	}
-
 	// Initialize logger for testing to avoid panic
 	initTestLogger()
 
@@ -54,10 +50,6 @@ func TestUnifiedScanner_TwoPhaseScanning(t *testing.T) {
 }
 
 func TestUnifiedScanner_GitRepositoryScanning(t *testing.T) {
-	// Initialize global task manager for testing
-	if clicky.Global == nil {
-		clicky.Global = clicky.NewTaskManager()
-	}
 
 	// Skip if no network access
 	if os.Getenv("SKIP_NETWORK_TESTS") != "" {
@@ -106,10 +98,6 @@ func TestUnifiedScanner_GitRepositoryScanning(t *testing.T) {
 }
 
 func TestUnifiedScanner_ConcurrentDiscovery(t *testing.T) {
-	// Initialize global task manager for testing
-	if clicky.Global == nil {
-		clicky.Global = clicky.NewTaskManager()
-	}
 
 	// Create a temporary directory for the test
 	tmpDir, err := os.MkdirTemp("", "concurrent-scan-test")
@@ -149,10 +137,6 @@ func TestUnifiedScanner_ConcurrentDiscovery(t *testing.T) {
 }
 
 func TestUnifiedScanner_RecursionPrevention(t *testing.T) {
-	// Initialize global task manager for testing
-	if clicky.Global == nil {
-		clicky.Global = clicky.NewTaskManager()
-	}
 
 	// Create a temporary directory for the test
 	tmpDir, err := os.MkdirTemp("", "recursion-test")

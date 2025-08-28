@@ -55,16 +55,13 @@ var _ = Describe("Fixture-Based AST Tests", func() {
 					workDir = rootDir
 				}
 
-				// Create AST cache and analyzer
-				cacheDir := GinkgoT().TempDir()
-				astCache, err := cache.NewASTCacheWithPath(cacheDir)
-				Expect(err).NotTo(HaveOccurred())
-				defer astCache.Close()
+				// Get the singleton AST cache
+				astCache := cache.MustGetASTCache()
 
 				analyzer := ast.NewAnalyzer(astCache, workDir)
 
 				// Analyze files in the directory
-				err = analyzer.AnalyzeFiles()
+				err := analyzer.AnalyzeFiles()
 				Expect(err).NotTo(HaveOccurred())
 
 				// Execute the query
@@ -170,16 +167,13 @@ var _ = Describe("Fixture-Based AST Tests", func() {
 					workDir = rootDir
 				}
 
-				// Create AST cache and analyzer
-				cacheDir := GinkgoT().TempDir()
-				astCache, err := cache.NewASTCacheWithPath(cacheDir)
-				Expect(err).NotTo(HaveOccurred())
-				defer astCache.Close()
+				// Get the singleton AST cache
+				astCache := cache.MustGetASTCache()
 
 				analyzer := ast.NewAnalyzer(astCache, workDir)
 
 				// Analyze files in the directory
-				err = analyzer.AnalyzeFiles()
+				err := analyzer.AnalyzeFiles()
 				Expect(err).NotTo(HaveOccurred())
 
 				// Execute pattern query

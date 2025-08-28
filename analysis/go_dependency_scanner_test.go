@@ -3,7 +3,6 @@ package analysis
 import (
 	"testing"
 
-	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -158,11 +157,7 @@ go 1.21`)
 }
 
 func TestGoDependencyScanner_WithResolver(t *testing.T) {
-	astCache, err := cache.NewASTCacheWithPath(t.TempDir())
-	require.NoError(t, err)
-	defer astCache.Close()
-
-	resolver := NewResolutionService(astCache)
+	resolver := NewResolutionService()
 	scanner := NewGoDependencyScannerWithResolver(resolver)
 
 	t.Run("go.mod with resolver", func(t *testing.T) {

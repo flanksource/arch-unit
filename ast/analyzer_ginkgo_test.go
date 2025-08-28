@@ -21,18 +21,12 @@ var _ = Describe("AST Analyzer", func() {
 
 	BeforeEach(func() {
 		tmpDir = GinkgoT().TempDir()
-		var err error
-		cacheTmpDir := GinkgoT().TempDir()
-		astCache, err = cache.NewASTCacheWithPath(cacheTmpDir)
-		Expect(err).NotTo(HaveOccurred())
-
+		astCache = cache.MustGetASTCache()
 		analyzer = ast.NewAnalyzer(astCache, tmpDir)
 	})
 
 	AfterEach(func() {
-		if astCache != nil {
-			astCache.Close()
-		}
+		// AST cache is now a singleton, no need to close
 	})
 
 	Describe("AnalyzeFiles", func() {
@@ -289,18 +283,12 @@ func main() {}`
 
 			BeforeEach(func() {
 				emptyTmpDir = GinkgoT().TempDir()
-				var err error
-				emptyCacheTmpDir := GinkgoT().TempDir()
-				emptyCache, err = cache.NewASTCacheWithPath(emptyCacheTmpDir)
-				Expect(err).NotTo(HaveOccurred())
-
+				emptyCache = cache.MustGetASTCache()
 				emptyAnalyzer = ast.NewAnalyzer(emptyCache, emptyTmpDir)
 			})
 
 			AfterEach(func() {
-				if emptyCache != nil {
-					emptyCache.Close()
-				}
+				// AST cache is now a singleton, no need to close
 			})
 
 			It("should return zero statistics", func() {

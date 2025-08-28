@@ -97,11 +97,8 @@ func (a *AQL) ValidateConfig(config *models.LinterConfig) error {
 func (a *AQL) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Violation, error) {
 	// Initialize AST cache if not already done
 	if a.astCache == nil {
-		var err error
-		a.astCache, err = cache.NewASTCache()
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize AST cache: %w", err)
-		}
+		a.astCache = cache.MustGetASTCache()
+
 	}
 
 	// Initialize components

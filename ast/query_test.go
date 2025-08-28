@@ -11,9 +11,7 @@ import (
 
 func TestExecuteMetricQuery_NewSyntax(t *testing.T) {
 	// Create a test cache
-	astCache, err := cache.NewASTCacheWithPath(t.TempDir())
-	require.NoError(t, err)
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
 
 	// Insert test data
 	node1 := &models.ASTNode{
@@ -130,9 +128,7 @@ func TestExecuteMetricQuery_NewSyntax(t *testing.T) {
 
 func TestExecuteMetricQuery_InvalidQueries(t *testing.T) {
 	// Create a test cache
-	astCache, err := cache.NewASTCacheWithPath(t.TempDir())
-	require.NoError(t, err)
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
 
 	// Add a test node so pattern matching works
 	node := &models.ASTNode{
@@ -142,7 +138,7 @@ func TestExecuteMetricQuery_InvalidQueries(t *testing.T) {
 		NodeType:    models.NodeTypeMethod,
 		LineCount:   10,
 	}
-	_, err = astCache.StoreASTNode(node)
+	_, err := astCache.StoreASTNode(node)
 	require.NoError(t, err)
 
 	analyzer := NewAnalyzer(astCache, "/test")
@@ -180,9 +176,7 @@ func TestExecuteMetricQuery_InvalidQueries(t *testing.T) {
 
 func TestExecuteMetricQuery_EdgeCases(t *testing.T) {
 	// Create a test cache
-	astCache, err := cache.NewASTCacheWithPath(t.TempDir())
-	require.NoError(t, err)
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
 
 	analyzer := NewAnalyzer(astCache, "/test")
 
@@ -217,9 +211,7 @@ func TestExecuteMetricQuery_EdgeCases(t *testing.T) {
 
 func TestExecuteMetricQuery_RelationshipMetrics(t *testing.T) {
 	// Create a test cache
-	astCache, err := cache.NewASTCacheWithPath(t.TempDir())
-	require.NoError(t, err)
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
 
 	// Insert test nodes
 	node1 := &models.ASTNode{

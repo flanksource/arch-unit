@@ -153,9 +153,7 @@ func TestAnalyzeFilesWithFilter(t *testing.T) {
 	}
 
 	// Create AST cache
-	astCache, err := cache.NewASTCacheWithPath(t.TempDir())
-	require.NoError(t, err)
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
 
 	analyzer := NewAnalyzer(astCache, tempDir)
 
@@ -262,9 +260,7 @@ func ExternalFunc() {}`,
 	}
 
 	// Create AST cache
-	astCache, err := cache.NewASTCacheWithPath(t.TempDir())
-	require.NoError(t, err)
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
 
 	analyzer := NewAnalyzer(astCache, tempDir)
 
@@ -351,14 +347,12 @@ Final line.`,
 	}
 
 	// Create AST cache
-	astCache, err := cache.NewASTCacheWithPath(t.TempDir())
-	require.NoError(t, err)
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
 
 	analyzer := NewAnalyzer(astCache, tempDir)
 
 	// First, analyze all files normally to populate cache
-	err = analyzer.AnalyzeFiles()
+	err := analyzer.AnalyzeFiles()
 	require.NoError(t, err)
 
 	// Verify all files are in cache (should include README.md)

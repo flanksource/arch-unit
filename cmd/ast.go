@@ -180,11 +180,7 @@ func init() {
 
 func runAST(cmd *cobra.Command, args []string) error {
 	// Initialize AST cache
-	astCache, err := cache.NewASTCache()
-	if err != nil {
-		return fmt.Errorf("failed to create AST cache: %w", err)
-	}
-	defer astCache.Close()
+	astCache := cache.MustGetASTCache()
 
 	// Get working directory
 	workingDir, err := GetWorkingDir()

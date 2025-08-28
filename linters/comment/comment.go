@@ -64,14 +64,7 @@ func (c *CommentAnalysisLinter) Run(ctx commonsContext.Context, task *clicky.Tas
 
 	var violations []models.Violation
 
-	// Create AST analyzer to get comment data
-	astCache, err := cache.NewASTCache()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create AST cache: %w", err)
-	}
-	defer astCache.Close()
-
-	analyzer := ast.NewAnalyzer(astCache, c.WorkDir)
+	analyzer := ast.NewAnalyzer(cache.MustGetASTCache(), c.WorkDir)
 
 	// Ensure files are analyzed
 	if err := analyzer.AnalyzeFiles(); err != nil {

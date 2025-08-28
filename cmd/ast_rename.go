@@ -38,20 +38,20 @@ This command:
 - Supports dry-run mode to preview changes
 
 NAME FORMATS:
-  - Full qualified names: "package:Type.method" 
+  - Full qualified names: "package:Type.method"
   - Pattern matching: "UserService:Get*" (first match)
   - Simple names: "GetUser" (searches all packages)
 
 EXAMPLES:
   # Rename a specific method
   arch-unit ast rename "UserService:GetUser" "UserService:FetchUser"
-  
+
   # Rename with dry-run to see changes
   arch-unit ast rename "UserController:HandleGet" "UserController:HandleRequest" --dry-run
-  
+
   # Rename a type and show diff
   arch-unit ast rename "models:User" "models:UserModel" --show-diff
-  
+
   # Rename with backup
   arch-unit ast rename "ProcessData" "ProcessUserData" --backup
 
@@ -81,12 +81,8 @@ func runASTRename(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("old name and new name are identical")
 	}
 
-	// Setup: Initialize cache and get working directory
-	astCache, err := cache.NewASTCache()
-	if err != nil {
-		return fmt.Errorf("failed to create AST cache: %w", err)
-	}
-	defer astCache.Close()
+	// Initialize AST cache
+	astCache := cache.MustGetASTCache()
 
 	workingDir, err := GetWorkingDir()
 	if err != nil {

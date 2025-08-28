@@ -35,7 +35,7 @@ PATTERN EXAMPLES:
   arch-unit ast graph "UserService" --depth 3        # 3 levels deep from UserService
   arch-unit ast graph "*Service*" --format dot       # DOT format for Graphviz
   arch-unit ast graph "main:main" --show-libs        # Show library calls
-  
+
 OUTPUT FORMATS:
   - tree: Tree visualization of call relationships (default)
   - dot: DOT notation for Graphviz rendering
@@ -44,11 +44,11 @@ OUTPUT FORMATS:
 EXAMPLES:
   # Generate call graph for all services, 2 levels deep
   arch-unit ast graph "*Service*" --depth 2
-  
+
   # Export to Graphviz format
   arch-unit ast graph "UserController" --format dot > callgraph.dot
   graphviz -Tpng callgraph.dot -o callgraph.png
-  
+
   # Show only root entry points
   arch-unit ast graph "*" --root-only`,
 	Args: cobra.MaximumNArgs(1),
@@ -72,12 +72,8 @@ func runASTGraph(cmd *cobra.Command, args []string) error {
 		pattern = args[0]
 	}
 
-	// Setup: Initialize cache and get working directory
-	astCache, err := cache.NewASTCache()
-	if err != nil {
-		return fmt.Errorf("failed to create AST cache: %w", err)
-	}
-	defer astCache.Close()
+	// Initialize AST cache
+	astCache := cache.MustGetASTCache()
 
 	workingDir, err := GetWorkingDir()
 	if err != nil {

@@ -67,15 +67,12 @@ var _ = Describe("AST Query", func() {
 
 	BeforeEach(func() {
 		tmpDir = GinkgoT().TempDir()
-		var err error
-		astCache, err = cache.NewASTCache()
-		Expect(err).NotTo(HaveOccurred())
-
+		astCache = cache.MustGetASTCache()
 		analyzer = ast.NewAnalyzer(astCache, tmpDir)
 
 		// Copy example files to test directory
 		exampleDir := filepath.Join("..", "examples", "go-project")
-		err = copyExampleFiles(exampleDir, tmpDir)
+		err := copyExampleFiles(exampleDir, tmpDir)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = analyzer.AnalyzeFiles()

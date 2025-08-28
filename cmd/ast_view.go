@@ -28,10 +28,10 @@ PATTERN EXAMPLES:
   arch-unit ast view "UserService:GetUser"           # Specific method
   arch-unit ast view "models:User:*"                 # All fields in User type
   arch-unit ast view "*Service*" --format json       # JSON output
-  
+
 OUTPUT FORMATS:
   - tree: Tree view with syntax highlighting (default)
-  - plain: Plain text with line numbers  
+  - plain: Plain text with line numbers
   - json: JSON structure for programmatic use`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runASTView,
@@ -52,12 +52,8 @@ func runASTView(cmd *cobra.Command, args []string) error {
 		pattern = args[0]
 	}
 
-	// Setup: Initialize cache and get working directory
-	astCache, err := cache.NewASTCache()
-	if err != nil {
-		return fmt.Errorf("failed to create AST cache: %w", err)
-	}
-	defer astCache.Close()
+	// Initialize AST cache
+	astCache := cache.MustGetASTCache()
 
 	workingDir, err := GetWorkingDir()
 	if err != nil {

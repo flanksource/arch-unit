@@ -292,6 +292,12 @@ func (s *Scanner) SetupGitSupport(cacheDir string) {
 	}
 }
 
+// SetFilters sets the name and git filters for dependency scanning
+func (s *Scanner) SetFilters(nameFilters, gitFilters []string) {
+	s.NameFilters = nameFilters
+	s.GitFilters = gitFilters
+}
+
 // ScanWithDepth performs depth-based dependency scanning
 func (s *Scanner) ScanWithDepth(task *clicky.Task, dir string, maxDepth int) (*git.DependencyTree, error) {
 	// Ensure git support is set up

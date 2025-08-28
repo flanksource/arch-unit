@@ -15,7 +15,7 @@ import (
 func TestASTCache_NewASTCache(t *testing.T) {
 	// Use temporary directory for isolated database
 	tmpDir := t.TempDir()
-	cache, err := NewASTCacheWithPath(tmpDir)
+	cache, err := newASTCacheWithPath(tmpDir)
 	require.NoError(t, err)
 	defer cache.Close()
 
@@ -25,7 +25,7 @@ func TestASTCache_NewASTCache(t *testing.T) {
 
 func TestASTCache_StoreAndRetrieveNodes(t *testing.T) {
 	tmpDir := t.TempDir()
-	cache, err := NewASTCacheWithPath(tmpDir)
+	cache, err := newASTCacheWithPath(tmpDir)
 	require.NoError(t, err)
 	defer cache.Close()
 
@@ -61,7 +61,7 @@ func TestASTCache_StoreAndRetrieveNodes(t *testing.T) {
 
 func TestASTCache_FileHashValidation(t *testing.T) {
 	cacheDir := t.TempDir()
-	cache, err := NewASTCacheWithPath(cacheDir)
+	cache, err := newASTCacheWithPath(cacheDir)
 	require.NoError(t, err)
 	defer cache.Close()
 
@@ -103,7 +103,7 @@ func main() {
 
 func TestASTCache_Relationships(t *testing.T) {
 	tmpDir := t.TempDir()
-	cache, err := NewASTCacheWithPath(tmpDir)
+	cache, err := newASTCacheWithPath(tmpDir)
 	require.NoError(t, err)
 	defer cache.Close()
 
@@ -145,7 +145,7 @@ func TestASTCache_Relationships(t *testing.T) {
 
 func TestASTCache_LibraryNodes(t *testing.T) {
 	tmpDir := t.TempDir()
-	cache, err := NewASTCacheWithPath(tmpDir)
+	cache, err := newASTCacheWithPath(tmpDir)
 	require.NoError(t, err)
 	defer cache.Close()
 
@@ -182,7 +182,7 @@ func TestASTCache_LibraryNodes(t *testing.T) {
 
 func TestASTCache_DeleteASTForFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	cache, err := NewASTCacheWithPath(tmpDir)
+	cache, err := newASTCacheWithPath(tmpDir)
 	require.NoError(t, err)
 	defer cache.Close()
 
@@ -237,7 +237,7 @@ func TestASTCache_DeleteASTForFile(t *testing.T) {
 
 func TestASTCache_QueryRaw(t *testing.T) {
 	tmpDir := t.TempDir()
-	cache, err := NewASTCacheWithPath(tmpDir)
+	cache, err := newASTCacheWithPath(tmpDir)
 	require.NoError(t, err)
 	defer cache.Close()
 
@@ -292,7 +292,7 @@ func TestASTCache_QueryRaw(t *testing.T) {
 
 func TestASTCache_ConcurrentAccess(t *testing.T) {
 	tmpDir := t.TempDir()
-	cache, err := NewASTCacheWithPath(tmpDir)
+	cache, err := newASTCacheWithPath(tmpDir)
 	require.NoError(t, err)
 	defer cache.Close()
 

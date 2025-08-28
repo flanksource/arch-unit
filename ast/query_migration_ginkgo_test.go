@@ -16,9 +16,7 @@ var _ = Describe("AQL Metric Queries", func() {
 	)
 
 	BeforeEach(func() {
-		var err error
-		astCache, err = cache.NewASTCacheWithPath(GinkgoT().TempDir())
-		Expect(err).NotTo(HaveOccurred())
+		astCache = cache.MustGetASTCache()
 
 		analyzer = ast.NewAnalyzer(astCache, "/test")
 	})

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/flanksource/arch-unit/models"
@@ -21,19 +22,88 @@ type ASTCache struct {
 	db *DB
 }
 
-// NewASTCache creates a new AST cache
+var (
+	astCacheInstance *ASTCache
+	astCacheMutex    sync.Mutex
+	astCacheOnce     sync.Once
+)
+
 func NewASTCache() (*ASTCache, error) {
+	return GetASTCache()
+}
+
+// GetASTCache returns the singleton AST cache instance
+func GetASTCache() (*ASTCache, error) {
+	var err error
+	astCacheOnce.Do(func() {
+		astCacheInstance, err = newASTCache()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return astCacheInstance, nil
+}
+
+func MustGetASTCache() *ASTCache {
+	astCache, err := GetASTCache()
+	if err != nil {
+		panic(err)
+	}
+	return astCache
+}
+
+// ResetASTCache resets the singleton instance (mainly for testing)
+func ResetASTCache() {
+	astCacheMutex.Lock()
+	defer astCacheMutex.Unlock()
+
+	if astCacheInstance != nil {
+		astCacheInstance.Close()
+		astCacheInstance = nil
+	}
+	astCacheOnce = sync.Once{}
+}
+
+// ClearAllData removes all data from the AST cache tables
+// This is useful for testing to ensure clean state
+func (c *ASTCache) ClearAllData() error {
+	queries := []string{
+		"DELETE FROM ast_relationships",
+		"DELETE FROM ast_nodes",
+		"DELETE FROM library_nodes",
+		"DELETE FROM library_relationships",
+		"DELETE FROM file_metadata",
+		"DELETE FROM dependency_aliases",
+	}
+
+	for _, query := range queries {
+		if _, err := c.db.Exec(query); err != nil {
+			return fmt.Errorf("failed to clear table: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// NewASTCache creates a new AST cache
+func newASTCache() (*ASTCache, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
 
 	cacheDir := filepath.Join(homeDir, ".cache", "arch-unit")
-	return NewASTCacheWithPath(cacheDir)
+	return newASTCacheWithPath(cacheDir)
 }
 
 // NewASTCacheWithPath creates a new AST cache in the specified directory
+// This is the public version for use by external packages
 func NewASTCacheWithPath(cacheDir string) (*ASTCache, error) {
+	return newASTCacheWithPath(cacheDir)
+}
+
+// newASTCacheWithPath creates a new AST cache in the specified directory (internal version)
+func newASTCacheWithPath(cacheDir string) (*ASTCache, error) {
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
@@ -60,7 +130,7 @@ func NewASTCacheWithPath(cacheDir string) (*ASTCache, error) {
 func (c *ASTCache) ensureBasicStructure() error {
 	// This is a minimal check to ensure the database can be used
 	// Full schema creation and migrations are handled by the migration manager
-	return nil
+	return c.init()
 }
 
 // init creates the necessary tables and indexes (DEPRECATED - use migration manager)
@@ -273,8 +343,8 @@ func (c *ASTCache) migrateSchema() error {
 		// Copy data from old table, converting TIMESTAMP to INTEGER
 		_, err = c.db.Exec(`
 			INSERT INTO dependency_aliases_new (id, package_name, package_type, git_url, last_checked, created_at)
-			SELECT id, package_name, package_type, git_url, 
-				   COALESCE(last_checked, strftime('%s', 'now')), 
+			SELECT id, package_name, package_type, git_url,
+				   COALESCE(last_checked, strftime('%s', 'now')),
 				   strftime('%s', COALESCE(created_at, 'now'))
 			FROM dependency_aliases`)
 		if err != nil {
@@ -410,7 +480,8 @@ func calculateFileHash(filePath string) (string, error) {
 
 // NeedsReanalysis checks if a file needs re-analysis based on hash and modification time
 func (c *ASTCache) NeedsReanalysis(filePath string) (bool, error) {
-	fileInfo, err := os.Stat(filePath)
+	// Check if file exists
+	_, err := os.Stat(filePath)
 	if err != nil {
 		return true, err
 	}
@@ -436,8 +507,8 @@ func (c *ASTCache) NeedsReanalysis(filePath string) (bool, error) {
 		return true, err
 	}
 
-	// Compare hashes and modification times
-	return currentHash != dbHash || fileInfo.ModTime().After(lastAnalyzed), nil
+	// Compare hashes - if content is the same, no reanalysis needed
+	return currentHash != dbHash, nil
 }
 
 // UpdateFileMetadata updates or inserts file metadata
@@ -1023,10 +1094,11 @@ func (c *ASTCache) StoreFileResults(file string, result interface{}) error {
 // GetDependencyAlias retrieves a cached dependency alias
 func (c *ASTCache) GetDependencyAlias(packageName, packageType string) (*models.DependencyAlias, error) {
 	var gitURL string
+	var lastChecked, createdAt int64
 	err := c.db.QueryRow(`
-		SELECT git_url FROM dependency_aliases 
+		SELECT git_url, last_checked, created_at FROM dependency_aliases
 		WHERE package_name = ? AND package_type = ?`,
-		packageName, packageType).Scan(&gitURL)
+		packageName, packageType).Scan(&gitURL, &lastChecked, &createdAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1039,14 +1111,16 @@ func (c *ASTCache) GetDependencyAlias(packageName, packageType string) (*models.
 		PackageName: packageName,
 		PackageType: packageType,
 		GitURL:      gitURL,
+		LastChecked: lastChecked,
+		CreatedAt:   createdAt,
 	}, nil
 }
 
 // StoreDependencyAlias stores a dependency alias in the cache
 func (c *ASTCache) StoreDependencyAlias(alias *models.DependencyAlias) error {
 	_, err := c.db.Exec(`
-		INSERT OR REPLACE INTO dependency_aliases 
-		(package_name, package_type, git_url, last_checked, created_at) 
+		INSERT OR REPLACE INTO dependency_aliases
+		(package_name, package_type, git_url, last_checked, created_at)
 		VALUES (?, ?, ?, ?, ?)`,
 		alias.PackageName, alias.PackageType, alias.GitURL, alias.LastChecked, alias.CreatedAt)
 	return err

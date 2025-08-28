@@ -37,15 +37,13 @@ var _ = Describe("Analyzer with Fixtures", func() {
 					Expect(err).NotTo(HaveOccurred())
 				}
 
-				// Create AST cache and analyzer
-				astCache, err := cache.NewASTCache()
-				Expect(err).NotTo(HaveOccurred())
-				defer astCache.Close()
+				// Get the singleton AST cache
+				astCache := cache.MustGetASTCache()
 
 				analyzer := ast.NewAnalyzer(astCache, tmpDir)
 
 				// Analyze files
-				err = analyzer.AnalyzeFiles()
+				err := analyzer.AnalyzeFiles()
 				Expect(err).NotTo(HaveOccurred())
 
 				// Query all nodes
@@ -146,15 +144,13 @@ func (s *UserService) FindUser(id string) {}`,
 
 		DescribeTable("pattern matching queries",
 			func(pattern string, expectedCount int, celValidation string) {
-				// Create AST cache and analyzer
-				astCache, err := cache.NewASTCache()
-				Expect(err).NotTo(HaveOccurred())
-				defer astCache.Close()
+				// Get the singleton AST cache
+				astCache := cache.MustGetASTCache()
 
 				analyzer := ast.NewAnalyzer(astCache, tmpDir)
 
 				// Analyze files
-				err = analyzer.AnalyzeFiles()
+				err := analyzer.AnalyzeFiles()
 				Expect(err).NotTo(HaveOccurred())
 
 				// Query with pattern
@@ -221,15 +217,13 @@ func large() {
 
 		DescribeTable("metric queries",
 			func(query string, expectedCount int, celValidation string) {
-				// Create AST cache and analyzer
-				astCache, err := cache.NewASTCache()
-				Expect(err).NotTo(HaveOccurred())
-				defer astCache.Close()
+				// Get the singleton AST cache
+				astCache := cache.MustGetASTCache()
 
 				analyzer := ast.NewAnalyzer(astCache, tmpDir)
 
 				// Analyze files
-				err = analyzer.AnalyzeFiles()
+				err := analyzer.AnalyzeFiles()
 				Expect(err).NotTo(HaveOccurred())
 
 				// Execute AQL query

@@ -27,8 +27,9 @@ var _ = Describe("Go AST Extractor", func() {
 
 	BeforeEach(func() {
 		tmpDir = GinkgoT().TempDir()
-		var err error
-		astCache, err = cache.NewASTCache()
+		astCache = cache.MustGetASTCache()
+		// Clear data for test isolation
+		err := astCache.ClearAllData()
 		Expect(err).NotTo(HaveOccurred())
 
 		ctx = flanksourceContext.NewContext(context.Background())
@@ -36,9 +37,7 @@ var _ = Describe("Go AST Extractor", func() {
 	})
 
 	AfterEach(func() {
-		if astCache != nil {
-			astCache.Close()
-		}
+		// AST cache is now a singleton, no need to close
 	})
 
 	Describe("ExtractSimpleFile", func() {
@@ -386,8 +385,9 @@ var _ = Describe("Go AST Extractor Performance", func() {
 
 	BeforeEach(func() {
 		tmpDir = GinkgoT().TempDir()
-		var err error
-		astCache, err = cache.NewASTCache()
+		astCache = cache.MustGetASTCache()
+		// Clear data for test isolation
+		err := astCache.ClearAllData()
 		Expect(err).NotTo(HaveOccurred())
 
 		ctx = flanksourceContext.NewContext(context.Background())
@@ -395,9 +395,7 @@ var _ = Describe("Go AST Extractor Performance", func() {
 	})
 
 	AfterEach(func() {
-		if astCache != nil {
-			astCache.Close()
-		}
+		// AST cache is now a singleton, no need to close
 	})
 
 	It("should handle large files efficiently", func() {

@@ -2,6 +2,7 @@ package fixtures
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/flanksource/clicky"
@@ -159,8 +160,18 @@ func (f FixtureNode) GetStats() Stats {
 	return s
 }
 
+// UpdateStats calculates and updates the Stats field for this node
+func (fn *FixtureNode) UpdateStats() {
+	stats := fn.GetStats()
+	fn.Stats = &stats
+}
+
 func (s Stats) IsOK() bool {
 	return s.Failed == 0 && s.Error == 0
+}
+
+func (s Stats) HasFailures() bool {
+	return s.Failed > 0 || s.Error > 0
 }
 
 func (f *FixtureNode) AddFileNode(path string) *FixtureNode {
@@ -178,13 +189,13 @@ func (s Stats) Pretty() api.Text {
 
 	t := api.Text{}
 	if s.Passed > 0 {
-		t = t.Append(string(s.Passed), "text-green-500")
+		t = t.Append(strconv.Itoa(s.Passed), "text-green-500")
 	}
 	if s.Failed > 0 {
 		if !t.IsEmpty() {
 			t = t.Append("/", "text-gray-500")
 		}
-		t = t.Append(string(s.Failed), "text-red-500")
+		t = t.Append(strconv.Itoa(s.Failed), "text-red-500")
 
 	}
 	if s.Skipped > 0 {
@@ -258,6 +269,7 @@ func (nt NodeType) String() string {
 type FixtureNode struct {
 	Name     string         `json:"name" pretty:"label"` // Node name (file, section, or test)
 	Type     NodeType       `json:"type" pretty:"type"`  // File, Section, or Test
+	Level    int            `json:"level,omitempty"`     // Nesting level (0=file, 1=section, 2=subsection, etc.)
 	Children []*FixtureNode `json:"children,omitempty" pretty:"format=tree"`
 	Parent   *FixtureNode   `json:"-"`                                            // Parent node reference
 	Test     *FixtureTest   `json:"test,omitempty" pretty:"test,omitempty"`       // Only populated for Test nodes
@@ -266,6 +278,38 @@ type FixtureNode struct {
 }
 
 // FixtureTree represents the hierarchical structure of fixtures
+type FixtureTree struct {
+	Root     []*FixtureNode   `json:"root"`
+	AllTests []*FixtureResult `json:"all_tests"`
+	Stats    *Stats           `json:"stats"`
+}
+
+// NewFixtureTree creates a new fixture tree
+func NewFixtureTree() *FixtureTree {
+	return &FixtureTree{
+		Root:     make([]*FixtureNode, 0),
+		AllTests: make([]*FixtureResult, 0),
+		Stats:    &Stats{},
+	}
+}
+
+// AddFileNode adds a file node to the tree root
+func (ft *FixtureTree) AddFileNode(name, path string) *FixtureNode {
+	node := &FixtureNode{
+		Name: name,
+		Type: FileNode,
+	}
+	ft.Root = append(ft.Root, node)
+	return node
+}
+
+// BuildAllTestsList builds the AllTests slice from the tree structure
+func (ft *FixtureTree) BuildAllTestsList() {
+	ft.AllTests = make([]*FixtureResult, 0)
+	for _, root := range ft.Root {
+		ft.AllTests = append(ft.AllTests, root.GetAllTests()...)
+	}
+}
 
 // AddChild adds a child node to this node
 func (fn *FixtureNode) AddChild(child *FixtureNode) {

@@ -1,12 +1,14 @@
 package analysis
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/flanksource/arch-unit/internal/cache"
+	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -47,17 +49,14 @@ if __name__ == "__main__":
 	err := os.WriteFile(testFile, []byte(pythonCode), 0644)
 	require.NoError(t, err)
 
-	// Create AST cache
-	cacheDir := t.TempDir()
-	astCache, err := cache.NewASTCacheWithPath(cacheDir)
-	require.NoError(t, err)
-	defer astCache.Close()
+	// Get the singleton AST cache
+	astCache := cache.MustGetASTCache()
 
 	// Create Python extractor
 	extractor := NewPythonASTExtractor(astCache)
 
 	// Extract AST
-	err = extractor.ExtractFile(testFile)
+	err = extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), testFile)
 	assert.NoError(t, err)
 
 	// Verify nodes were extracted
@@ -151,17 +150,14 @@ export default service;
 	err := os.WriteFile(testFile, []byte(jsCode), 0644)
 	require.NoError(t, err)
 
-	// Create AST cache
-	cacheDir := t.TempDir()
-	astCache, err := cache.NewASTCacheWithPath(cacheDir)
-	require.NoError(t, err)
-	defer astCache.Close()
+	// Get the singleton AST cache
+	astCache := cache.MustGetASTCache()
 
 	// Create JavaScript extractor
 	extractor := NewJavaScriptASTExtractor(astCache)
 
 	// Extract AST
-	err = extractor.ExtractFile(testFile)
+	err = extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), testFile)
 	// Note: This will fail if acorn is not installed globally
 	// For actual testing, we'd need to ensure dependencies are available
 	if err != nil {
@@ -242,17 +238,14 @@ export { UserRepository, UserRole, UserWithTimestamp };
 	err := os.WriteFile(testFile, []byte(tsCode), 0644)
 	require.NoError(t, err)
 
-	// Create AST cache
-	cacheDir := t.TempDir()
-	astCache, err := cache.NewASTCacheWithPath(cacheDir)
-	require.NoError(t, err)
-	defer astCache.Close()
+	// Get the singleton AST cache
+	astCache := cache.MustGetASTCache()
 
 	// Create TypeScript extractor
 	extractor := NewTypeScriptASTExtractor(astCache)
 
 	// Extract AST
-	err = extractor.ExtractFile(testFile)
+	err = extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), testFile)
 	// Note: This will fail if typescript is not installed globally
 	if err != nil {
 		t.Skipf("TypeScript extraction failed (likely missing typescript): %v", err)
@@ -326,17 +319,14 @@ Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 	err := os.WriteFile(testFile, []byte(mdContent), 0644)
 	require.NoError(t, err)
 
-	// Create AST cache
-	cacheDir := t.TempDir()
-	astCache, err := cache.NewASTCacheWithPath(cacheDir)
-	require.NoError(t, err)
-	defer astCache.Close()
+	// Get the singleton AST cache
+	astCache := cache.MustGetASTCache()
 
 	// Create Markdown extractor
 	extractor := NewMarkdownASTExtractor(astCache)
 
 	// Extract AST
-	err = extractor.ExtractFile(testFile)
+	err = extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), testFile)
 	assert.NoError(t, err)
 
 	// Verify nodes were extracted
@@ -425,17 +415,14 @@ func main() {
 	err := os.WriteFile(testFile, []byte(goCode), 0644)
 	require.NoError(t, err)
 
-	// Create AST cache
-	cacheDir := t.TempDir()
-	astCache, err := cache.NewASTCacheWithPath(cacheDir)
-	require.NoError(t, err)
-	defer astCache.Close()
+	// Get the singleton AST cache
+	astCache := cache.MustGetASTCache()
 
 	// Create Go extractor
 	extractor := NewGoASTExtractor(astCache)
 
 	// Extract AST
-	err = extractor.ExtractFile(testFile)
+	err = extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), testFile)
 	assert.NoError(t, err)
 
 	// Verify nodes were extracted

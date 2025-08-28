@@ -173,8 +173,8 @@ func TestGetAllTests(t *testing.T) {
 		if test.Name != expectedNames[i] {
 			t.Errorf("expected test name %q, got %q", expectedNames[i], test.Name)
 		}
-		if test.Type != TestNode {
-			t.Errorf("expected TestNode type, got %v", test.Type)
+		if test.Type != "query" { // FixtureResult.Type is a string, typically "query", "exec", etc.
+			t.Errorf("expected test type, got %v", test.Type)
 		}
 	}
 }
@@ -204,7 +204,7 @@ func TestUpdateStats(t *testing.T) {
 	test2 := &FixtureNode{
 		Name: "Test 2",
 		Type: TestNode,
-		Results: &FixtureTestResult{
+		Results: &FixtureResult{
 			Name:   "Test 2",
 			Status: "FAIL",
 		},
@@ -214,7 +214,7 @@ func TestUpdateStats(t *testing.T) {
 	test3 := &FixtureNode{
 		Name: "Test 3",
 		Type: TestNode,
-		Results: &FixtureTestResult{
+		Results: &FixtureResult{
 			Name:   "Test 3",
 			Status: "SKIP",
 		},
@@ -283,12 +283,12 @@ func TestBuildAllTestsList(t *testing.T) {
 		t.Errorf("expected 3 tests in AllTests, got %d", len(tree.AllTests))
 	}
 
-	// Verify all nodes are test nodes
-	for i, testNode := range tree.AllTests {
-		if testNode.Type != TestNode {
-			t.Errorf("AllTests[%d] should be TestNode, got %v", i, testNode.Type)
+	// Verify all nodes are test results
+	for i, testResult := range tree.AllTests {
+		if testResult.Type == "" {
+			t.Errorf("AllTests[%d] should have Type set", i)
 		}
-		if testNode.Test == nil {
+		if testResult.Test.Name == "" {
 			t.Errorf("AllTests[%d] should have Test field set", i)
 		}
 	}

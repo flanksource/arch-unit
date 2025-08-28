@@ -24,18 +24,13 @@ var _ = Describe("AST Extractors", func() {
 	BeforeEach(func() {
 		tmpDir = GinkgoT().TempDir()
 
-		cacheDir := GinkgoT().TempDir()
-		var err error
-		astCache, err = cache.NewASTCacheWithPath(cacheDir)
-		Expect(err).NotTo(HaveOccurred())
+		astCache = cache.MustGetASTCache()
 
 		ctx = flanksourceContext.NewContext(context.Background())
 	})
 
 	AfterEach(func() {
-		if astCache != nil {
-			astCache.Close()
-		}
+		// AST cache is now a singleton, no need to close
 	})
 
 	Describe("Python AST Extractor", func() {

@@ -3,8 +3,10 @@ package fixtures
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/task"
 )
 
 func TestFixtureTestResultPretty(t *testing.T) {
@@ -15,10 +17,10 @@ func TestFixtureTestResultPretty(t *testing.T) {
 	}{
 		{
 			name: "passing test",
-			result: FixtureTestResult{
+			result: FixtureResult{
 				Name:     "Simple Test",
-				Status:   "PASS",
-				Duration: "1.2s",
+				Status:   task.StatusPASS,
+				Duration: 1200 * time.Millisecond,
 			},
 			contains: []string{"✓", "Simple Test", "1.2s"},
 		},
@@ -26,8 +28,8 @@ func TestFixtureTestResultPretty(t *testing.T) {
 			name: "failing test with error",
 			result: FixtureResult{
 				Name:     "Failed Test",
-				Status:   "FAIL",
-				Duration: "0.5s",
+				Status:   task.StatusFailed,
+				Duration: 500 * time.Millisecond,
 				Error:    "assertion failed",
 			},
 			contains: []string{"✗", "Failed Test", "0.5s", "assertion failed"},
@@ -36,7 +38,7 @@ func TestFixtureTestResultPretty(t *testing.T) {
 			name: "skipped test",
 			result: FixtureResult{
 				Name:   "Skipped Test",
-				Status: "SKIP",
+				Status: task.StatusSKIP,
 			},
 			contains: []string{"○", "Skipped Test"},
 		},
@@ -44,9 +46,9 @@ func TestFixtureTestResultPretty(t *testing.T) {
 			name: "test with details",
 			result: FixtureResult{
 				Name:     "Detailed Test",
-				Status:   "PASS",
-				Duration: "2.1s",
-				Details:  "all checks passed",
+				Status:   task.StatusPASS,
+				Duration: 2100 * time.Millisecond,
+				Metadata: map[string]interface{}{"details": "all checks passed"},
 			},
 			contains: []string{"✓", "Detailed Test", "2.1s", "all checks passed"},
 		},
@@ -79,7 +81,7 @@ func TestFixtureNodePretty(t *testing.T) {
 			node: &FixtureNode{
 				Name: "test.md",
 				Type: FileNode,
-				Stats: &NodeStats{
+				Stats: &Stats{
 					Total:  5,
 					Passed: 3,
 					Failed: 2,
@@ -92,7 +94,7 @@ func TestFixtureNodePretty(t *testing.T) {
 			node: &FixtureNode{
 				Name: "Basic Tests",
 				Type: SectionNode,
-				Stats: &NodeStats{
+				Stats: &Stats{
 					Total:  3,
 					Passed: 3,
 					Failed: 0,
@@ -105,7 +107,7 @@ func TestFixtureNodePretty(t *testing.T) {
 			node: &FixtureNode{
 				Name: "Advanced Tests",
 				Type: SectionNode,
-				Stats: &NodeStats{
+				Stats: &Stats{
 					Total:  4,
 					Passed: 2,
 					Failed: 2,
@@ -120,8 +122,8 @@ func TestFixtureNodePretty(t *testing.T) {
 				Type: TestNode,
 				Results: &FixtureResult{
 					Name:     "Test Case 1",
-					Status:   "PASS",
-					Duration: "1.5s",
+					Status:   task.StatusPASS,
+					Duration: 1500 * time.Millisecond,
 				},
 			},
 			contains: []string{"✓", "Test Case 1", "1.5s"},
@@ -152,31 +154,27 @@ func TestFixtureNodePretty(t *testing.T) {
 	}
 }
 
-func TestFixtureResultsHasFailures(t *testing.T) {
+func TestStatsHasFailures(t *testing.T) {
 	tests := []struct {
 		name     string
-		results  FixtureResults
+		results  Stats
 		expected bool
 	}{
 		{
 			name: "no failures",
-			results: FixtureResults{
-				Summary: ResultSummary{
-					Total:  3,
-					Passed: 3,
-					Failed: 0,
-				},
+			results: Stats{
+				Total:  3,
+				Passed: 3,
+				Failed: 0,
 			},
 			expected: false,
 		},
 		{
 			name: "has failures",
-			results: FixtureResults{
-				Summary: ResultSummary{
-					Total:  3,
-					Passed: 2,
-					Failed: 1,
-				},
+			results: Stats{
+				Total:  3,
+				Passed: 2,
+				Failed: 1,
 			},
 			expected: true,
 		},

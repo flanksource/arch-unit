@@ -19,15 +19,11 @@ var _ = Describe("File Filtering", func() {
 	)
 
 	BeforeEach(func() {
-		var err error
-		astCache, err = cache.NewASTCacheWithPath(GinkgoT().TempDir())
-		Expect(err).NotTo(HaveOccurred())
+		astCache = cache.MustGetASTCache()
 	})
 
 	AfterEach(func() {
-		if astCache != nil {
-			astCache.Close()
-		}
+		// AST cache is now a singleton, no need to close
 	})
 
 	// Note: ShouldIncludeFile is not exported, so we test it indirectly through AnalyzeFilesWithFilter

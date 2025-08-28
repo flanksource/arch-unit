@@ -99,7 +99,7 @@ func (r *Renamer) FindAllReferences(analyzer *Analyzer, targetNode *models.ASTNo
 			refLocation, err := r.extractReferenceLocation(rel, targetNode)
 			if err != nil {
 				// Log warning but continue
-				fmt.Fprintf(os.Stderr, "Warning: failed to extract reference at %s:%d: %v\n",
+				fmt.Fprintf(os.Stderr, "Warning: failed to extract reference at node %d line %d: %v\n",
 					rel.FromASTID, rel.LineNo, err)
 				continue
 			}

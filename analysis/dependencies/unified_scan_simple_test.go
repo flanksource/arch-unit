@@ -77,11 +77,8 @@ func TestUnifiedScannerPhases(t *testing.T) {
 	scanner := NewScanner()
 	scanner.SetupGitSupport(filepath.Join(tmpDir, ".cache"))
 
-	// Create git manager
-	gitManager := git.NewGitRepositoryManager(filepath.Join(tmpDir, ".cache"))
-
-	// Create unified scanner
-	unifiedScanner := NewUnifiedScanner(scanner, gitManager, 1)
+	// Create git manager (unused in this simple test)
+	_ = git.NewGitRepositoryManager(filepath.Join(tmpDir, ".cache"))
 
 	// Phase 1: Discovery - manually test discovery logic
 	scanJobs, err := scanner.discoverScanFiles(tmpDir)
@@ -99,7 +96,7 @@ func TestUnifiedScannerPhases(t *testing.T) {
 			if err == nil {
 				// Create a simple scan context
 				ctx := &analysis.ScanContext{
-					RootDir: tmpDir,
+					ScanRoot: tmpDir,
 				}
 				deps, err := scannerInterface.ScanFile(ctx, filePath, content)
 				assert.NoError(t, err, "Should scan file without error")
