@@ -97,7 +97,7 @@ func ParseMarkdownFixtures(fixtureFilePath string) ([]FixtureNode, error) {
 
 	// If we have content after front-matter, parse that
 	if content != "" {
-		nodes, err := parseMarkdownContent(content, frontMatter)
+		nodes, err := parseMarkdownContentWithSourceDir(content, frontMatter, sourceDir)
 		if err != nil {
 			return nil, err
 		}
@@ -123,7 +123,7 @@ func ParseMarkdownFixtures(fixtureFilePath string) ([]FixtureNode, error) {
 	}
 
 	fullContent := strings.Join(lines, "\n")
-	nodes, err := parseMarkdownContent(fullContent, nil)
+	nodes, err := parseMarkdownContentWithSourceDir(fullContent, nil, sourceDir)
 	if err != nil {
 		return nil, err
 	}
@@ -263,8 +263,24 @@ func parseFrontMatter(file *os.File) (*FrontMatter, string, error) {
 	return &frontMatter, content, nil
 }
 
-// parseMarkdownContent parses the markdown content for fixture tables
+// parseMarkdownContent parses the markdown content for fixture tables and command blocks
 func parseMarkdownContent(content string, frontMatter *FrontMatter) ([]FixtureNode, error) {
+	return parseMarkdownContentWithSourceDir(content, frontMatter, "")
+}
+
+// parseMarkdownContentWithSourceDir parses markdown content with source directory information
+func parseMarkdownContentWithSourceDir(content string, frontMatter *FrontMatter, sourceDir string) ([]FixtureNode, error) {
+	// Try goldmark parser first for enhanced command block support
+	if fixtures, err := parseMarkdownWithGoldmark(content, frontMatter, sourceDir); err == nil {
+		return fixtures, nil
+	}
+	
+	// Fall back to legacy string-based parsing for tables
+	return parseMarkdownContentLegacy(content, frontMatter, sourceDir)
+}
+
+// parseMarkdownContentLegacy is the original string-based parser for backward compatibility
+func parseMarkdownContentLegacy(content string, frontMatter *FrontMatter, sourceDir string) ([]FixtureNode, error) {
 	var fixtures []FixtureNode
 	var lines []string
 
@@ -308,6 +324,9 @@ func parseMarkdownContent(content string, frontMatter *FrontMatter) ([]FixtureNo
 			if inTable && headers != nil {
 				fixture := parseTableRow(headers, parts)
 				if fixture != nil {
+					// Set source directory
+					fixture.Test.SourceDir = sourceDir
+					
 					// Apply front-matter data to fixture
 					if frontMatter != nil {
 						if fixture.Test.Build == "" {
@@ -392,10 +411,6 @@ func ParseMarkdownFixturesWithTree(filePath string) (*FixtureNode, error) {
 		Children: make([]*FixtureNode, 0),
 	}
 
-	// Create file node
-	fileName := filepath.Base(filePath)
-	fileNode := tree.AddFileNode(fileName)
-
 	// Parse the markdown content
 	fixtures, err := ParseMarkdownFixtures(filePath)
 	if err != nil {
@@ -432,7 +447,7 @@ func ParseMarkdownFixturesWithTree(filePath string) (*FixtureNode, error) {
 	}
 
 	// Build tree structure with sections
-	err = parseMarkdownContentWithSections(content, fileNode, fixtures)
+	err = parseMarkdownContentWithSections(content, tree, fixtures)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse sections: %w", err)
 	}

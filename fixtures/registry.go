@@ -26,11 +26,12 @@ type FixtureType interface {
 
 // RunOptions provides configuration for fixture execution
 type RunOptions struct {
-	WorkDir   string
-	Verbose   bool
-	NoCache   bool
-	Evaluator *CELEvaluator
-	ExtraArgs map[string]interface{}
+	WorkDir        string
+	Verbose        bool
+	NoCache        bool
+	Evaluator      *CELEvaluator
+	ExtraArgs      map[string]interface{}
+	ExecutablePath string // Path to the current executable
 }
 
 type FixtureGroup struct {

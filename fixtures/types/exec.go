@@ -147,15 +147,31 @@ func (e *ExecFixture) Run(ctx context.Context, fixture fixtures.FixtureTest, opt
 	} else if fixture.CLI != "" {
 		command = fixture.CLI
 	} else if fixture.CLIArgs != "" {
-		// Template CLI args even when no exec is specified
-		templatedArgs, err := renderTemplate(fixture.CLIArgs, templateData)
-		if err != nil {
-			result.Status = task.StatusERR
-			result.Error = err.Error()
-			result.Duration = time.Since(start)
-			return result
+		// Use executable path with CLI args when no exec is specified
+		if opts.ExecutablePath != "" {
+			// Template CLI args 
+			templatedArgs, err := renderTemplate(fixture.CLIArgs, templateData)
+			if err != nil {
+				result.Status = task.StatusERR
+				result.Error = err.Error()
+				result.Duration = time.Since(start)
+				return result
+			}
+			command = fmt.Sprintf("%s %s", opts.ExecutablePath, templatedArgs)
+		} else {
+			// Template CLI args even when no exec is specified (fallback)
+			templatedArgs, err := renderTemplate(fixture.CLIArgs, templateData)
+			if err != nil {
+				result.Status = task.StatusERR
+				result.Error = err.Error()
+				result.Duration = time.Since(start)
+				return result
+			}
+			command = templatedArgs
 		}
-		command = templatedArgs
+	} else if opts.ExecutablePath != "" {
+		// Default to using the current executable when no command is specified
+		command = opts.ExecutablePath
 	}
 
 	if command == "" {

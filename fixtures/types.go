@@ -160,6 +160,7 @@ func (f FixtureNode) GetStats() Stats {
 	return s
 }
 
+
 // UpdateStats calculates and updates the Stats field for this node
 func (fn *FixtureNode) UpdateStats() {
 	stats := fn.GetStats()
@@ -328,74 +329,40 @@ func (fn *FixtureNode) GetSectionPath() string {
 	return fn.Parent.GetSectionPath() + " > " + fn.Name
 }
 
-// Implement api.TreeNode interface
-// GetLabel returns the display label for this node
-func (fn *FixtureNode) GetLabel() string {
-	return fn.Name
+// TreeMixin interface implementation
+// Tree returns a TreeNode representation of this FixtureNode
+func (fn *FixtureNode) Tree() api.TreeNode {
+	return &FixtureTreeNode{fixture: fn}
 }
 
-// GetChildren returns the children as TreeNode interface
-func (fn *FixtureNode) GetChildren() []api.TreeNode {
-	if fn.Children == nil || len(fn.Children) == 0 {
-		return nil
-	}
-	nodes := make([]api.TreeNode, len(fn.Children))
-	for i, child := range fn.Children {
-		nodes[i] = child
-	}
-	return nodes
+// FixtureTreeNode is an internal TreeNode implementation for FixtureNode
+type FixtureTreeNode struct {
+	fixture *FixtureNode
 }
 
-// GetIcon returns an icon based on node type and status
-func (fn *FixtureNode) GetIcon() string {
-	switch fn.Type {
+func (ftn *FixtureTreeNode) Pretty() api.Text {
+	if ftn.fixture.Results != nil {
+		return ftn.fixture.Results.Pretty()
+	}
+
+	// Get icon based on node type and status
+	var icon string
+	switch ftn.fixture.Type {
 	case FileNode:
-		return "📁"
+		icon = "📁"
 	case SectionNode:
-		return "📂"
+		icon = "📂"
 	case TestNode:
-		if fn.Results != nil {
-			return fn.Results.Status.Icon()
+		if ftn.fixture.Results != nil {
+			icon = ftn.fixture.Results.Status.Icon()
+		} else {
+			icon = "📄"
 		}
-	}
-	return ""
-}
-
-// GetStyle returns the style based on test results
-func (fn *FixtureNode) GetStyle() string {
-	if fn.Results != nil {
-		return fn.Results.Status.Style()
-	}
-
-	// Style for nodes with stats
-	if fn.Stats != nil {
-		return fn.Stats.Health().Style()
-	}
-
-	// Default styles by type
-	switch fn.Type {
-	case FileNode:
-		return "text-blue-600 font-bold"
-	case SectionNode:
-		return "text-blue-500"
 	default:
-		return ""
+		icon = "📄"
 	}
-}
 
-// IsLeaf returns true if this node has no children
-func (fn *FixtureNode) IsLeaf() bool {
-	return len(fn.Children) == 0
-}
-
-// Pretty returns a formatted Text with rich formatting
-func (fn *FixtureNode) Pretty() api.Text {
-	if fn.Results != nil {
-		return fn.Results.Pretty()
-	}
-	// Start with icon
-	icon := fn.GetIcon()
-	content := fn.Name
+	content := ftn.fixture.Name
 
 	// Add icon to content
 	if icon != "" {
@@ -403,39 +370,53 @@ func (fn *FixtureNode) Pretty() api.Text {
 	}
 
 	// Add stats for section/file nodes (not individual tests)
-	if fn.Type != TestNode && fn.Stats != nil && fn.Stats.Total > 0 {
+	if ftn.fixture.Type != TestNode && ftn.fixture.Stats != nil && ftn.fixture.Stats.Total > 0 {
 		content = fmt.Sprintf("%s (%d/%d passed)",
-			content, fn.Stats.Passed, fn.Stats.Total)
+			content, ftn.fixture.Stats.Passed, ftn.fixture.Stats.Total)
 	}
 
 	// Add test details if available
-	if fn.Type == TestNode && fn.Results != nil {
-		if fn.Results.Duration > 0 {
-			content = fmt.Sprintf("%s (%s)", content, fn.Results.Duration)
+	if ftn.fixture.Type == TestNode && ftn.fixture.Results != nil {
+		if ftn.fixture.Results.Duration > 0 {
+			content = fmt.Sprintf("%s (%s)", content, ftn.fixture.Results.Duration)
 		}
 	}
 
 	// Get style
-	style := fn.GetStyle()
-
-	// Create the text object
-	text := api.Text{
-		Content: content,
-		Style:   style,
-	}
-
-	// Add error message as child if present
-	if fn.Results != nil && fn.Results.Error != "" {
-		text.Children = []api.Text{
-			{
-				Content: fmt.Sprintf("  ❌ Error: %s", fn.Results.Error),
-				Style:   "text-red-500 text-sm italic",
-			},
+	var style string
+	if ftn.fixture.Results != nil {
+		style = ftn.fixture.Results.Status.Style()
+	} else if ftn.fixture.Stats != nil {
+		style = ftn.fixture.Stats.Health().Style()
+	} else {
+		// Default styles by type
+		switch ftn.fixture.Type {
+		case FileNode:
+			style = "text-blue-600 font-bold"
+		case SectionNode:
+			style = "text-blue-500"
+		default:
+			style = ""
 		}
 	}
 
-	return text
+	return api.Text{
+		Content: content,
+		Style:   style,
+	}
 }
+
+func (ftn *FixtureTreeNode) GetChildren() []api.TreeNode {
+	if ftn.fixture.Children == nil || len(ftn.fixture.Children) == 0 {
+		return nil
+	}
+	nodes := make([]api.TreeNode, len(ftn.fixture.Children))
+	for i, child := range ftn.fixture.Children {
+		nodes[i] = child.Tree()
+	}
+	return nodes
+}
+
 
 // Walk visits all nodes in the tree, calling visitor for test nodes
 func (fn *FixtureNode) Walk(vistor func(f *FixtureNode)) {

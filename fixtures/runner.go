@@ -18,22 +18,22 @@ import (
 
 // RunnerOptions configures the fixture runner
 type RunnerOptions struct {
-	Paths      []string // Fixture file paths/patterns
-	Format     string   // Output format: tree, table, json, yaml, csv
-	Filter     string   // Filter tests by name pattern (glob)
-	NoColor    bool     // Disable colored output
-	WorkDir    string   // Working directory
-	MaxWorkers int      // Maximum number of parallel workers
-	Logger     logger.Logger
+	Paths          []string // Fixture file paths/patterns
+	Format         string   // Output format: tree, table, json, yaml, csv
+	Filter         string   // Filter tests by name pattern (glob)
+	NoColor        bool     // Disable colored output
+	WorkDir        string   // Working directory
+	MaxWorkers     int      // Maximum number of parallel workers
+	Logger         logger.Logger
+	ExecutablePath string   // Path to the current executable (for fixtures to use)
 }
 
-// Runner manages fixture test execution using TaskManager
+// Runner manages fixture test execution using typed tasks
 type Runner struct {
-	options     RunnerOptions
-	fixtures    []FixtureTest
-	evaluator   *CELEvaluator
-	taskManager *clicky.TaskManager
-	tree        *FixtureNode // Hierarchical tree structure
+	options   RunnerOptions
+	fixtures  []FixtureTest
+	evaluator *CELEvaluator
+	tree      *FixtureNode // Hierarchical tree structure
 }
 
 // NewRunner creates a new fixture runner
@@ -44,19 +44,10 @@ func NewRunner(opts RunnerOptions) (*Runner, error) {
 		return nil, fmt.Errorf("failed to create CEL evaluator: %w", err)
 	}
 
-	// Create task manager with specified concurrency (default to 1 if not specified)
-	maxWorkers := opts.MaxWorkers
-	if maxWorkers <= 0 {
-		maxWorkers = 1
-	}
-	taskManager := clicky.NewTaskManagerWithConcurrency(maxWorkers)
-	taskManager.SetNoColor(opts.NoColor)
-
 	return &Runner{
-		options:     opts,
-		fixtures:    []FixtureTest{},
-		evaluator:   evaluator,
-		taskManager: taskManager,
+		options:   opts,
+		fixtures:  []FixtureTest{},
+		evaluator: evaluator,
 		tree: &FixtureNode{
 			Name: "Fixtures",
 			Type: SectionNode,
@@ -187,7 +178,7 @@ func (r *Runner) filterTests() {
 	r.fixtures = filtered
 }
 
-// executeFixtures runs all fixtures using TaskManager concurrency
+// executeFixtures runs all fixtures using typed task groups
 func (r *Runner) executeFixtures() (*FixtureGroup, error) {
 	results := &FixtureGroup{
 		Tests:   make([]FixtureNode, 0, len(r.fixtures)),
@@ -198,33 +189,45 @@ func (r *Runner) executeFixtures() (*FixtureGroup, error) {
 	buildCmd := r.getBuildCommand()
 	var buildTask *clicky.Task
 
-	// Create build task if needed (as dependency for other tasks)
+	// Create build task if needed (as dependency for other tasks)  
 	if buildCmd != "" {
-		buildTask = r.taskManager.Start(
+		buildTypedTask := clicky.StartTask[bool](
 			fmt.Sprintf("Build: %s", buildCmd),
+			func(ctx flanksourceContext.Context, t *task.Task) (bool, error) {
+				err := r.executeBuildCommand(ctx, buildCmd)
+				return err == nil, err
+			},
 			clicky.WithTaskTimeout(5*time.Minute),
-			clicky.WithFunc(func(ctx flanksourceContext.Context, task *clicky.Task) error {
-				return r.executeBuildCommand(ctx, buildCmd)
-			}),
 		)
+		buildTask = buildTypedTask.Task
 	}
 
-	taskToNodeMap := make(map[*clicky.Task]*FixtureNode)
-	var tasks []*clicky.Task
+	// Create typed task group for fixture execution
+	fixtureGroup := task.StartGroup[FixtureResult]("Fixture Tests")
+	
+	taskToNodeMap := make(map[task.TypedTask[FixtureResult]]*FixtureNode)
 	r.tree.Walk(func(node *FixtureNode) {
 		if node.Test != nil {
-			task := r.createFixtureTask(*node.Test, buildTask)
-			tasks = append(tasks, task)
-			taskToNodeMap[task] = node
+			typedTask := fixtureGroup.Add(node.Test.String(), func(ctx flanksourceContext.Context, t *task.Task) (FixtureResult, error) {
+				return r.executeFixture(ctx, *node.Test)
+			}, clicky.WithDependencies(buildTask), clicky.WithTaskTimeout(2*time.Minute))
+			taskToNodeMap[typedTask] = node
 		}
 	})
 
-	// Wait for all tasks to complete and collect results
-	logger.Debugf("Waiting for %d tasks to complete", len(tasks))
-	for _, task := range tasks {
-		waitResult := task.WaitFor()
-		result := r.taskResultToFixtureResult(task, waitResult)
+	// Wait for all fixture tasks to complete and collect results
+	groupResult := fixtureGroup.WaitFor()
+	if groupResult.Error != nil {
+		logger.Warnf("Some fixture tests failed: %v", groupResult.Error)
+	}
 
+	// Process results
+	fixtureResults, err := fixtureGroup.GetResults()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get fixture results: %w", err)
+	}
+
+	for typedTask, result := range fixtureResults {
 		// Create a FixtureNode for the result
 		resultNode := FixtureNode{
 			Name:    result.Name,
@@ -234,12 +237,11 @@ func (r *Runner) executeFixtures() (*FixtureGroup, error) {
 		results.Tests = append(results.Tests, resultNode)
 
 		// Update the corresponding tree node with results
-		if testNode, exists := taskToNodeMap[task]; exists {
+		if testNode, exists := taskToNodeMap[typedTask]; exists {
 			testNode.Results = &result
 		} else {
-			logger.Warnf("No tree node found for task: %s", task.Name())
+			logger.Warnf("No tree node found for task: %s", typedTask.Task.Name())
 		}
-
 	}
 
 	r.tree.Stats = lo.ToPtr(r.tree.GetStats())
@@ -292,20 +294,6 @@ func (r *Runner) executeBuildCommand(ctx flanksourceContext.Context, buildCmd st
 	return nil
 }
 
-// createFixtureTask creates a task for a single fixture
-func (r *Runner) createFixtureTask(fixture FixtureTest, buildTask *clicky.Task) *clicky.Task {
-	t := r.taskManager.StartWithResult(fixture.String(),
-		func(ctx flanksourceContext.Context, task *clicky.Task) (interface{}, error) {
-			// Execute the fixture (build task dependency is handled by TaskManager)
-			result, err := r.executeFixture(ctx, fixture)
-			return result, err
-		},
-		clicky.WithDependencies(buildTask),
-		clicky.WithTaskTimeout(2*time.Minute),
-	)
-
-	return t
-}
 
 // executeFixture runs a single fixture test
 func (r *Runner) executeFixture(ctx flanksourceContext.Context, fixture FixtureTest) (FixtureResult, error) {
@@ -322,10 +310,11 @@ func (r *Runner) executeFixture(ctx flanksourceContext.Context, fixture FixtureT
 
 	// Prepare run options with flanksource context
 	opts := RunOptions{
-		WorkDir:   r.options.WorkDir,
-		Verbose:   ctx.Logger.IsLevelEnabled(logger.Debug),
-		NoCache:   false,
-		Evaluator: r.evaluator,
+		WorkDir:        r.options.WorkDir,
+		Verbose:        ctx.Logger.IsLevelEnabled(logger.Debug),
+		NoCache:        false,
+		Evaluator:      r.evaluator,
+		ExecutablePath: r.options.ExecutablePath,
 		ExtraArgs: map[string]interface{}{
 			"flanksource_context": ctx,
 		},
@@ -339,6 +328,7 @@ func (r *Runner) executeFixture(ctx flanksourceContext.Context, fixture FixtureT
 	return result, nil
 }
 
+
 // renderBuildTemplate renders a gomplate template for build commands
 func renderBuildTemplate(template string, data map[string]interface{}) (string, error) {
 	return gomplate.RunTemplate(data, gomplate.Template{
@@ -346,25 +336,3 @@ func renderBuildTemplate(template string, data map[string]interface{}) (string, 
 	})
 }
 
-// taskResultToFixtureResult converts a task result to a FixtureResult
-func (r *Runner) taskResultToFixtureResult(t *clicky.Task, waitResult *clicky.WaitResult) FixtureResult {
-	// Get the actual fixture result from the task
-	taskResult, taskErr := t.GetResult()
-
-	if result, ok := taskResult.(FixtureResult); ok {
-		if result.Name == "" {
-			result.Name = t.Name()
-		}
-
-		if taskErr != nil {
-			result.Status = task.StatusERR
-			result.Error += taskErr.Error()
-		}
-		return result
-	}
-
-	return FixtureResult{
-		Status: task.StatusERR,
-		Error:  fmt.Sprintf("Unknown result %t -> %s", taskResult, taskErr),
-	}
-}
