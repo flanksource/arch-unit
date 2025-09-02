@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/flanksource/arch-unit/analysis"
@@ -318,7 +319,12 @@ func (c *Coordinator) discoverFiles(dir string) ([]string, error) {
 		if info.IsDir() {
 			//FIXME support .gitignore
 			name := info.Name()
-			if name == ".git" || name == "vendor" || name == "node_modules" ||
+			// Skip hidden directories (starting with .) except root
+			if name != "." && strings.HasPrefix(name, ".") {
+				return filepath.SkipDir
+			}
+			// Skip common directories
+			if name == "vendor" || name == "node_modules" ||
 				name == "__pycache__" || name == ".venv" || name == "venv" ||
 				name == "target" || name == "dist" || name == "build" {
 				return filepath.SkipDir

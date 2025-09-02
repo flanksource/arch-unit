@@ -56,7 +56,7 @@ func TestResolutionService_ExtractGoGitURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := resolver.extractGoGitURL(tt.packageName)
+			result, err := resolver.extractGoGitURL(nil, tt.packageName)
 			if tt.shouldError {
 				assert.Error(t, err)
 			} else {
@@ -164,7 +164,7 @@ func TestResolutionService_ResolveGitURL_Caching(t *testing.T) {
 	packageType := "go"
 
 	// First resolution should work and cache the result
-	gitURL, err := resolver.ResolveGitURL(packageName, packageType)
+	gitURL, err := resolver.ResolveGitURL(nil, packageName, packageType)
 	require.NoError(t, err)
 	assert.Equal(t, "https://github.com/flanksource/commons", gitURL)
 
@@ -177,7 +177,7 @@ func TestResolutionService_ResolveGitURL_Caching(t *testing.T) {
 	assert.False(t, cached.IsExpired())
 
 	// Second resolution should return the cached result
-	gitURL2, err := resolver.ResolveGitURL(packageName, packageType)
+	gitURL2, err := resolver.ResolveGitURL(nil, packageName, packageType)
 	require.NoError(t, err)
 	assert.Equal(t, gitURL, gitURL2)
 }
@@ -233,7 +233,7 @@ func TestResolutionService_CachingBehavior(t *testing.T) {
 		packageType := "go"
 
 		// First resolution should resolve and cache
-		gitURL, err := resolver.ResolveGitURL(packageName, packageType)
+		gitURL, err := resolver.ResolveGitURL(nil, packageName, packageType)
 		require.NoError(t, err)
 		assert.Equal(t, "https://github.com/golang/go", gitURL)
 
@@ -244,7 +244,7 @@ func TestResolutionService_CachingBehavior(t *testing.T) {
 		assert.Equal(t, gitURL, cached.GitURL)
 
 		// Second resolution should use cache (we can't easily verify no HTTP call without mocking)
-		gitURL2, err := resolver.ResolveGitURL(packageName, packageType)
+		gitURL2, err := resolver.ResolveGitURL(nil, packageName, packageType)
 		require.NoError(t, err)
 		assert.Equal(t, gitURL, gitURL2)
 	})
@@ -260,7 +260,7 @@ func TestResolutionService_CachingBehavior(t *testing.T) {
 		packageType := "go"
 
 		// First resolution
-		gitURL, err := resolver.ResolveGitURL(packageName, packageType)
+		gitURL, err := resolver.ResolveGitURL(nil, packageName, packageType)
 		require.NoError(t, err)
 		assert.Equal(t, "https://github.com/stretchr/testify", gitURL)
 
@@ -278,7 +278,7 @@ func TestResolutionService_CachingBehavior(t *testing.T) {
 		assert.True(t, cached.IsExpiredWithTTL(1*time.Second))
 
 		// Resolution should happen again (not from cache)
-		gitURL2, err := resolver.ResolveGitURL(packageName, packageType)
+		gitURL2, err := resolver.ResolveGitURL(nil, packageName, packageType)
 		require.NoError(t, err)
 		assert.Equal(t, gitURL, gitURL2)
 	})
@@ -294,7 +294,7 @@ func TestResolutionService_CachingBehavior(t *testing.T) {
 		packageType := "unknown-type"
 
 		// First resolution should return empty and cache it
-		gitURL, err := resolver.ResolveGitURL(packageName, packageType)
+		gitURL, err := resolver.ResolveGitURL(nil, packageName, packageType)
 		require.NoError(t, err)
 		assert.Empty(t, gitURL)
 
@@ -305,7 +305,7 @@ func TestResolutionService_CachingBehavior(t *testing.T) {
 		assert.Empty(t, cached.GitURL)
 
 		// Second resolution should return cached empty result
-		gitURL2, err := resolver.ResolveGitURL(packageName, packageType)
+		gitURL2, err := resolver.ResolveGitURL(nil, packageName, packageType)
 		require.NoError(t, err)
 		assert.Empty(t, gitURL2)
 	})
@@ -330,7 +330,7 @@ func TestResolutionService_CachingBehavior(t *testing.T) {
 			wg.Add(1)
 			go func(idx int) {
 				defer wg.Done()
-				gitURL, err := resolver.ResolveGitURL(packageName, packageType)
+				gitURL, err := resolver.ResolveGitURL(nil, packageName, packageType)
 				results[idx] = gitURL
 				errors[idx] = err
 			}(i)
@@ -364,7 +364,7 @@ func TestResolutionService_CachingBehavior(t *testing.T) {
 		packageType := "go"
 
 		// First resolution
-		gitURL, err := resolver.ResolveGitURL(packageName, packageType)
+		gitURL, err := resolver.ResolveGitURL(nil, packageName, packageType)
 		require.NoError(t, err)
 		assert.Equal(t, "https://github.com/gorilla/mux", gitURL)
 
@@ -377,7 +377,7 @@ func TestResolutionService_CachingBehavior(t *testing.T) {
 		assert.True(t, cached.IsExpiredWithTTL(0))
 
 		// Second resolution should not use cache (will re-resolve)
-		gitURL2, err := resolver.ResolveGitURL(packageName, packageType)
+		gitURL2, err := resolver.ResolveGitURL(nil, packageName, packageType)
 		require.NoError(t, err)
 		assert.Equal(t, gitURL, gitURL2)
 	})
@@ -423,14 +423,14 @@ func TestResolutionService_ValidationWithMockServer(t *testing.T) {
 		testURL := server.URL + "/valid/repo"
 
 		// Validate URL
-		valid, finalURL, err := resolver.ValidateGitURL(testURL)
+		valid, finalURL, err := resolver.ValidateGitURL(nil, testURL)
 		require.NoError(t, err)
 		assert.True(t, valid)
 		assert.Equal(t, testURL, finalURL)
 		assert.Equal(t, int32(1), atomic.LoadInt32(&requestCount))
 
 		// Second validation should still make a request (ValidateGitURL doesn't use cache)
-		valid2, finalURL2, err := resolver.ValidateGitURL(testURL)
+		valid2, finalURL2, err := resolver.ValidateGitURL(nil, testURL)
 		require.NoError(t, err)
 		assert.True(t, valid2)
 		assert.Equal(t, finalURL, finalURL2)
@@ -448,7 +448,7 @@ func TestResolutionService_ValidationWithMockServer(t *testing.T) {
 		expectedFinalURL := server.URL + "/final/repo"
 
 		// Validate URL with redirect
-		valid, finalURL, err := resolver.ValidateGitURL(testURL)
+		valid, finalURL, err := resolver.ValidateGitURL(nil, testURL)
 		require.NoError(t, err)
 		assert.True(t, valid)
 		assert.Equal(t, expectedFinalURL, finalURL)
@@ -466,7 +466,7 @@ func TestResolutionService_ValidationWithMockServer(t *testing.T) {
 		testURL := server.URL + "/invalid/repo"
 
 		// Validate invalid URL
-		valid, finalURL, err := resolver.ValidateGitURL(testURL)
+		valid, finalURL, err := resolver.ValidateGitURL(nil, testURL)
 		require.NoError(t, err)
 		assert.False(t, valid)
 		assert.Equal(t, testURL, finalURL) // Should return original URL on failure

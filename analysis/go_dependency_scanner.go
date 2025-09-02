@@ -70,9 +70,12 @@ func (s *GoDependencyScanner) ScanFile(ctx *ScanContext, filePath string, conten
 			Package:  []string{require.Mod.Path},
 		}
 
+		if !ctx.Matches(dep) {
+			continue
+		}
 		// Use resolver to get Git URL if available
 		if s.resolver != nil {
-			if gitURL, err := s.resolver.ResolveGitURL(require.Mod.Path, "go"); err == nil && gitURL != "" {
+			if gitURL, err := s.resolver.ResolveGitURL(ctx, require.Mod.Path, "go"); err == nil && gitURL != "" {
 				dep.Git = gitURL
 			}
 		}
@@ -91,8 +94,15 @@ func (s *GoDependencyScanner) ScanFile(ctx *ScanContext, filePath string, conten
 					dep.Version = replace.New.Version
 				}
 				if replace.New.Path != replace.Old.Path {
-					// Track the original name
-					dep.Name = replace.New.Path
+					// For local replacements (relative/absolute paths), preserve the original name
+					// and indicate the local path in the version
+					if isLocalPath(replace.New.Path) {
+						dep.Version = "local:" + replace.New.Path
+						// Keep original name: dep.Name stays replace.Old.Path
+					} else {
+						// For URL replacements, update the name
+						dep.Name = replace.New.Path
+					}
 				}
 				ctx.Debugf("Replaced %s with %s@%s",
 					replace.Old.Path, replace.New.Path, replace.New.Version)
@@ -103,6 +113,24 @@ func (s *GoDependencyScanner) ScanFile(ctx *ScanContext, filePath string, conten
 
 	ctx.Debugf("Found %d Go dependencies", len(dependencies))
 	return dependencies, nil
+}
+
+// isLocalPath checks if a path is a local file system path (relative or absolute)
+func isLocalPath(path string) bool {
+	// Check for relative paths (starts with ./ or ../)
+	if strings.HasPrefix(path, "./") || strings.HasPrefix(path, "../") {
+		return true
+	}
+	// Check for absolute paths (starts with /)
+	if strings.HasPrefix(path, "/") {
+		return true
+	}
+	// Check for Windows paths (starts with C:\ etc)
+	if len(path) >= 3 && path[1] == ':' && (path[2] == '\\' || path[2] == '/') {
+		return true
+	}
+	// If it looks like a URL or module path, it's not local
+	return false
 }
 
 // scanGoSum extracts dependency information from go.sum file
@@ -150,9 +178,13 @@ func (s *GoDependencyScanner) scanGoSum(ctx *ScanContext, filePath string, conte
 				Package: []string{module},
 			}
 
+			if !ctx.Matches(dep) {
+				continue
+			}
+
 			// Use resolver to get Git URL if available
 			if s.resolver != nil {
-				if gitURL, err := s.resolver.ResolveGitURL(module, "go"); err == nil && gitURL != "" {
+				if gitURL, err := s.resolver.ResolveGitURL(ctx, module, "go"); err == nil && gitURL != "" {
 					dep.Git = gitURL
 				}
 			}

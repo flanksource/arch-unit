@@ -19,22 +19,22 @@ import (
 
 // DefaultGitRepository implements GitRepository
 type DefaultGitRepository struct {
-	gitURL          string
-	repoPath        string
-	gitRepo         *git.Repository
-	worktrees       map[string]WorktreeInfo // version -> WorktreeInfo
-	mutex           sync.RWMutex
-	worktreeManager WorktreeManager
-	lastFetch       time.Time
+	gitURL       string
+	repoPath     string
+	gitRepo      *git.Repository
+	clones       map[string]CloneInfo // version-depth -> CloneInfo
+	mutex        sync.RWMutex
+	cloneManager CloneManager
+	lastFetch    time.Time
 }
 
 // NewDefaultGitRepository creates a new GitRepository instance
-func NewDefaultGitRepository(gitURL, repoPath string, worktreeManager WorktreeManager) (GitRepository, error) {
+func NewDefaultGitRepository(gitURL, repoPath string, cloneManager CloneManager) (GitRepository, error) {
 	repo := &DefaultGitRepository{
-		gitURL:          gitURL,
-		repoPath:        repoPath,
-		worktrees:       make(map[string]WorktreeInfo),
-		worktreeManager: worktreeManager,
+		gitURL:       gitURL,
+		repoPath:     repoPath,
+		clones:       make(map[string]CloneInfo),
+		cloneManager: cloneManager,
 	}
 
 	err := repo.ensureCloned()
@@ -77,26 +77,49 @@ func (r *DefaultGitRepository) Fetch(ctx context.Context) error {
 	return nil
 }
 
-// GetWorktree returns the path to a worktree for the specified version
-func (r *DefaultGitRepository) GetWorktree(version string) (string, error) {
+// GetWorktree returns the path to a clone for the specified version
+func (r *DefaultGitRepository) GetWorktree(version string, depth int) (string, error) {
+	// Create cache key that includes both version and depth
+	cacheKey := fmt.Sprintf("%s-%d", version, depth)
+	
 	r.mutex.RLock()
-	if info, exists := r.worktrees[version]; exists {
-		// Check if worktree still exists on disk
+	if info, exists := r.clones[cacheKey]; exists {
+		// Check if clone still exists on disk
 		if _, err := os.Stat(info.Path); err == nil {
-			// Update last used time
-			r.mutex.RUnlock()
-			r.mutex.Lock()
-			info.LastUsed = time.Now()
-			r.worktrees[version] = info
-			r.mutex.Unlock()
-			return info.Path, nil
+			// Check if existing clone has sufficient depth
+			if info.Depth == 0 || (depth > 0 && info.Depth >= depth) {
+				// Update last used time
+				r.mutex.RUnlock()
+				r.mutex.Lock()
+				info.LastUsed = time.Now()
+				r.clones[cacheKey] = info
+				r.mutex.Unlock()
+				return info.Path, nil
+			}
 		}
-		// Worktree doesn't exist, remove from cache
+		// Clone doesn't exist or has insufficient depth, remove from cache
 		r.mutex.RUnlock()
 		r.mutex.Lock()
-		delete(r.worktrees, version)
+		delete(r.clones, cacheKey)
 		r.mutex.Unlock()
 		r.mutex.RLock()
+	}
+	r.mutex.RUnlock()
+
+	// Check if we have a deeper clone that can satisfy this request
+	r.mutex.RLock()
+	for key, info := range r.clones {
+		if strings.HasPrefix(key, version+"-") && (info.Depth == 0 || (depth > 0 && info.Depth >= depth)) {
+			if _, err := os.Stat(info.Path); err == nil {
+				// Update last used time
+				r.mutex.RUnlock()
+				r.mutex.Lock()
+				info.LastUsed = time.Now()
+				r.clones[key] = info
+				r.mutex.Unlock()
+				return info.Path, nil
+			}
+		}
 	}
 	r.mutex.RUnlock()
 
@@ -105,49 +128,50 @@ func (r *DefaultGitRepository) GetWorktree(version string) (string, error) {
 		logger.Warnf("Failed to fetch latest refs: %v", err)
 	}
 
-	// Create new worktree
+	// Create new clone
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	// Double-check after acquiring write lock
-	if info, exists := r.worktrees[version]; exists {
+	if info, exists := r.clones[cacheKey]; exists {
 		if _, err := os.Stat(info.Path); err == nil {
 			info.LastUsed = time.Now()
-			r.worktrees[version] = info
+			r.clones[cacheKey] = info
 			return info.Path, nil
 		}
 	}
 
-	worktreePath := r.getWorktreePath(version)
+	clonePath := r.getClonePath(version, depth)
 
-	// Create worktree directory
-	if err := os.MkdirAll(filepath.Dir(worktreePath), 0755); err != nil {
-		return "", fmt.Errorf("failed to create worktree directory: %w", err)
+	// Create clone directory
+	if err := os.MkdirAll(filepath.Dir(clonePath), 0755); err != nil {
+		return "", fmt.Errorf("failed to create clone directory: %w", err)
 	}
 
-	// Create the worktree
-	err := r.worktreeManager.CreateWorktree(r.repoPath, version, worktreePath)
+	// Create the clone
+	err := r.cloneManager.CreateClone(context.Background(), r.repoPath, version, clonePath, depth)
 	if err != nil {
-		return "", fmt.Errorf("failed to create worktree for version %s: %w", version, err)
+		return "", fmt.Errorf("failed to create clone for version %s: %w", version, err)
 	}
 
 	// Resolve version to hash for tracking
 	hash, err := r.resolveRef(version)
 	if err != nil {
-		// Still track the worktree even if we can't resolve the hash
+		// Still track the clone even if we can't resolve the hash
 		hash = plumbing.ZeroHash
 	}
 
-	// Track the new worktree
-	r.worktrees[version] = WorktreeInfo{
-		Path:      worktreePath,
+	// Track the new clone
+	r.clones[cacheKey] = CloneInfo{
+		Path:      clonePath,
 		Version:   version,
+		Depth:     depth,
 		CreatedAt: time.Now(),
 		LastUsed:  time.Now(),
 		Hash:      hash,
 	}
 
-	return worktreePath, nil
+	return clonePath, nil
 }
 
 // ResolveVersion resolves version aliases to concrete versions
@@ -331,35 +355,40 @@ func (r *DefaultGitRepository) FindLastGARelease() (string, error) {
 	return "", fmt.Errorf("no GA release tags found (all %d tags are pre-releases)", len(allTags))
 }
 
-// ListWorktrees returns all active worktrees for this repository
-func (r *DefaultGitRepository) ListWorktrees() ([]WorktreeInfo, error) {
+// ListWorktrees returns all active clones for this repository
+func (r *DefaultGitRepository) ListWorktrees() ([]CloneInfo, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	var worktrees []WorktreeInfo
-	for _, info := range r.worktrees {
-		worktrees = append(worktrees, info)
+	var clones []CloneInfo
+	for _, info := range r.clones {
+		clones = append(clones, info)
 	}
-	return worktrees, nil
+	return clones, nil
 }
 
-// CleanupWorktree removes a specific worktree
+// CleanupWorktree removes a specific clone (keeping method name for compatibility)
 func (r *DefaultGitRepository) CleanupWorktree(version string) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	info, exists := r.worktrees[version]
-	if !exists {
-		return nil // Already cleaned up
+	// Remove all clones for this version (different depths)
+	var toDelete []string
+	for key, info := range r.clones {
+		if strings.HasPrefix(key, version+"-") {
+			// Remove clone
+			err := r.cloneManager.RemoveClone(context.Background(), info.Path)
+			if err != nil {
+				return fmt.Errorf("failed to remove clone: %w", err)
+			}
+			toDelete = append(toDelete, key)
+		}
 	}
 
-	// Remove worktree
-	err := r.worktreeManager.RemoveWorktree(info.Path)
-	if err != nil {
-		return fmt.Errorf("failed to remove worktree: %w", err)
+	for _, key := range toDelete {
+		delete(r.clones, key)
 	}
-
-	delete(r.worktrees, version)
+	
 	return nil
 }
 
@@ -417,8 +446,8 @@ func (r *DefaultGitRepository) ensureCloned() error {
 	return nil
 }
 
-func (r *DefaultGitRepository) getWorktreePath(version string) string {
-	return filepath.Join(r.repoPath, "worktrees", version)
+func (r *DefaultGitRepository) getClonePath(version string, depth int) string {
+	return filepath.Join(r.repoPath, "clones", fmt.Sprintf("%s-depth%d", version, depth))
 }
 
 func (r *DefaultGitRepository) isVersionAlias(version string) bool {

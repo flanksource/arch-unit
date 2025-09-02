@@ -141,7 +141,7 @@ func (s *DockerDependencyScanner) scanDockerfile(ctx *analysis.ScanContext, file
 				continue
 			}
 
-			dep := s.parseDockerImage(image)
+			dep := s.parseDockerImage(ctx, image)
 			dep.Source = fmt.Sprintf("%s:%d", relPath, lineNum)
 			dependencies = append(dependencies, dep)
 			ctx.Debugf("Found base image: %s at line %d", image, lineNum)
@@ -159,12 +159,13 @@ func (s *DockerDependencyScanner) scanDockerfile(ctx *analysis.ScanContext, file
 			// Substitute ARG variables if present
 			source = s.substituteVariables(source, argValues)
 
-			dep := s.parseDockerImage(source)
+			dep := s.parseDockerImage(ctx, source)
 			dep.Source = fmt.Sprintf("%s:%d", relPath, lineNum)
 			dependencies = append(dependencies, dep)
 			ctx.Debugf("Found COPY --from image: %s at line %d", source, lineNum)
 		}
 	}
+	dependencies = ctx.Filter(dependencies)
 
 	ctx.Debugf("Found %d Docker dependencies", len(dependencies))
 	return dependencies, nil
@@ -213,7 +214,7 @@ func (s *DockerDependencyScanner) scanDockerCompose(ctx *analysis.ScanContext, f
 		}
 		seen[service.Image] = true
 
-		dep := s.parseDockerImage(service.Image)
+		dep := s.parseDockerImage(ctx, service.Image)
 
 		// Add source location
 		if lineNum, ok := lineMap[service.Image]; ok {
@@ -221,6 +222,9 @@ func (s *DockerDependencyScanner) scanDockerCompose(ctx *analysis.ScanContext, f
 		} else {
 			// Fallback to just filename if we couldn't find the line
 			dep.Source = relPath
+		}
+		if ctx.Matches(dep) {
+			continue
 		}
 
 		ctx.Debugf("Found service %s using image: %s at %s", serviceName, service.Image, dep.Source)
@@ -258,7 +262,7 @@ func (s *DockerDependencyScanner) buildImageLineMap(content []byte) map[string]i
 }
 
 // parseDockerImage parses a Docker image reference into a dependency
-func (s *DockerDependencyScanner) parseDockerImage(image string) *models.Dependency {
+func (s *DockerDependencyScanner) parseDockerImage(ctx *analysis.ScanContext, image string) *models.Dependency {
 	dep := &models.Dependency{
 		Type: models.DependencyTypeDocker,
 	}
@@ -329,7 +333,7 @@ func (s *DockerDependencyScanner) parseDockerImage(image string) *models.Depende
 
 	// Use resolver if available, otherwise fall back to heuristics
 	if s.resolver != nil {
-		if gitURL, err := s.resolver.ResolveGitURL(image, "docker"); err == nil && gitURL != "" {
+		if gitURL, err := s.resolver.ResolveGitURL(ctx, image, "docker"); err == nil && gitURL != "" {
 			dep.Git = gitURL
 		} else {
 			// Resolver didn't find anything, use existing heuristics

@@ -36,6 +36,7 @@ type Dependency struct {
 	Depth        int            `json:"depth,omitempty" pretty:"label=Depth,omitempty"`                          // Depth in the dependency tree (0 = direct, 1+ = transitive)
 	Children     []Dependency   `json:"children,omitempty" pretty:"label=Children,type=tree,omitempty"`          // Child dependencies
 	ResolvedFrom string         `json:"resolved_from,omitempty" pretty:"label=Resolved From,omitempty"`          // Original version alias (HEAD, GA, latest) that was resolved
+	Homepage     string         `json:"homepage,omitempty" pretty:"label=Homepage,omitempty"`                    // Homepage URL of the library
 }
 
 // ScanResult contains the result of dependency scanning with metadata

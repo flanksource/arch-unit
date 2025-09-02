@@ -9,6 +9,8 @@ import (
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/task"
+	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
 )
 
@@ -17,7 +19,6 @@ type RunnerV2 struct {
 	registry       *Registry
 	violationCache *cache.ViolationCache
 	linterStats    *cache.LinterStats
-	taskManager    *clicky.TaskManager
 	config         *models.Config
 	workDir        string
 }
@@ -43,10 +44,6 @@ func NewRunnerV2(config *models.Config, workDir string) (*RunnerV2, error) {
 	}, nil
 }
 
-// SetTaskManager sets the task manager for progress tracking
-func (r *RunnerV2) SetTaskManager(tm *clicky.TaskManager) {
-	r.taskManager = tm
-}
 
 // Close closes any resources held by the runner
 func (r *RunnerV2) Close() error {
@@ -116,21 +113,36 @@ func (r *RunnerV2) RunWithIntelligentDebounce(ctx context.Context, linterName st
 	// Get configuration
 	config := r.config.GetLinterConfig(linterName, r.workDir)
 
-	// Start task tracking
-	var task *clicky.Task
-	if r.taskManager != nil {
-		task = r.taskManager.Start(r.buildCommandDisplay(linter, config, files))
-	}
-
-	// Check intelligent debounce
+	// Check intelligent debounce first
 	shouldSkip, actualDebounce, err := r.linterStats.ShouldSkipLinter(linterName, r.workDir, config.Debounce)
 	if err != nil {
 		logger.Warnf("Failed to check debounce for %s: %v", linterName, err)
 	} else if shouldSkip {
 		// Load cached violations and return
-		return r.loadCachedResult(linterName, actualDebounce, task, start)
+		return r.loadCachedResult(linterName, actualDebounce, nil, start)
 	}
 
+	// Start task and execute linter
+	typedTask := clicky.StartTask[*LinterResult](r.buildCommandDisplay(linter, config, files), func(ctx2 flanksourceContext.Context, t *task.Task) (*LinterResult, error) {
+		return r.executeLinter(ctx, linterName, linter, config, files, fix, start, t)
+	})
+
+	// Wait for task completion
+	result := typedTask.WaitFor()
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	
+	// Get the actual result from the task
+	linterResult, err := typedTask.GetResult()
+	if err != nil {
+		return nil, err
+	}
+	return linterResult, nil
+}
+
+// executeLinter executes a linter with proper error handling and caching
+func (r *RunnerV2) executeLinter(ctx context.Context, linterName string, linter Linter, config *models.LinterConfig, files []string, fix bool, start time.Time, t *task.Task) (*LinterResult, error) {
 	// Execute linter
 	violations, err := linter.Run(ctx, RunOptions{
 		WorkDir:    r.workDir,
@@ -157,8 +169,8 @@ func (r *RunnerV2) RunWithIntelligentDebounce(ctx context.Context, linterName st
 	}
 
 	// Update task status
-	if task != nil {
-		r.updateTaskStatus(task, linterName, success, len(violations), err)
+	if t != nil {
+		r.updateTaskStatus(t, linterName, success, len(violations), err)
 	}
 
 	return &LinterResult{
@@ -167,7 +179,7 @@ func (r *RunnerV2) RunWithIntelligentDebounce(ctx context.Context, linterName st
 		Duration:   duration,
 		Violations: violations,
 		Error:      r.formatError(err),
-	}, nil
+	}, err
 }
 
 // buildCommandDisplay builds a user-friendly command display
@@ -209,18 +221,6 @@ func (r *RunnerV2) loadCachedResult(linterName string, debounce time.Duration, t
 		}
 	}
 
-	// Update task status for debounced linter
-	if task != nil {
-		violationCount := len(violations)
-		if violationCount > 0 {
-			task.SetName(fmt.Sprintf("%s (%d cached violations)", linterName, violationCount))
-			task.Warning()
-		} else {
-			task.SetName(fmt.Sprintf("%s (skipped - debounced)", linterName))
-			task.Success()
-		}
-	}
-
 	return &LinterResult{
 		Linter:       linterName,
 		Success:      true,
@@ -251,22 +251,22 @@ func (r *RunnerV2) cacheViolations(linterName string, violations []models.Violat
 	}
 }
 
-// updateTaskStatus updates the task manager status
-func (r *RunnerV2) updateTaskStatus(task *clicky.Task, linterName string, success bool, violationCount int, err error) {
+// updateTaskStatus updates the task status
+func (r *RunnerV2) updateTaskStatus(t *task.Task, linterName string, success bool, violationCount int, err error) {
 	if success {
 		if violationCount > 0 {
-			task.SetName(fmt.Sprintf("%s (%d violations)", linterName, violationCount))
-			task.Warning()
+			t.SetName(fmt.Sprintf("%s (%d violations)", linterName, violationCount))
+			t.Warning()
 		} else {
-			task.SetName(linterName)
-			task.Success()
+			t.SetName(linterName)
+			t.Success()
 		}
 	} else {
-		task.SetName(fmt.Sprintf("%s (failed)", linterName))
+		t.SetName(fmt.Sprintf("%s (failed)", linterName))
 		if err != nil {
-			task.Errorf("Error: %v", err)
+			t.Errorf("Error: %v", err)
 		}
-		task.Failed()
+		t.Failed()
 	}
 }
 

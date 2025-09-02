@@ -124,6 +124,9 @@ func runDepsScan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Wait for all tasks to complete and force final render before outputting JSON
+	task.WaitForAllTasks()
+
 	fmt.Println(clicky.MustFormat(deps.Dependencies))
 	return nil
 }
@@ -177,8 +180,8 @@ func performDependencyScan(ctx clicky.Context, t *clicky.Task, path string) (*mo
 	// Create scan context with all configuration
 	scanCtx := analysis.NewScanContext(t, path).
 		WithDepth(depsDepth).
-		WithIndirect(depsIndirect)
-	// TODO: Apply filters in post-processing
+		WithIndirect(depsIndirect).
+		WithFilter(dependencies.ParseFilters(depsFilters))
 
 	// Phase 2: Scanning
 	if depsDepth > 0 {

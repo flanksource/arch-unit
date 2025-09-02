@@ -110,17 +110,21 @@ func (s *HelmDependencyScanner) scanChartYaml(ctx *analysis.ScanContext, filepat
 			dependency.Package = []string{dep.Name} // Store original name in packages
 		}
 
-		// Use resolver if available, otherwise fall back to heuristics
+		// Resolve Git URL before filtering so filter can match against it
 		if s.resolver != nil {
-			if gitURL, err := s.resolver.ResolveGitURL(dep.Name, "helm"); err == nil && gitURL != "" {
+			if gitURL, err := s.resolver.ResolveGitURL(ctx, dep.Name, "helm"); err == nil && gitURL != "" {
 				dependency.Git = gitURL
 			} else if dep.Repository != "" {
 				// If resolver didn't find anything, try the heuristics as fallback
-				dependency.Git = s.parseHelmRepository(dep.Repository, dep.Name)
+				dependency.Git = s.parseHelmRepository(ctx, dep.Repository, dep.Name)
 			}
 		} else if dep.Repository != "" {
 			// No resolver available, use heuristics
-			dependency.Git = s.parseHelmRepository(dep.Repository, dep.Name)
+			dependency.Git = s.parseHelmRepository(ctx, dep.Repository, dep.Name)
+		}
+
+		if !ctx.Matches(dependency) {
+			continue
 		}
 
 		dependencies = append(dependencies, dependency)
@@ -162,7 +166,7 @@ func (s *HelmDependencyScanner) scanChartLock(ctx *analysis.ScanContext, filepat
 
 		// Parse repository URL
 		if dep.Repository != "" {
-			dependency.Git = s.parseHelmRepository(dep.Repository, dep.Name)
+			dependency.Git = s.parseHelmRepository(ctx, dep.Repository, dep.Name)
 		}
 
 		// Store digest as part of version info if present
@@ -221,7 +225,11 @@ func (s *HelmDependencyScanner) scanRequirementsYaml(ctx *analysis.ScanContext, 
 
 		// Parse repository URL
 		if dep.Repository != "" {
-			dependency.Git = s.parseHelmRepository(dep.Repository, dep.Name)
+			dependency.Git = s.parseHelmRepository(ctx, dep.Repository, dep.Name)
+		}
+
+		if !ctx.Matches(dependency) {
+			continue
 		}
 
 		dependencies = append(dependencies, dependency)
@@ -263,12 +271,16 @@ func (s *HelmDependencyScanner) scanRequirementsLock(ctx *analysis.ScanContext, 
 
 		// Parse repository URL
 		if dep.Repository != "" {
-			dependency.Git = s.parseHelmRepository(dep.Repository, dep.Name)
+			dependency.Git = s.parseHelmRepository(ctx, dep.Repository, dep.Name)
 		}
 
 		// Store digest as part of version info if present
 		if dep.Digest != "" {
 			dependency.Version = fmt.Sprintf("%s (digest: %s)", dep.Version, dep.Digest[:12])
+		}
+
+		if !ctx.Matches(dependency) {
+			continue
 		}
 
 		dependencies = append(dependencies, dependency)
@@ -294,7 +306,7 @@ func (s *HelmDependencyScanner) scanValuesYaml(ctx *analysis.ScanContext, filepa
 	global := s.extractGlobalConfig(valuesData)
 
 	// Recursively scan for image references
-	s.scanForImages(valuesData, "", filepath, global, &dependencies)
+	s.scanForImages(ctx, valuesData, "", filepath, global, &dependencies)
 
 	ctx.Debugf("Found %d Docker images in values file", len(dependencies))
 	return dependencies, nil
@@ -327,7 +339,7 @@ func (s *HelmDependencyScanner) extractGlobalConfig(data interface{}) GlobalConf
 }
 
 // scanForImages recursively scans YAML data for image references
-func (s *HelmDependencyScanner) scanForImages(data interface{}, path, filepath string, global GlobalConfig, dependencies *[]*models.Dependency) {
+func (s *HelmDependencyScanner) scanForImages(ctx *analysis.ScanContext, data interface{}, path, filepath string, global GlobalConfig, dependencies *[]*models.Dependency) {
 	switch v := data.(type) {
 	case map[string]interface{}:
 		for key, value := range v {
@@ -335,25 +347,25 @@ func (s *HelmDependencyScanner) scanForImages(data interface{}, path, filepath s
 
 			// Check for image patterns at this level
 			if s.isImageKey(key) {
-				s.processImageValue(value, currentPath, filepath, global, dependencies)
+				s.processImageValue(ctx, value, currentPath, filepath, global, dependencies)
 			} else if key == "image" {
 				// Handle both direct image strings and nested image objects
 				if imageStr, ok := value.(string); ok && imageStr != "" {
 					// Direct image string
-					s.processImageValue(value, currentPath, filepath, global, dependencies)
+					s.processImageValue(ctx, value, currentPath, filepath, global, dependencies)
 				} else {
 					// Nested image object (image.repository, image.tag)
-					s.processImageObject(value, currentPath, filepath, global, dependencies)
+					s.processImageObject(ctx, value, currentPath, filepath, global, dependencies)
 				}
 			} else {
 				// Recurse into nested structures
-				s.scanForImages(value, currentPath, filepath, global, dependencies)
+				s.scanForImages(ctx, value, currentPath, filepath, global, dependencies)
 			}
 		}
 	case []interface{}:
 		for i, item := range v {
 			currentPath := s.buildPath(path, fmt.Sprintf("[%d]", i))
-			s.scanForImages(item, currentPath, filepath, global, dependencies)
+			s.scanForImages(ctx, item, currentPath, filepath, global, dependencies)
 		}
 	}
 }
@@ -371,7 +383,7 @@ func (s *HelmDependencyScanner) isImageKey(key string) bool {
 }
 
 // processImageValue processes a direct image value (e.g., "nginx:1.21")
-func (s *HelmDependencyScanner) processImageValue(value interface{}, path, filepath string, global GlobalConfig, dependencies *[]*models.Dependency) {
+func (s *HelmDependencyScanner) processImageValue(ctx *analysis.ScanContext, value interface{}, path, filepath string, global GlobalConfig, dependencies *[]*models.Dependency) {
 	if imageStr, ok := value.(string); ok && imageStr != "" {
 		// Skip template variables and empty values
 		if strings.Contains(imageStr, "{{") || imageStr == "" {
@@ -379,13 +391,13 @@ func (s *HelmDependencyScanner) processImageValue(value interface{}, path, filep
 		}
 
 		image := s.resolveImageWithGlobal(imageStr, global)
-		dep := s.createDockerDependency(image, filepath, path)
+		dep := s.createDockerDependency(ctx, image, filepath, path)
 		*dependencies = append(*dependencies, dep)
 	}
 }
 
 // processImageObject processes an image object with repository/tag structure
-func (s *HelmDependencyScanner) processImageObject(value interface{}, path, filepath string, global GlobalConfig, dependencies *[]*models.Dependency) {
+func (s *HelmDependencyScanner) processImageObject(ctx *analysis.ScanContext, value interface{}, path, filepath string, global GlobalConfig, dependencies *[]*models.Dependency) {
 	if imageMap, ok := value.(map[string]interface{}); ok {
 		repository := ""
 		tag := ""
@@ -417,7 +429,7 @@ func (s *HelmDependencyScanner) processImageObject(value interface{}, path, file
 
 			// Use repository path for source tracking
 			sourcePath := s.buildPath(path, "repository")
-			dep := s.createDockerDependency(image, filepath, sourcePath)
+			dep := s.createDockerDependency(ctx, image, filepath, sourcePath)
 			*dependencies = append(*dependencies, dep)
 		}
 	}
@@ -443,7 +455,7 @@ func (s *HelmDependencyScanner) resolveImageWithGlobal(image string, global Glob
 }
 
 // createDockerDependency creates a Docker dependency from an image reference
-func (s *HelmDependencyScanner) createDockerDependency(image, filepath, sourcePath string) *models.Dependency {
+func (s *HelmDependencyScanner) createDockerDependency(ctx *analysis.ScanContext, image, filepath, sourcePath string) *models.Dependency {
 	dep := &models.Dependency{
 		Name:   image,
 		Type:   models.DependencyTypeDocker,
@@ -462,7 +474,7 @@ func (s *HelmDependencyScanner) createDockerDependency(image, filepath, sourcePa
 
 	// Use resolver if available for Git URL detection
 	if s.resolver != nil {
-		if gitURL, err := s.resolver.ResolveGitURL(dep.Name, "docker"); err == nil && gitURL != "" {
+		if gitURL, err := s.resolver.ResolveGitURL(ctx, dep.Name, "docker"); err == nil && gitURL != "" {
 			dep.Git = gitURL
 		}
 	}
@@ -479,7 +491,7 @@ func (s *HelmDependencyScanner) buildPath(currentPath, key string) string {
 }
 
 // parseHelmRepository converts Helm repository URLs to Git URLs where possible
-func (s *HelmDependencyScanner) parseHelmRepository(repository, chartName string) string {
+func (s *HelmDependencyScanner) parseHelmRepository(ctx *analysis.ScanContext, repository, chartName string) string {
 	// Handle file:// URLs (local charts)
 	if strings.HasPrefix(repository, "file://") {
 		return ""
@@ -491,7 +503,7 @@ func (s *HelmDependencyScanner) parseHelmRepository(repository, chartName string
 	}
 
 	// Try to detect GitHub repository using various strategies
-	return s.detectGitHubRepository(repository, chartName)
+	return s.detectGitHubRepository(ctx, repository, chartName)
 }
 
 // detectGitHubFromOCI extracts GitHub repository from OCI URLs
@@ -511,7 +523,7 @@ func (s *HelmDependencyScanner) detectGitHubFromOCI(ociURL string) string {
 }
 
 // detectGitHubRepository uses heuristics to detect GitHub repositories for Helm charts
-func (s *HelmDependencyScanner) detectGitHubRepository(repository, chartName string) string {
+func (s *HelmDependencyScanner) detectGitHubRepository(ctx *analysis.ScanContext, repository, chartName string) string {
 	// First try to extract GitHub URL directly
 	if githubRepo := s.extractGitHubRepoFromURL(repository); githubRepo != "" {
 		return githubRepo
@@ -535,7 +547,7 @@ func (s *HelmDependencyScanner) detectGitHubRepository(repository, chartName str
 
 				// Use resolver to validate if available, otherwise try direct check
 				if s.resolver != nil {
-					if valid, finalURL, err := s.resolver.ValidateGitURL(individualRepo); err == nil && valid {
+					if valid, finalURL, err := s.resolver.ValidateGitURL(ctx, individualRepo); err == nil && valid {
 						return finalURL // Return the redirected URL if any
 					}
 				}

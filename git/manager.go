@@ -16,7 +16,7 @@ type DefaultGitRepositoryManager struct {
 	repositories    map[string]*repositoryEntry
 	versionCache    map[string]*CacheEntry // "repo:alias" -> resolved_version
 	mutex           sync.RWMutex
-	worktreeManager WorktreeManager
+	cloneManager    CloneManager
 	versionResolver VersionResolver
 }
 
@@ -38,7 +38,7 @@ func NewGitRepositoryManager(cacheDir string) GitRepositoryManager {
 		versionCache: make(map[string]*CacheEntry),
 	}
 
-	manager.worktreeManager = NewWorktreeManager()
+	manager.cloneManager = NewCloneManager()
 	manager.versionResolver = NewVersionResolver(manager)
 
 	return manager
@@ -81,14 +81,14 @@ func (gm *DefaultGitRepositoryManager) GetRepository(gitURL string) (GitReposito
 	return repo, nil
 }
 
-// GetWorktreePath returns the filesystem path to a specific version's worktree
-func (gm *DefaultGitRepositoryManager) GetWorktreePath(gitURL, version string) (string, error) {
+// GetWorktreePath returns the filesystem path to a specific version's clone
+func (gm *DefaultGitRepositoryManager) GetWorktreePath(gitURL, version string, depth int) (string, error) {
 	repo, err := gm.GetRepository(gitURL)
 	if err != nil {
 		return "", err
 	}
 
-	return repo.GetWorktree(version)
+	return repo.GetWorktree(version, depth)
 }
 
 // ResolveVersionAlias resolves version aliases across repositories
@@ -149,11 +149,11 @@ func (gm *DefaultGitRepositoryManager) CleanupUnused(maxAge time.Duration) error
 	// Remove unused repositories
 	for _, url := range toRemove {
 		if entry, exists := gm.repositories[url]; exists {
-			// Cleanup worktrees
-			worktrees, err := entry.repository.ListWorktrees()
+			// Cleanup clones
+			clones, err := entry.repository.ListWorktrees()
 			if err == nil {
-				for _, wt := range worktrees {
-					entry.repository.CleanupWorktree(wt.Version)
+				for _, clone := range clones {
+					entry.repository.CleanupWorktree(clone.Version)
 				}
 			}
 
@@ -199,16 +199,16 @@ func (gm *DefaultGitRepositoryManager) Close() error {
 	gm.mutex.Lock()
 	defer gm.mutex.Unlock()
 
-	// Clean up all worktrees for each repository
+	// Clean up all clones for each repository
 	for _, entry := range gm.repositories {
 		if entry.repository != nil {
-			// Get worktrees for this repository
+			// Get clones for this repository
 			repoPath := gm.cacheDir // This is simplified; actual path depends on implementation
-			worktrees, err := gm.worktreeManager.ListWorktrees(repoPath)
+			clones, err := gm.cloneManager.ListClones(context.Background(), repoPath)
 			if err == nil {
-				// Remove all worktrees
-				for _, wt := range worktrees {
-					_ = gm.worktreeManager.RemoveWorktree(wt.Path)
+				// Remove all clones
+				for _, clone := range clones {
+					_ = gm.cloneManager.RemoveClone(context.Background(), clone.Path)
 				}
 			}
 		}
@@ -232,7 +232,7 @@ func (gm *DefaultGitRepositoryManager) createRepository(gitURL string) (GitRepos
 		return nil, err
 	}
 
-	return NewDefaultGitRepository(gitURL, repoPath, gm.worktreeManager)
+	return NewDefaultGitRepository(gitURL, repoPath, gm.cloneManager)
 }
 
 // getRepositoryPath generates the local path for a repository

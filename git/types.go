@@ -105,10 +105,11 @@ type CacheEntry struct {
 	Error      error
 }
 
-// WorktreeInfo contains information about a managed worktree
-type WorktreeInfo struct {
+// CloneInfo contains information about a managed clone
+type CloneInfo struct {
 	Path      string
 	Version   string
+	Depth     int // Clone depth (0 = full, >0 = shallow)
 	CreatedAt time.Time
 	LastUsed  time.Time
 	Hash      plumbing.Hash

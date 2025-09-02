@@ -74,6 +74,7 @@ replace github.com/flanksource/commons => github.com/flanksource/commons v1.3.0`
 		deps, err := scanner.ScanFile(nil, "/test/go.mod", content)
 		require.NoError(t, err)
 
+
 		assert.Len(t, deps, 2)
 
 		// Check that replacements are applied

@@ -9,6 +9,7 @@ import (
 	"github.com/flanksource/arch-unit/ast"
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/clicky"
+	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/spf13/cobra"
 )
 
@@ -81,75 +82,77 @@ func runASTAnalyze(cmd *cobra.Command, args []string) error {
 		cacheTTL = duration
 	}
 
-	// Initialize AST cache
-	astCache := cache.MustGetASTCache()
+	// Create root task that wraps all AST analysis logic
+	clicky.StartTask("AST Analysis", func(ctx flanksourceContext.Context, t *clicky.Task) (interface{}, error) {
+		// Initialize AST cache
+		astCache := cache.MustGetASTCache()
 
-	// Create coordinator options
-	opts := ast.CoordinatorOptions{
-		NoCache:    astNoCache,
-		CacheTTL:   cacheTTL,
-		Languages:  astLanguages,
-		MaxWorkers: astMaxWorkers,
-	}
-
-	// Create coordinator
-	coordinator := ast.NewCoordinator(astCache, absPath, opts)
-
-	// Create root task
-	rootTask := clicky.StartGlobalTask("AST Analysis")
-
-	// Log configuration
-	rootTask.Infof("Analyzing directory: %s", absPath)
-	if astNoCache {
-		rootTask.Infof("Cache: disabled")
-	} else {
-		rootTask.Infof("Cache: enabled (TTL: %v)", cacheTTL)
-	}
-	if astMaxWorkers > 0 {
-		rootTask.Infof("Workers: %d", astMaxWorkers)
-	} else {
-		rootTask.Infof("Workers: auto (CPU count)")
-	}
-	if len(astLanguages) > 0 {
-		rootTask.Infof("Languages: %v", astLanguages)
-	} else {
-		rootTask.Infof("Languages: all supported")
-	}
-
-	// Run analysis
-	startTime := time.Now()
-	results, err := coordinator.AnalyzeDirectory(rootTask, absPath)
-	if err != nil {
-		rootTask.Errorf("Analysis failed: %v", err)
-		rootTask.Failed()
-		return err
-	}
-
-	duration := time.Since(startTime)
-	rootTask.Infof("Analysis completed in %v", duration)
-
-	// Count some basic statistics for the final log
-	totalFiles := len(results)
-	successCount := 0
-	errorCount := 0
-	for _, result := range results {
-		if result.Error != nil {
-			errorCount++
-		} else {
-			successCount++
+		// Create coordinator options
+		opts := ast.CoordinatorOptions{
+			NoCache:    astNoCache,
+			CacheTTL:   cacheTTL,
+			Languages:  astLanguages,
+			MaxWorkers: astMaxWorkers,
 		}
+
+		// Create coordinator
+		coordinator := ast.NewCoordinator(astCache, absPath, opts)
+
+		// Log configuration
+		t.Infof("Analyzing directory: %s", absPath)
+		if astNoCache {
+			t.Infof("Cache: disabled")
+		} else {
+			t.Infof("Cache: enabled (TTL: %v)", cacheTTL)
+		}
+		if astMaxWorkers > 0 {
+			t.Infof("Workers: %d", astMaxWorkers)
+		} else {
+			t.Infof("Workers: auto (CPU count)")
+		}
+		if len(astLanguages) > 0 {
+			t.Infof("Languages: %v", astLanguages)
+		} else {
+			t.Infof("Languages: all supported")
+		}
+
+		// Run analysis
+		startTime := time.Now()
+		results, err := coordinator.AnalyzeDirectory(t, absPath)
+		if err != nil {
+			t.Errorf("Analysis failed: %v", err)
+			return nil, err
+		}
+
+		duration := time.Since(startTime)
+		t.Infof("Analysis completed in %v", duration)
+
+		// Count some basic statistics for the final log
+		totalFiles := len(results)
+		successCount := 0
+		errorCount := 0
+		for _, result := range results {
+			if result.Error != nil {
+				errorCount++
+			} else {
+				successCount++
+			}
+		}
+
+		t.Infof("Analyzed %d files: %d successful, %d errors", totalFiles, successCount, errorCount)
+
+		if errorCount > 0 {
+			return results, fmt.Errorf("analysis completed with %d errors", errorCount)
+		}
+
+		return results, nil
+	})
+
+	// Wait for all clicky tasks to complete
+	exitCode := clicky.WaitForGlobalCompletionSilent()
+	if exitCode != 0 {
+		return fmt.Errorf("analysis failed with exit code %d", exitCode)
 	}
-
-	rootTask.Infof("Analyzed %d files: %d successful, %d errors", totalFiles, successCount, errorCount)
-
-	if errorCount > 0 {
-		rootTask.Warning()
-	} else {
-		rootTask.Success()
-	}
-
-	// Wait for clicky tasks to complete
-	_ = clicky.WaitForGlobalCompletionSilent()
 
 	return nil
 }

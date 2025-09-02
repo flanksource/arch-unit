@@ -11,7 +11,6 @@ import (
 
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
-	"github.com/flanksource/commons/logger"
 	"golang.org/x/time/rate"
 )
 
@@ -73,7 +72,7 @@ func ResetResolutionService() {
 
 // ResolveGitURL attempts to resolve a Git URL for the given package
 // Returns the resolved URL or empty string if none found
-func (r *ResolutionService) ResolveGitURL(packageName, packageType string) (string, error) {
+func (r *ResolutionService) ResolveGitURL(ctx *ScanContext, packageName, packageType string) (string, error) {
 	// Check cache first (if cache is available and TTL > 0)
 	if r.cache != nil && r.cacheTTL > 0 {
 		if cached, err := r.getCachedAlias(packageName, packageType); err == nil && cached != nil && !cached.IsExpiredWithTTL(r.cacheTTL) {
@@ -82,14 +81,14 @@ func (r *ResolutionService) ResolveGitURL(packageName, packageType string) (stri
 	}
 
 	// Try to resolve Git URL using heuristics
-	gitURL, err := r.extractGitURL(packageName, packageType)
+	gitURL, err := r.extractGitURL(ctx, packageName, packageType)
 	if err != nil {
 		return "", fmt.Errorf("failed to extract Git URL: %w", err)
 	}
 
 	// Validate the URL if one was found
 	if gitURL != "" {
-		if valid, finalURL, err := r.ValidateGitURL(gitURL); err != nil || !valid {
+		if valid, finalURL, err := r.ValidateGitURL(ctx, gitURL); err != nil || !valid {
 			gitURL = "" // Clear invalid URLs
 		} else {
 			// Use the redirected URL if validation succeeded
@@ -101,7 +100,9 @@ func (r *ResolutionService) ResolveGitURL(packageName, packageType string) (stri
 	if r.cache != nil {
 		if err := r.cacheAlias(packageName, packageType, gitURL); err != nil {
 			// Log warning but don't fail the resolution
-			logger.Warnf("failed to cache alias for %s/%s: %v", packageType, packageName, err)
+			if ctx != nil {
+				ctx.Warnf("failed to cache alias for %s/%s: %v", packageType, packageName, err)
+			}
 		}
 	}
 
@@ -109,25 +110,25 @@ func (r *ResolutionService) ResolveGitURL(packageName, packageType string) (stri
 }
 
 // extractGitURL uses heuristics to extract Git URLs based on package type
-func (r *ResolutionService) extractGitURL(packageName, packageType string) (string, error) {
+func (r *ResolutionService) extractGitURL(ctx *ScanContext, packageName, packageType string) (string, error) {
 	switch strings.ToLower(packageType) {
 	case "go":
-		return r.extractGoGitURL(packageName)
+		return r.extractGoGitURL(ctx, packageName)
 	case "npm":
-		return r.extractNpmGitURL(packageName)
+		return r.extractNpmGitURL(ctx, packageName)
 	case "pip", "python":
-		return r.extractPythonGitURL(packageName)
+		return r.extractPythonGitURL(ctx, packageName)
 	case "docker":
-		return r.extractDockerGitURL(packageName)
+		return r.extractDockerGitURL(ctx, packageName)
 	case "helm":
-		return r.extractHelmGitURL(packageName)
+		return r.extractHelmGitURL(ctx, packageName)
 	default:
 		return "", nil // Unknown package type
 	}
 }
 
 // extractGoGitURL extracts Git URLs for Go modules
-func (r *ResolutionService) extractGoGitURL(packageName string) (string, error) {
+func (r *ResolutionService) extractGoGitURL(ctx *ScanContext, packageName string) (string, error) {
 	// Direct GitHub/GitLab patterns
 	if strings.HasPrefix(packageName, "github.com/") {
 		return "https://" + packageName, nil
@@ -147,14 +148,14 @@ func (r *ResolutionService) extractGoGitURL(packageName string) (string, error) 
 
 	// gopkg.in redirects - extract GitHub URL
 	if strings.HasPrefix(packageName, "gopkg.in/") {
-		return r.extractGopkgGitURL(packageName)
+		return r.extractGopkgGitURL(ctx, packageName)
 	}
 
 	return "", nil // Cannot determine Git URL for this package
 }
 
 // extractGopkgGitURL handles gopkg.in redirects
-func (r *ResolutionService) extractGopkgGitURL(packageName string) (string, error) {
+func (r *ResolutionService) extractGopkgGitURL(ctx *ScanContext, packageName string) (string, error) {
 	// gopkg.in/yaml.v3 -> github.com/go-yaml/yaml
 	// gopkg.in/user/repo.v1 -> github.com/user/repo
 
@@ -182,21 +183,21 @@ func (r *ResolutionService) extractGopkgGitURL(packageName string) (string, erro
 }
 
 // extractNpmGitURL extracts Git URLs for NPM packages (placeholder)
-func (r *ResolutionService) extractNpmGitURL(packageName string) (string, error) {
+func (r *ResolutionService) extractNpmGitURL(ctx *ScanContext, packageName string) (string, error) {
 	// This would typically involve calling the NPM registry API
 	// For now, return empty as we focus on Go packages first
 	return "", nil
 }
 
 // extractPythonGitURL extracts Git URLs for Python packages (placeholder)
-func (r *ResolutionService) extractPythonGitURL(packageName string) (string, error) {
+func (r *ResolutionService) extractPythonGitURL(ctx *ScanContext, packageName string) (string, error) {
 	// This would typically involve calling PyPI API
 	// For now, return empty as we focus on Go packages first
 	return "", nil
 }
 
 // extractDockerGitURL extracts Git URLs for Docker images
-func (r *ResolutionService) extractDockerGitURL(packageName string) (string, error) {
+func (r *ResolutionService) extractDockerGitURL(ctx *ScanContext, packageName string) (string, error) {
 	// Strip common registry prefixes
 	packageName = strings.TrimPrefix(packageName, "docker.io/")
 	packageName = strings.TrimPrefix(packageName, "index.docker.io/")
@@ -257,7 +258,7 @@ func (r *ResolutionService) extractDockerGitURL(packageName string) (string, err
 }
 
 // extractHelmGitURL extracts Git URLs for Helm charts
-func (r *ResolutionService) extractHelmGitURL(packageName string) (string, error) {
+func (r *ResolutionService) extractHelmGitURL(ctx *ScanContext, packageName string) (string, error) {
 	// Handle common Helm chart repositories
 
 	// Flanksource charts - try individual repositories first, then fall back to monorepo
@@ -267,7 +268,7 @@ func (r *ResolutionService) extractHelmGitURL(packageName string) (string, error
 
 		// First try individual chart repository
 		individualRepo := fmt.Sprintf("https://github.com/flanksource/%s", packageName)
-		if valid, finalURL, err := r.ValidateGitURL(individualRepo); err == nil && valid {
+		if valid, finalURL, err := r.ValidateGitURL(ctx, individualRepo); err == nil && valid {
 			return finalURL, nil // Return the redirected URL if any
 		}
 
@@ -305,12 +306,14 @@ func (r *ResolutionService) extractHelmGitURL(packageName string) (string, error
 	return "", nil
 }
 
-func (r *ResolutionService) ValidateGitURL(gitURL string) (bool, string, error) {
+func (r *ResolutionService) ValidateGitURL(ctx *ScanContext, gitURL string) (bool, string, error) {
 	valid, finalURL, err := r.validateGitURL(gitURL)
-	if gitURL != finalURL {
-		logger.Debugf("%s -> %s (valid: %t, err: %v)", gitURL, finalURL, valid, err)
-	} else {
-		logger.Debugf("%s (valid: %t, err: %v)", gitURL, valid, err)
+	if ctx != nil {
+		if gitURL != finalURL {
+			ctx.Debugf("%s -> %s (valid: %t, err: %v)", gitURL, finalURL, valid, err)
+		} else {
+			ctx.Debugf("%s (valid: %t, err: %v)", gitURL, valid, err)
+		}
 	}
 	return valid, finalURL, err
 }

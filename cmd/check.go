@@ -299,17 +299,10 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Create TaskManager for progress tracking (only when not in JSON/CSV/etc output mode)
-	var taskManager *clicky.TaskManager
-	// For now, determine format from command flags
+	// Determine output format for progress display
 	currentFormat := "pretty"
 	if outputFile != "" && strings.HasSuffix(outputFile, ".json") {
 		currentFormat = "json"
-	}
-	// Don't use task manager for structured output formats
-	shouldUseTaskManager := currentFormat == "pretty" && !compact
-	if shouldUseTaskManager {
-		taskManager = clicky.NewTaskManagerWithOptions(taskMgrOptions)
 	}
 
 	var archResult *models.AnalysisResult
@@ -437,13 +430,10 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Wait for all tasks to complete if using TaskManager
-	var exitCode int
-	if taskManager != nil {
-		exitCode = taskManager.Wait()
-		// Small delay to ensure TaskManager rendering has completely finished
-		time.Sleep(50 * time.Millisecond)
-	}
+	// Wait for all tasks to complete using global task manager
+	exitCode := clicky.WaitForGlobalCompletion()
+	// Small delay to ensure TaskManager rendering has completely finished
+	time.Sleep(50 * time.Millisecond)
 
 	// Create consolidated result by fetching all violations from the database
 	// Skip cache access if --no-cache flag is set
@@ -579,8 +569,9 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Display combined violation tree if using TaskManager
-	if taskManager != nil {
+	// Display results based on output format
+	if currentFormat == "pretty" && !compact {
+		// Display combined violation tree for pretty format
 		displayCombinedViolations(consolidatedResult)
 
 		// Exit with appropriate code

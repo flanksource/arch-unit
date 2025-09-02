@@ -97,8 +97,9 @@ func (s *PythonDependencyScanner) scanRequirementsTxt(ctx *analysis.ScanContext,
 				dep.Version = version
 			}
 
-			// Add PyPI URL
-			dep.Git = fmt.Sprintf("https://pypi.org/project/%s/", dep.Name)
+			if !ctx.Matches(dep) {
+				continue
+			}
 
 			dependencies = append(dependencies, dep)
 			ctx.Debugf("Found Python dependency: %s@%s", dep.Name, dep.Version)

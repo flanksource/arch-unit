@@ -35,6 +35,7 @@ func NewScanner() *Scanner {
 	return &Scanner{
 		Registry:       analysis.DefaultDependencyRegistry,
 		visited:        make(map[string]*git.VisitedDep),
+		gitManager:     git.NewGitRepositoryManager(".cache/arch-unit/repositories"),
 		repoVisited:    make(map[string]bool),
 		discoveredDeps: make(map[string][]*models.Dependency),
 	}
@@ -43,6 +44,7 @@ func NewScanner() *Scanner {
 // NewScannerWithRegistry creates a new dependency scanner with a custom registry
 func NewScannerWithRegistry(registry *analysis.DependencyRegistry) *Scanner {
 	return &Scanner{
+		gitManager:     git.NewGitRepositoryManager(".cache/arch-unit/repositories"),
 		Registry:       registry,
 		visited:        make(map[string]*git.VisitedDep),
 		repoVisited:    make(map[string]bool),
@@ -57,102 +59,106 @@ func (s *Scanner) ScanPath(task *clicky.Task, pathOrURL string, maxDepth int) (*
 	return s.ScanWithContext(ctx, pathOrURL)
 }
 
-// ScanWithContext performs scanning with a configured context
+// ScanWithContext performs scanning with a configured context using the new walker
 func (s *Scanner) ScanWithContext(ctx *analysis.ScanContext, pathOrURL string) (*models.ScanResult, error) {
 	if ctx.MaxDepth < 0 {
 		ctx.MaxDepth = 0 // Default to no depth traversal
 	}
 
 	// Parse path to determine if it's local or git
-	gitURL, version, isGit := s.parseGitURL(pathOrURL)
+	gitURL, version, subdir, isGit := s.parseGitURLWithSubdir(pathOrURL)
 
-	var deps []*models.Dependency
-	var conflicts []models.VersionConflict
+	var rootPath string
 	var scanType string
-	var repoCount int
-	var err error
 
 	if !isGit {
-		// Phase 1: Local directory scanning
+		// Local directory scanning
 		ctx.Debugf("Scanning local dependencies in %s", pathOrURL)
+		rootPath = pathOrURL
 		scanType = "local"
-
 		if ctx.MaxDepth > 0 {
-			// Ensure git support is set up for depth traversal
-			if s.gitManager == nil {
-				s.SetupGitSupport(".cache/arch-unit/repositories")
-			}
-			// Use two-phase scanning for depth traversal
-			tree, err := s.scanWithTwoPhases(ctx, pathOrURL)
-			if err != nil {
-				return nil, err
-			}
-			deps, conflicts = s.treeToLists(tree)
-			scanType = "mixed"
-			repoCount = len(tree.Dependencies)
-		} else {
-			// Simple local scan without depth
-			deps, err = s.scanDirectoryWithContext(ctx, pathOrURL)
-			if err != nil {
-				return nil, err
-			}
-			// Filtering is already applied in scanDirectoryWithContext
+			scanType = "mixed" // Will include git dependencies
 		}
 	} else {
-		// Phase 1: Git repository scanning
+		// Git repository scanning
 		if ctx.MaxDepth == 0 {
 			ctx.MaxDepth = 1 // For git URLs, default to at least depth 1
 		}
-		ctx.Infof("Scanning git repository %s@%s", gitURL, version)
+		
+		if subdir != "" {
+			ctx.Infof("Scanning git repository %s@%s in subdirectory '%s'", gitURL, version, subdir)
+		} else {
+			ctx.Infof("Scanning git repository %s@%s", gitURL, version)
+		}
 		scanType = "git"
 
-		// Ensure git support is set up
-		if s.gitManager == nil {
-			s.SetupGitSupport(".cache/arch-unit/repositories")
+		// Set task logger for git operations
+		if ctx.Task != nil {
+			git.SetCurrentTaskLogger(ctx.Task)
 		}
 
-		// Checkout and scan the repository
-		worktreePath, err := s.gitManager.GetWorktreePath(gitURL, version)
+		// Initial checkout for git scanning
+		worktreePath, err := s.gitManager.GetWorktreePath(gitURL, version, 1) // Shallow clone for dependency scanning
 		if err != nil {
 			return nil, fmt.Errorf("failed to checkout %s@%s: %w", gitURL, version, err)
 		}
 
-		// Update context with the worktree path
-		ctx.ScanRoot = worktreePath
-		tree, err := s.scanWithTwoPhases(ctx, worktreePath)
-		if err != nil {
-			return nil, err
+		// If subdirectory specified, navigate to it
+		if subdir != "" {
+			rootPath = filepath.Join(worktreePath, subdir)
+			
+			// Verify the subdirectory exists
+			if _, err := os.Stat(rootPath); os.IsNotExist(err) {
+				// Workaround: Check if the worktree was created with nested cache structure
+				// Extract repo info to locate the actual worktree
+				if strings.HasPrefix(gitURL, "https://github.com/") {
+					parts := strings.Split(strings.TrimPrefix(gitURL, "https://github.com/"), "/")
+					if len(parts) >= 2 {
+						org := parts[0]
+						repo := strings.TrimSuffix(parts[1], ".git")
+						
+						// Try the nested path that was actually created
+						baseRepoPath := filepath.Join(".cache", "arch-unit", "repositories", "github.com", org, repo)
+						nestedWorktreePath := filepath.Join(baseRepoPath, ".cache", "arch-unit", "repositories", "github.com", org, repo, "worktrees", version)
+						nestedRootPath := filepath.Join(nestedWorktreePath, subdir)
+						
+						if _, nestedErr := os.Stat(nestedRootPath); nestedErr == nil {
+							ctx.Warnf("Using nested worktree path due to git manager issue: %s", nestedWorktreePath)
+							rootPath = nestedRootPath
+						} else {
+							return nil, fmt.Errorf("subdirectory '%s' does not exist in repository %s@%s", subdir, gitURL, version)
+						}
+					} else {
+						return nil, fmt.Errorf("subdirectory '%s' does not exist in repository %s@%s", subdir, gitURL, version)
+					}
+				} else {
+					return nil, fmt.Errorf("subdirectory '%s' does not exist in repository %s@%s", subdir, gitURL, version)
+				}
+			}
+		} else {
+			rootPath = worktreePath
 		}
-		deps, conflicts = s.treeToLists(tree)
-		repoCount = 1 + len(tree.Dependencies)
+
+		// Update context with the scan root path
+		ctx.ScanRoot = rootPath
 	}
 
-	// Build metadata
-	metadata := models.ScanMetadata{
-		ScanType:          scanType,
-		MaxDepth:          ctx.MaxDepth,
-		RepositoriesFound: repoCount,
-		TotalDependencies: len(deps),
-		ConflictsFound:    len(conflicts),
-	}
+	// Create walker and perform the scan
+	walker := NewDependencyWalker(s, ctx)
+	walkResult := walker.Walk(ctx, rootPath, 0)
 
-	if s.gitManager != nil {
-		// Get git cache dir if available
-		metadata.GitCacheDir = ".cache/arch-unit/repositories" // Default cache dir
-	}
+	// Build the final result using tree builder
+	treeBuilder := NewTreeBuilder(s)
+	result := treeBuilder.BuildScanResult(walkResult, scanType, ctx.MaxDepth)
 
-	// Final phase update
-	if len(conflicts) > 0 {
-		ctx.Debugf("Found %d dependencies with %d conflicts", len(deps), len(conflicts))
+	// Log final results
+	if len(result.Conflicts) > 0 {
+		ctx.Debugf("Found %d dependencies with %d conflicts", len(result.Dependencies), len(result.Conflicts))
 	} else {
-		ctx.Debugf("Found %d dependencies", len(deps))
+		ctx.Debugf("Found %d dependencies", len(result.Dependencies))
 	}
 
-	return &models.ScanResult{
-		Dependencies: deps,
-		Conflicts:    conflicts,
-		Metadata:     metadata,
-	}, nil
+	return result, nil
 }
 
 // ScanDirectory scans a directory for dependencies (backward compatibility)
@@ -248,68 +254,18 @@ func (s *Scanner) getDependencyKey(dep *models.Dependency) string {
 	return fmt.Sprintf("%s:%s", dep.Name, dep.Type)
 }
 
-// applyFilters applies filtering from a context (deprecated - use ctx.FilterDeps directly)
-func (s *Scanner) applyFilters(deps []*models.Dependency) []*models.Dependency {
-	// Create a default context just for filtering
-	ctx := &analysis.ScanContext{
-		ShowIndirect: true,
-	}
-	return ctx.FilterDeps(deps)
-}
-
-// ParseFilters combines multiple filter strings into a single filter expression
-// Filters support wildcards (*) and negation (!)
-func ParseFilters(filters []string) string {
-	if len(filters) == 0 {
-		return ""
-	}
-
-	// Join all non-empty filters with space
-	var cleanFilters []string
-	for _, filter := range filters {
-		filter = strings.TrimSpace(filter)
-		if filter != "" {
-			// Remove legacy prefixes if present
-			if strings.HasPrefix(filter, "-name ") {
-				filter = strings.TrimPrefix(filter, "-name ")
-			} else if strings.HasPrefix(filter, "-git ") {
-				filter = strings.TrimPrefix(filter, "-git ")
-			} else if strings.HasPrefix(filter, "-language ") || strings.HasPrefix(filter, "-lang ") {
-				// Skip language filters as we're removing language field
-				continue
-			}
-			cleanFilters = append(cleanFilters, filter)
-		}
-	}
-
-	return strings.Join(cleanFilters, " ")
-}
-
-// SetupGitSupport initializes git support for depth-based scanning
-func (s *Scanner) SetupGitSupport(cacheDir string) {
-	if s.gitManager == nil {
-		s.gitManager = git.NewGitRepositoryManager(cacheDir)
-	}
-}
-
-// SetFilters sets the name and git filters for dependency scanning
-func (s *Scanner) SetFilters(nameFilters, gitFilters []string) {
-	s.NameFilters = nameFilters
-	s.GitFilters = gitFilters
-}
-
-// ScanWithDepth performs depth-based dependency scanning
+// ScanWithDepth performs depth-based dependency scanning using the walker
 func (s *Scanner) ScanWithDepth(task *clicky.Task, dir string, maxDepth int) (*git.DependencyTree, error) {
-	// Ensure git support is set up
-	if s.gitManager == nil {
-		s.SetupGitSupport(".cache/arch-unit/repositories")
-	}
-
 	// Create scan context
 	ctx := analysis.NewScanContext(task, dir).WithDepth(maxDepth)
 
-	// Perform two-phase scan
-	return s.scanWithTwoPhases(ctx, dir)
+	// Use the new walker
+	walker := NewDependencyWalker(s, ctx)
+	walkResult := walker.Walk(ctx, dir, 0)
+
+	// Build dependency tree using tree builder
+	treeBuilder := NewTreeBuilder(s)
+	return treeBuilder.BuildDependencyTree(walkResult), nil
 }
 
 // scanWithTwoPhases performs two-phase dependency scanning
@@ -357,13 +313,14 @@ func (s *Scanner) scanWithTwoPhases(ctx *analysis.ScanContext, rootPath string) 
 
 // ScanGitRepository scans a specific git repository at a given version
 func (s *Scanner) ScanGitRepository(task *clicky.Task, gitURL, version string, maxDepth int) (*git.DependencyTree, error) {
-	// Ensure git support is set up
-	if s.gitManager == nil {
-		s.SetupGitSupport(".cache/arch-unit/repositories")
+
+	// Set task logger for git operations
+	if task != nil {
+		git.SetCurrentTaskLogger(task)
 	}
 
-	// Get worktree path for this repository/version
-	worktreePath, err := s.gitManager.GetWorktreePath(gitURL, version)
+	// Get clone path for this repository/version
+	worktreePath, err := s.gitManager.GetWorktreePath(gitURL, version, 1) // Shallow clone for dependency scanning
 	if err != nil {
 		return nil, fmt.Errorf("failed to checkout %s@%s: %w", gitURL, version, err)
 	}
@@ -388,35 +345,80 @@ func (s *Scanner) HasGitSupport() bool {
 }
 
 // parseGitURL parses a path to determine if it's a git URL and extracts components
+// Supports go-getter subdirectory syntax: https://github.com/user/repo//subdir@version
 func (s *Scanner) parseGitURL(pathOrURL string) (gitURL, version string, isGit bool) {
-	// Check for git URL patterns
+	gitURL, version, _, isGit = s.parseGitURLWithSubdir(pathOrURL)
+	return gitURL, version, isGit
+}
+
+
+// parseGitURLWithSubdir parses git URLs with optional subdirectory support
+// Returns: gitURL (without subdir), version, subdirectory, isGit
+func (s *Scanner) parseGitURLWithSubdir(pathOrURL string) (gitURL, version, subdir string, isGit bool) {
+	// Check for git URL patterns with version
 	if strings.Contains(pathOrURL, "@") {
 		parts := strings.Split(pathOrURL, "@")
 		if len(parts) == 2 {
 			candidateURL := parts[0]
 			version = parts[1]
 
+			// Check for go-getter subdirectory syntax (double slash after protocol)
+			// Look for // that's not part of the protocol (https://, ssh://, etc.)
+			protocolEnd := strings.Index(candidateURL, "://")
+			if protocolEnd != -1 {
+				afterProtocol := candidateURL[protocolEnd+3:] // Skip past ://
+				if strings.Contains(afterProtocol, "//") {
+					// Found subdirectory separator
+					doubleSlashIdx := strings.Index(afterProtocol, "//")
+					gitURL = candidateURL[:protocolEnd+3+doubleSlashIdx]
+					subdir = afterProtocol[doubleSlashIdx+2:]
+				} else {
+					gitURL = candidateURL
+				}
+			} else {
+				gitURL = candidateURL
+			}
+
 			// Check if it looks like a git URL
-			if strings.Contains(candidateURL, "github.com") ||
-				strings.Contains(candidateURL, "gitlab.com") ||
-				strings.Contains(candidateURL, "bitbucket.org") ||
-				strings.HasPrefix(candidateURL, "https://") ||
-				strings.HasPrefix(candidateURL, "git@") ||
-				(strings.Contains(candidateURL, "/") && !strings.HasPrefix(candidateURL, "/") && !strings.HasPrefix(candidateURL, "./")) {
-				return candidateURL, version, true
+			if strings.Contains(gitURL, "github.com") ||
+				strings.Contains(gitURL, "gitlab.com") ||
+				strings.Contains(gitURL, "bitbucket.org") ||
+				strings.HasPrefix(gitURL, "https://") ||
+				strings.HasPrefix(gitURL, "git@") ||
+				(strings.Contains(gitURL, "/") && !strings.HasPrefix(gitURL, "/") && !strings.HasPrefix(gitURL, "./")) {
+				return gitURL, version, subdir, true
 			}
 		}
 	}
 
 	// Check for URLs without version (default to HEAD)
-	if strings.HasPrefix(pathOrURL, "https://") ||
-		strings.HasPrefix(pathOrURL, "git@") ||
-		(strings.Contains(pathOrURL, "github.com") && !strings.HasPrefix(pathOrURL, "/")) ||
-		(strings.Contains(pathOrURL, "gitlab.com") && !strings.HasPrefix(pathOrURL, "/")) {
-		return pathOrURL, "HEAD", true
+	candidateURL := pathOrURL
+	
+	// Check for go-getter subdirectory syntax (double slash after protocol)
+	// Look for // that's not part of the protocol (https://, ssh://, etc.)
+	protocolEnd := strings.Index(candidateURL, "://")
+	if protocolEnd != -1 {
+		afterProtocol := candidateURL[protocolEnd+3:] // Skip past ://
+		if strings.Contains(afterProtocol, "//") {
+			// Found subdirectory separator
+			doubleSlashIdx := strings.Index(afterProtocol, "//")
+			gitURL = candidateURL[:protocolEnd+3+doubleSlashIdx]
+			subdir = afterProtocol[doubleSlashIdx+2:]
+		} else {
+			gitURL = candidateURL
+		}
+	} else {
+		gitURL = candidateURL
 	}
 
-	return pathOrURL, "", false
+	if strings.HasPrefix(gitURL, "https://") ||
+		strings.HasPrefix(gitURL, "git@") ||
+		(strings.Contains(gitURL, "github.com") && !strings.HasPrefix(gitURL, "/")) ||
+		(strings.Contains(gitURL, "gitlab.com") && !strings.HasPrefix(gitURL, "/")) {
+		return gitURL, "HEAD", subdir, true
+	}
+
+	return pathOrURL, "", "", false
 }
 
 // scanDirectory is the renamed original ScanDirectory method for internal use
@@ -494,10 +496,6 @@ func (s *Scanner) scanDirectoryWithContext(ctx *analysis.ScanContext, dir string
 
 // scanWithDepthTraversal performs depth traversal on local dependencies
 func (s *Scanner) scanWithDepthTraversal(task *clicky.Task, dir string, maxDepth int) ([]*models.Dependency, []models.VersionConflict, error) {
-	// Setup git support for depth traversal only if not already set up
-	if !s.HasGitSupport() {
-		s.SetupGitSupport(".cache/arch-unit/repositories")
-	}
 
 	// Use existing ScanWithDepth method
 	depTree, err := s.ScanWithDepth(task, dir, maxDepth)
@@ -511,10 +509,6 @@ func (s *Scanner) scanWithDepthTraversal(task *clicky.Task, dir string, maxDepth
 
 // scanGitRepositoryWithDepth scans a specific git repository with depth
 func (s *Scanner) scanGitRepositoryWithDepth(task *clicky.Task, gitURL, version string, maxDepth int) ([]*models.Dependency, []models.VersionConflict, error) {
-	// Setup git support only if not already set up
-	if !s.HasGitSupport() {
-		s.SetupGitSupport(".cache/arch-unit/repositories")
-	}
 
 	// Use existing ScanGitRepository method
 	depTree, err := s.ScanGitRepository(task, gitURL, version, maxDepth)
@@ -669,6 +663,26 @@ func (s *Scanner) Close() error {
 	return nil
 }
 
+// readFileContent reads file content (helper for walker)
+func (s *Scanner) readFileContent(filePath string) ([]byte, error) {
+	return os.ReadFile(filePath)
+}
+
+// SetupGitSupport configures git support with cache directory (compatibility method)
+func (s *Scanner) SetupGitSupport(cacheDir string) {
+	if cacheDir != "" {
+		s.gitManager = git.NewGitRepositoryManager(cacheDir)
+	}
+}
+
+// ParseFilters parses filter strings (compatibility function)
+func ParseFilters(filters []string) string {
+	if len(filters) == 0 {
+		return ""
+	}
+	return strings.Join(filters, ",")
+}
+
 // queueSimpleTask queues a simple scanning task without recursive task groups
 func (s *Scanner) queueSimpleTask(ctx *analysis.ScanContext, job git.ScanJob) {
 	taskName := s.getJobIdentifier(job)
@@ -744,6 +758,10 @@ func (s *Scanner) processDeepDependency(ctx *analysis.ScanContext, dep *models.D
 		worktreePath = strings.TrimPrefix(version, "local:")
 		// No need to checkout, just use the local path
 	} else {
+		// Set task logger for git operations
+		if ctx.Task != nil {
+			git.SetCurrentTaskLogger(ctx.Task)
+		}
 		// Checkout and discover files synchronously
 		worktreePath, err = s.checkoutDependency(dep.Git, version)
 		if err != nil {
@@ -922,7 +940,7 @@ func (s *Scanner) checkoutDependency(gitURL, version string) (string, error) {
 		resolvedVersion = version
 	}
 
-	worktreePath, err := s.gitManager.GetWorktreePath(gitURL, resolvedVersion)
+	worktreePath, err := s.gitManager.GetWorktreePath(gitURL, resolvedVersion, 1) // Shallow clone for dependency scanning
 	if err != nil {
 		return "", fmt.Errorf("failed to get worktree for %s@%s: %w", gitURL, resolvedVersion, err)
 	}

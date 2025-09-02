@@ -362,6 +362,14 @@ func analyzeFiles(astCache *cache.ASTCache, workingDir string) error {
 			return err
 		}
 
+		// Skip hidden directories (except root)
+		if info.IsDir() {
+			baseName := filepath.Base(path)
+			if baseName != "." && strings.HasPrefix(baseName, ".") {
+				return filepath.SkipDir
+			}
+		}
+
 		// Skip vendor and .git directories
 		if strings.Contains(path, "/vendor/") || strings.Contains(path, "/.git/") ||
 			strings.Contains(path, "/node_modules/") || strings.Contains(path, "/__pycache__/") {

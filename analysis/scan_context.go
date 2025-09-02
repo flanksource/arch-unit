@@ -35,6 +35,20 @@ func (ctx *ScanContext) WithIndirect(showIndirect bool) *ScanContext {
 	return ctx
 }
 
+// WithFilter sets the filter on the scan context
+func (ctx *ScanContext) WithFilter(filter string) *ScanContext {
+	ctx.filter = filter
+	return ctx
+}
+
+// FilterDeps is an alias for Filter for compatibility
+func (ctx *ScanContext) Matches(dep *models.Dependency) bool {
+	if ctx == nil {
+		return true // If no context, don't filter
+	}
+	return dep.Matches(ctx.filter)
+}
+
 // FilterDeps is an alias for Filter for compatibility
 func (ctx *ScanContext) FilterDeps(deps []*models.Dependency) []*models.Dependency {
 	return ctx.Filter(deps)
@@ -62,7 +76,7 @@ func (ctx *ScanContext) Debugf(format string, args ...interface{}) {
 }
 
 func (ctx *ScanContext) Filter(deps []*models.Dependency) []*models.Dependency {
-	if ctx.filter == "" {
+	if ctx == nil || ctx.filter == "" {
 		return deps
 	}
 	var filtered []*models.Dependency

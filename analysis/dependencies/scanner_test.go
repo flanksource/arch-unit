@@ -195,28 +195,3 @@ func TestSorting(t *testing.T) {
 		assert.Equal(t, expName, deps[i].Name, "Name at position %d should match", i)
 	}
 }
-
-func TestFiltering(t *testing.T) {
-	scanner := NewScanner()
-
-	deps := []*models.Dependency{
-		{Name: "github.com/spf13/cobra", Git: "https://github.com/spf13/cobra"},
-		{Name: "golang.org/x/exp", Git: "https://github.com/golang/exp"},
-		{Name: "express", Git: ""}, // npm packages don't have Git URLs
-		{Name: "flask", Git: ""},   // pip packages don't have Git URLs
-	}
-
-	// Test Git filter with exclusion - only applies to deps with Git URLs
-	scanner.SetFilters(nil, []string{"!*github.com/golang/*"})
-	filtered := scanner.applyFilters(deps)
-	assert.Equal(t, 1, len(filtered), "Should only include cobra (golang excluded, npm/pip have no Git)")
-
-	for _, dep := range filtered {
-		assert.NotContains(t, dep.Git, "github.com/golang/", "Should not contain golang packages")
-	}
-
-	// Test name filter
-	scanner.SetFilters([]string{"*cobra*", "express"}, nil)
-	filtered = scanner.applyFilters(deps)
-	assert.Equal(t, 2, len(filtered), "Should match name patterns")
-}

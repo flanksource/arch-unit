@@ -68,6 +68,9 @@ func (s *GoDependencyScanner) ScanFile(ctx *analysis.ScanContext, filepath strin
 				strings.TrimPrefix(require.Mod.Path, "golang.org/x/"))
 		}
 
+		if !ctx.Matches(dep) {
+			continue
+		}
 		dependencies = append(dependencies, dep)
 		ctx.Debugf("Found dependency: %s@%s", dep.Name, dep.Version)
 	}
@@ -143,6 +146,10 @@ func (s *GoDependencyScanner) scanGoSum(ctx *analysis.ScanContext, filepath stri
 			// Standard extended library - consistent with go.mod scanner
 			dep.Git = fmt.Sprintf("https://github.com/golang/%s",
 				strings.TrimPrefix(module, "golang.org/x/"))
+		}
+
+		if ctx.Matches(dep) {
+			continue
 		}
 
 		// Only keep the first occurrence or merge if better info available

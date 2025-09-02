@@ -72,26 +72,7 @@ func (s *NodeDependencyScanner) scanPackageJson(ctx *analysis.ScanContext, filep
 		ctx.Debugf("Found dependency: %s@%s", name, version)
 	}
 
-	// Process dev dependencies
-	for name, version := range packageJson.DevDependencies {
-		dep := s.createNodeDependency(name, version)
-		dependencies = append(dependencies, dep)
-		ctx.Debugf("Found dev dependency: %s@%s", name, version)
-	}
-
-	// Process peer dependencies
-	for name, version := range packageJson.PeerDependencies {
-		dep := s.createNodeDependency(name, version)
-		dependencies = append(dependencies, dep)
-		ctx.Debugf("Found peer dependency: %s@%s", name, version)
-	}
-
-	// Process optional dependencies
-	for name, version := range packageJson.OptionalDependencies {
-		dep := s.createNodeDependency(name, version)
-		dependencies = append(dependencies, dep)
-		ctx.Debugf("Found optional dependency: %s@%s", name, version)
-	}
+	dependencies = ctx.Filter(dependencies)
 
 	ctx.Debugf("Found %d Node.js dependencies", len(dependencies))
 	return dependencies, nil
@@ -137,10 +118,10 @@ func (s *NodeDependencyScanner) scanPackageLockJson(ctx *analysis.ScanContext, f
 			}
 
 			dep := &models.Dependency{
-				Name:    name,
-				Version: info.Version,
-				Type:    models.DependencyTypeNpm,
-				Git:     fmt.Sprintf("https://www.npmjs.com/package/%s", name),
+				Name:     name,
+				Version:  info.Version,
+				Type:     models.DependencyTypeNpm,
+				Homepage: fmt.Sprintf("https://www.npmjs.com/package/%s", name),
 			}
 
 			dependencies = append(dependencies, dep)
@@ -149,10 +130,10 @@ func (s *NodeDependencyScanner) scanPackageLockJson(ctx *analysis.ScanContext, f
 		// NPM v6 and earlier use "dependencies" field
 		for name, info := range lockFile.Dependencies {
 			dep := &models.Dependency{
-				Name:    name,
-				Version: info.Version,
-				Type:    models.DependencyTypeNpm,
-				Git:     fmt.Sprintf("https://www.npmjs.com/package/%s", name),
+				Name:     name,
+				Version:  info.Version,
+				Type:     models.DependencyTypeNpm,
+				Homepage: fmt.Sprintf("https://www.npmjs.com/package/%s", name),
 			}
 
 			dependencies = append(dependencies, dep)
@@ -212,10 +193,10 @@ func (s *NodeDependencyScanner) scanYarnLock(ctx *analysis.ScanContext, filepath
 				if !seen[key] {
 					seen[key] = true
 					dep := &models.Dependency{
-						Name:    currentPackage,
-						Version: currentVersion,
-						Type:    models.DependencyTypeNpm,
-						Git:     fmt.Sprintf("https://www.npmjs.com/package/%s", currentPackage),
+						Name:     currentPackage,
+						Version:  currentVersion,
+						Type:     models.DependencyTypeNpm,
+						Homepage: fmt.Sprintf("https://www.npmjs.com/package/%s", currentPackage),
 					}
 					dependencies = append(dependencies, dep)
 					ctx.Debugf("Found Yarn dependency: %s@%s", currentPackage, currentVersion)
@@ -223,6 +204,8 @@ func (s *NodeDependencyScanner) scanYarnLock(ctx *analysis.ScanContext, filepath
 			}
 		}
 	}
+
+	dependencies = ctx.Filter(dependencies)
 
 	ctx.Debugf("Found %d unique Node.js dependencies in yarn.lock", len(dependencies))
 	return dependencies, nil
@@ -302,6 +285,8 @@ func (s *NodeDependencyScanner) scanPnpmLock(ctx *analysis.ScanContext, filepath
 		}
 	}
 
+	dependencies = ctx.Filter(dependencies)
+
 	ctx.Debugf("Found %d Node.js dependencies in pnpm-lock.yaml", len(dependencies))
 	return dependencies, nil
 }
@@ -329,7 +314,7 @@ func (s *NodeDependencyScanner) createNodeDependency(name, version string) *mode
 	}
 
 	// Add NPM registry URL
-	dep.Git = fmt.Sprintf("https://www.npmjs.com/package/%s", name)
+	dep.Homepage = fmt.Sprintf("https://www.npmjs.com/package/%s", name)
 
 	// For GitHub dependencies (e.g., "user/repo")
 	if strings.Contains(version, "github:") || strings.Contains(version, "/") {

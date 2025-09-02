@@ -13,9 +13,10 @@ type GitRepository interface {
 	// Fetch updates the repository from remote
 	Fetch(ctx context.Context) error
 
-	// GetWorktree returns the path to a worktree for the specified version
-	// Creates the worktree if it doesn't exist
-	GetWorktree(version string) (string, error)
+	// GetWorktree returns the path to a clone for the specified version
+	// Creates the clone if it doesn't exist
+	// depth: 0 for full clone, >0 for shallow clone with that depth
+	GetWorktree(version string, depth int) (string, error)
 
 	// ResolveVersion resolves version aliases (HEAD, GA, latest) to concrete versions
 	ResolveVersion(alias string) (string, error)
@@ -32,8 +33,8 @@ type GitRepository interface {
 	// FindLastGARelease finds the most recent stable release
 	FindLastGARelease() (string, error)
 
-	// ListWorktrees returns all active worktrees for this repository
-	ListWorktrees() ([]WorktreeInfo, error)
+	// ListWorktrees returns all active clones for this repository
+	ListWorktrees() ([]CloneInfo, error)
 
 	// CleanupWorktree removes a specific worktree
 	CleanupWorktree(version string) error
@@ -47,8 +48,9 @@ type GitRepositoryManager interface {
 	// GetRepository returns a GitRepository instance for the given URL
 	GetRepository(gitURL string) (GitRepository, error)
 
-	// GetWorktreePath returns the filesystem path to a specific version's worktree
-	GetWorktreePath(gitURL, version string) (string, error)
+	// GetWorktreePath returns the filesystem path to a specific version's clone
+	// depth: 0 for full clone, >0 for shallow clone with that depth  
+	GetWorktreePath(gitURL, version string, depth int) (string, error)
 
 	// ResolveVersionAlias resolves version aliases across repositories
 	ResolveVersionAlias(gitURL, alias string) (string, error)
@@ -81,17 +83,17 @@ type VersionResolver interface {
 	GetAvailableVersions(ctx context.Context, gitURL string) ([]string, error)
 }
 
-// WorktreeManager interface defines worktree lifecycle management
-type WorktreeManager interface {
-	// CreateWorktree creates a new worktree for the specified version
-	CreateWorktree(repoPath, version, worktreePath string) error
+// CloneManager interface defines clone lifecycle management
+type CloneManager interface {
+	// CreateClone creates a new clone for the specified version with given depth
+	CreateClone(ctx context.Context, repoPath, version, clonePath string, depth int) error
 
-	// RemoveWorktree removes an existing worktree
-	RemoveWorktree(worktreePath string) error
+	// RemoveClone removes an existing clone
+	RemoveClone(ctx context.Context, clonePath string) error
 
-	// ListWorktrees lists all worktrees for a repository
-	ListWorktrees(repoPath string) ([]WorktreeInfo, error)
+	// ListClones lists all clones for a repository
+	ListClones(ctx context.Context, repoPath string) ([]CloneInfo, error)
 
-	// CleanupStaleWorktrees removes worktrees that haven't been used recently
-	CleanupStaleWorktrees(repoPath string, maxAge time.Duration) error
+	// CleanupStaleClones removes clones that haven't been used recently
+	CleanupStaleClones(ctx context.Context, repoPath string, maxAge time.Duration) error
 }

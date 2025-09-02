@@ -185,9 +185,9 @@ func TestWorktreeCaching(t *testing.T) {
 	testGitURL := "https://github.com/flanksource/is-healthy"
 	testVersion := "HEAD"
 
-	// First worktree request - should create new worktree
+	// First worktree request - should create new clone
 	start1 := time.Now()
-	path1, err := gitManager.GetWorktreePath(testGitURL, testVersion)
+	path1, err := gitManager.GetWorktreePath(testGitURL, testVersion, 1)
 	duration1 := time.Since(start1)
 	require.NoError(t, err, "First GetWorktreePath should succeed")
 	require.NotEmpty(t, path1, "Worktree path should not be empty")
@@ -200,7 +200,7 @@ func TestWorktreeCaching(t *testing.T) {
 
 	// Second worktree request - should return cached path
 	start2 := time.Now()
-	path2, err := gitManager.GetWorktreePath(testGitURL, testVersion)
+	path2, err := gitManager.GetWorktreePath(testGitURL, testVersion, 1)
 	duration2 := time.Since(start2)
 	require.NoError(t, err, "Second GetWorktreePath should succeed")
 	require.NotEmpty(t, path2, "Cached worktree path should not be empty")
@@ -245,7 +245,7 @@ func TestCacheCleanup(t *testing.T) {
 	require.NotNil(t, repo)
 
 	// Get a worktree to ensure some cache content
-	_, err = gitManager.GetWorktreePath(testGitURL, "HEAD")
+	_, err = gitManager.GetWorktreePath(testGitURL, "HEAD", 1)
 	require.NoError(t, err)
 
 	// Test cleanup with a very short maxAge (should clean up)

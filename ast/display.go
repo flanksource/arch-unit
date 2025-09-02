@@ -113,6 +113,31 @@ func (f *FileNode) IsLeaf() bool {
 }
 
 // Implement api.TreeNode interface for ClassNode
+func (c *ClassNode) Pretty() api.Text {
+	label := c.Name
+	if c.Name == "" {
+		label = "package-level"
+	}
+
+	// Add member count summary
+	if len(c.Members) > 0 {
+		label = fmt.Sprintf("%s (%d)", label, len(c.Members))
+	}
+
+	// Build text with icon
+	icon := c.GetIcon()
+	if icon != "" {
+		label = icon + " " + label
+	}
+
+	text := api.NewText(label)
+	if style := c.GetStyle(); style != "" {
+		text = text.Style(style)
+	}
+
+	return text.Build()
+}
+
 func (c *ClassNode) GetLabel() string {
 	label := c.Name
 	if c.Name == "" {
