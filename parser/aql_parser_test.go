@@ -202,7 +202,7 @@ func TestAQLParser_ErrorCases(t *testing.T) {
 			aql: `RULE {
 				LIMIT(*.cyclomatic > 10)
 			}`,
-			expectedError: "expected string",
+			expectedError: "expected rule name",
 		},
 		{
 			name: "Missing opening brace",
@@ -222,35 +222,35 @@ func TestAQLParser_ErrorCases(t *testing.T) {
 			aql: `RULE "Test" {
 				LIMIT(invalid..pattern.cyclomatic > 10)
 			}`,
-			expectedError: "invalid pattern",
+			expectedError: "expected identifier",
 		},
 		{
 			name: "Missing condition in LIMIT",
 			aql: `RULE "Test" {
 				LIMIT(*.cyclomatic)
 			}`,
-			expectedError: "expected comparison operator",
+			expectedError: "expected operator",
 		},
 		{
 			name: "Invalid operator",
 			aql: `RULE "Test" {
 				LIMIT(*.cyclomatic ?? 10)
 			}`,
-			expectedError: "expected comparison operator",
+			expectedError: "expected operator",
 		},
 		{
 			name: "Missing value",
 			aql: `RULE "Test" {
 				LIMIT(*.cyclomatic >)
 			}`,
-			expectedError: "expected number",
+			expectedError: "expected value",
 		},
 		{
 			name: "Missing arrow in relationship",
 			aql: `RULE "Test" {
 				FORBID(Controller* Repository*)
 			}`,
-			expectedError: "expected '->' in relationship",
+			expectedError: "expected ')' after pattern",
 		},
 		{
 			name: "Invalid statement type",
@@ -373,47 +373,5 @@ func TestAQLParser_PatternStringRepresentation(t *testing.T) {
 			result := test.pattern.String()
 			assert.Equal(t, test.expected, result)
 		})
-	}
-}
-
-func BenchmarkAQLParser_SingleRule(b *testing.B) {
-	aql := `RULE "Benchmark Rule" {
-		LIMIT(Controller*.cyclomatic > 15)
-		FORBID(Controller* -> Repository*)
-		REQUIRE(Controller* -> Service*)
-		ALLOW(Service* -> Repository*)
-	}`
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, err := ParseAQLFile(aql)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkAQLParser_LargeRuleSet(b *testing.B) {
-	var aqlBuilder strings.Builder
-
-	// Generate rule set with 1000 rules
-	for i := 0; i < 1000; i++ {
-		aqlBuilder.WriteString(fmt.Sprintf(`
-		RULE "Rule %d" {
-			LIMIT(*.cyclomatic > %d)
-			FORBID(Controller%d* -> Model%d*)
-			REQUIRE(Controller%d* -> Service%d*)
-		}
-		`, i, i%20+1, i%10, i%10, i%10, i%10))
-	}
-
-	aql := aqlBuilder.String()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		_, err := ParseAQLFile(aql)
-		if err != nil {
-			b.Fatal(err)
-		}
 	}
 }

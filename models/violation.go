@@ -6,19 +6,25 @@ import (
 )
 
 type Violation struct {
-	File             string    `json:"file,omitempty"`
-	Line             int       `json:"line,omitempty"`
-	Column           int       `json:"column,omitempty"`
-	CallerPackage    string    `json:"caller_package,omitempty"`
-	CallerMethod     string    `json:"caller_method,omitempty"`
-	CalledPackage    string    `json:"called_package,omitempty"`
-	CalledMethod     string    `json:"called_method,omitempty"`
-	Rule             *Rule     `json:"rule,omitempty"`
-	Message          string    `json:"message,omitempty"`
-	Source           string    `json:"source,omitempty"` // Source tool that reported the violation (e.g., arch-unit, golangci-lint)
-	Fixable          bool      `json:"fixable,omitempty"`
-	FixApplicability string    `json:"fix_applicability,omitempty"`
-	CreatedAt        time.Time `json:"created_at,omitempty"`
+	ID               uint      `json:"id" gorm:"primaryKey;autoIncrement"`
+	File             string    `json:"file,omitempty" gorm:"column:file_path;not null;index"`
+	Line             int       `json:"line,omitempty" gorm:"column:line;not null"`
+	Column           int       `json:"column,omitempty" gorm:"column:column;not null"`
+	CallerPackage    string    `json:"caller_package,omitempty" gorm:"column:caller_package"`
+	CallerMethod     string    `json:"caller_method,omitempty" gorm:"column:caller_method"`
+	CalledPackage    string    `json:"called_package,omitempty" gorm:"column:called_package"`
+	CalledMethod     string    `json:"called_method,omitempty" gorm:"column:called_method"`
+	Rule             *Rule     `json:"rule,omitempty" gorm:"serializer:json"`
+	Message          string    `json:"message,omitempty" gorm:"column:message"`
+	Source           string    `json:"source,omitempty" gorm:"column:source;not null;index"` // Source tool that reported the violation (e.g., arch-unit, golangci-lint)
+	Fixable          bool      `json:"fixable,omitempty" gorm:"column:fixable;default:false"`
+	FixApplicability string    `json:"fix_applicability,omitempty" gorm:"column:fix_applicability;default:''"`
+	CreatedAt        time.Time `json:"created_at,omitempty" gorm:"column:stored_at;index"`
+}
+
+// TableName specifies the table name for Violation
+func (Violation) TableName() string {
+	return "violations"
 }
 
 func (v Violation) String() string {

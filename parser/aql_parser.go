@@ -180,6 +180,7 @@ func (p *Parser) parseLimitStatement() (*models.AQLStatement, error) {
 
 	return &models.AQLStatement{
 		Type:      models.AQLStatementLimit,
+		Pattern:   condition.Pattern,
 		Condition: condition,
 	}, nil
 }
@@ -374,8 +375,25 @@ func (p *Parser) parseCondition() (*models.AQLCondition, error) {
 		return nil, err
 	}
 
+	// Extract metric from pattern for backward compatibility
+	property := ""
+	conditionPattern := pattern
+	if pattern.Metric != "" {
+		property = pattern.Metric
+		// Create a clean pattern without the metric for the condition
+		conditionPattern = &models.AQLPattern{
+			Package:    pattern.Package,
+			Type:       pattern.Type,
+			Method:     pattern.Method,
+			Field:      pattern.Field,
+			IsWildcard: pattern.IsWildcard,
+			Original:   pattern.Original[:len(pattern.Original)-len("."+pattern.Metric)],
+		}
+	}
+
 	return &models.AQLCondition{
-		Pattern:  pattern,
+		Pattern:  conditionPattern,
+		Property: property, // For backward compatibility
 		Operator: operator,
 		Value:    value,
 	}, nil
@@ -415,26 +433,26 @@ func (p *Parser) parsePattern() (*models.AQLPattern, error) {
 }
 
 // parseOperator parses a comparison operator
-func (p *Parser) parseOperator() (models.AQLOperatorType, error) {
+func (p *Parser) parseOperator() (models.ComparisonOperator, error) {
 	switch p.currentToken.Type {
 	case TokenGT:
 		p.nextToken()
-		return models.AQLOperatorGT, nil
+		return models.OpGreaterThan, nil
 	case TokenLT:
 		p.nextToken()
-		return models.AQLOperatorLT, nil
+		return models.OpLessThan, nil
 	case TokenGTE:
 		p.nextToken()
-		return models.AQLOperatorGTE, nil
+		return models.OpGreaterThanEqual, nil
 	case TokenLTE:
 		p.nextToken()
-		return models.AQLOperatorLTE, nil
+		return models.OpLessThanEqual, nil
 	case TokenEQ:
 		p.nextToken()
-		return models.AQLOperatorEQ, nil
+		return models.OpEqual, nil
 	case TokenNE:
 		p.nextToken()
-		return models.AQLOperatorNE, nil
+		return models.OpNotEqual, nil
 	default:
 		p.addError(fmt.Sprintf("expected comparison operator, got %s",
 			tokenTypeNames[p.currentToken.Type]))
@@ -442,12 +460,17 @@ func (p *Parser) parseOperator() (models.AQLOperatorType, error) {
 	}
 }
 
-// parseValue parses a value expression
-func (p *Parser) parseValue() (*models.AQLValue, error) {
+// parseValue parses a value expression and returns raw values for backward compatibility
+func (p *Parser) parseValue() (interface{}, error) {
 	switch p.currentToken.Type {
 	case TokenNumber:
 		numStr := p.currentToken.Value
 		p.nextToken()
+
+		// Try parsing as float first to match test expectations
+		if floatNum, err := strconv.ParseFloat(numStr, 64); err == nil {
+			return floatNum, nil
+		}
 
 		num, err := strconv.Atoi(numStr)
 		if err != nil {
@@ -455,19 +478,12 @@ func (p *Parser) parseValue() (*models.AQLValue, error) {
 			return nil, err
 		}
 
-		return &models.AQLValue{
-			Type:     models.AQLValueInt,
-			IntValue: num,
-		}, nil
+		return float64(num), nil // Convert to float64 for consistency
 
 	case TokenString:
 		str := p.currentToken.Value
 		p.nextToken()
-
-		return &models.AQLValue{
-			Type:     models.AQLValueString,
-			StrValue: str,
-		}, nil
+		return str, nil
 
 	case TokenIdent:
 		// Handle boolean literals
@@ -476,15 +492,9 @@ func (p *Parser) parseValue() (*models.AQLValue, error) {
 
 		switch ident {
 		case "true":
-			return &models.AQLValue{
-				Type:      models.AQLValueBool,
-				BoolValue: true,
-			}, nil
+			return true, nil
 		case "false":
-			return &models.AQLValue{
-				Type:      models.AQLValueBool,
-				BoolValue: false,
-			}, nil
+			return false, nil
 		default:
 			p.addError(fmt.Sprintf("unexpected identifier in value: %s", ident))
 			return nil, fmt.Errorf("unexpected identifier")

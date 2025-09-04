@@ -22,6 +22,14 @@ func NewAQLEngine(astCache *cache.ASTCache) *AQLEngine {
 
 // ExecuteRuleSet executes a set of AQL rules and returns violations
 func (e *AQLEngine) ExecuteRuleSet(ruleSet *models.AQLRuleSet) ([]*models.Violation, error) {
+	if ruleSet == nil {
+		return nil, fmt.Errorf("ruleSet cannot be nil")
+	}
+
+	if ruleSet.Rules == nil {
+		return nil, fmt.Errorf("ruleSet.Rules cannot be nil")
+	}
+
 	var allViolations []*models.Violation
 
 	for _, rule := range ruleSet.Rules {
@@ -364,7 +372,8 @@ func (e *AQLEngine) findMatchingNodes(pattern *models.AQLPattern) ([]*models.AST
 		var node models.ASTNode
 		err := rows.Scan(&node.ID, &node.FilePath, &node.PackageName, &node.TypeName,
 			&node.MethodName, &node.FieldName, &node.NodeType, &node.StartLine,
-			&node.EndLine, &node.CyclomaticComplexity, &node.LineCount, &node.LastModified)
+			&node.EndLine, &node.CyclomaticComplexity, &node.ParameterCount, 
+			&node.ReturnCount, &node.LineCount, &node.LastModified)
 		if err != nil {
 			return nil, err
 		}

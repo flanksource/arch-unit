@@ -182,6 +182,12 @@ func (m *MigrationManager) getAllMigrations() []Migration {
 			Description: "Add stored_at column to violations table",
 			Up:          m.migrateViolationCacheStoredAt,
 		},
+		{
+			Version:     5,
+			Name:        "initialize_gorm",
+			Description: "Initialize GORM migration support and additional columns",
+			Up:          m.migrateToGORM,
+		},
 	}
 }
 
@@ -485,4 +491,135 @@ func (m *MigrationManager) migrateViolationCacheStoredAt(mgr *MigrationManager) 
 	}
 
 	return violationTx.Commit()
+}
+
+// migrateToGORM adds GORM-specific columns and prepares for GORM transition
+func (m *MigrationManager) migrateToGORM(mgr *MigrationManager) error {
+	// Migrate AST cache for GORM compatibility
+	if err := m.migrateASTCacheForGORM(); err != nil {
+		return fmt.Errorf("failed to migrate AST cache for GORM: %w", err)
+	}
+
+	// Migrate violation cache for GORM compatibility  
+	if err := m.migrateViolationCacheForGORM(); err != nil {
+		return fmt.Errorf("failed to migrate violation cache for GORM: %w", err)
+	}
+
+	return nil
+}
+
+// migrateASTCacheForGORM adds GORM-specific columns to AST cache
+func (m *MigrationManager) migrateASTCacheForGORM() error {
+	astCacheDB := filepath.Join(m.cacheDir, "ast.db")
+
+	astDB, err := NewDB("sqlite", astCacheDB)
+	if err != nil {
+		return fmt.Errorf("failed to open AST cache: %w", err)
+	}
+	defer astDB.Close()
+
+	astTx, err := astDB.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin AST cache transaction: %w", err)
+	}
+	defer astTx.Rollback()
+
+	// Add parent_id column to ast_nodes if it doesn't exist
+	if err := m.addColumnIfNotExists(astTx, "ast_nodes", "parent_id", "INTEGER DEFAULT 0"); err != nil {
+		return fmt.Errorf("failed to add parent_id column: %w", err)
+	}
+
+	// Add dependency_id column to ast_nodes if it doesn't exist
+	if err := m.addColumnIfNotExists(astTx, "ast_nodes", "dependency_id", "INTEGER"); err != nil {
+		return fmt.Errorf("failed to add dependency_id column: %w", err)
+	}
+
+	// Add summary column to ast_nodes if it doesn't exist
+	if err := m.addColumnIfNotExists(astTx, "ast_nodes", "summary", "TEXT"); err != nil {
+		return fmt.Errorf("failed to add summary column: %w", err)
+	}
+
+	// Add comments column to ast_relationships if it doesn't exist
+	if err := m.addColumnIfNotExists(astTx, "ast_relationships", "comments", "TEXT"); err != nil {
+		return fmt.Errorf("failed to add comments column: %w", err)
+	}
+
+	// Create indexes for new columns
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_ast_nodes_parent_id ON ast_nodes(parent_id)",
+		"CREATE INDEX IF NOT EXISTS idx_ast_nodes_dependency_id ON ast_nodes(dependency_id)",
+	}
+
+	for _, indexSQL := range indexes {
+		if _, err := astTx.Exec(indexSQL); err != nil {
+			// Log but don't fail on index creation errors
+			logger.Debugf("Warning: Failed to create index: %v", err)
+		}
+	}
+
+	return astTx.Commit()
+}
+
+// migrateViolationCacheForGORM adds GORM-specific columns to violation cache
+func (m *MigrationManager) migrateViolationCacheForGORM() error {
+	violationCacheDB := filepath.Join(m.cacheDir, "violations.db")
+
+	violationDB, err := NewDB("sqlite", violationCacheDB)
+	if err != nil {
+		return fmt.Errorf("failed to open violation cache: %w", err)
+	}
+	defer violationDB.Close()
+
+	violationTx, err := violationDB.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin violation cache transaction: %w", err)
+	}
+	defer violationTx.Rollback()
+
+	// The violations table should already have stored_at from migration 4
+	// Just ensure it's there and has the right index
+	if err := m.addColumnIfNotExists(violationTx, "violations", "stored_at", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return fmt.Errorf("failed to ensure stored_at column: %w", err)
+	}
+
+	return violationTx.Commit()
+}
+
+// addColumnIfNotExists adds a column to a table if it doesn't already exist
+func (m *MigrationManager) addColumnIfNotExists(tx *Tx, tableName, columnName, columnDef string) error {
+	// Check if column exists
+	rows, err := tx.Query(fmt.Sprintf("PRAGMA table_info(%s)", tableName))
+	if err != nil {
+		return fmt.Errorf("failed to get table info for %s: %w", tableName, err)
+	}
+	defer rows.Close()
+
+	hasColumn := false
+	for rows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull, pk int
+		var defaultValue sql.NullString
+
+		err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk)
+		if err != nil {
+			continue
+		}
+
+		if name == columnName {
+			hasColumn = true
+			break
+		}
+	}
+	rows.Close()
+
+	// Add column if it doesn't exist
+	if !hasColumn {
+		alterSQL := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", tableName, columnName, columnDef)
+		if _, err := tx.Exec(alterSQL); err != nil {
+			return fmt.Errorf("failed to add column %s to %s: %w", columnName, tableName, err)
+		}
+	}
+
+	return nil
 }

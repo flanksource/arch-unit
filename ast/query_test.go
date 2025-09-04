@@ -177,6 +177,7 @@ func TestExecuteMetricQuery_InvalidQueries(t *testing.T) {
 func TestExecuteMetricQuery_EdgeCases(t *testing.T) {
 	// Create a test cache
 	astCache := cache.MustGetASTCache()
+	require.NoError(t, astCache.ClearAllData())
 
 	analyzer := NewAnalyzer(astCache, "/test")
 
@@ -212,6 +213,7 @@ func TestExecuteMetricQuery_EdgeCases(t *testing.T) {
 func TestExecuteMetricQuery_RelationshipMetrics(t *testing.T) {
 	// Create a test cache
 	astCache := cache.MustGetASTCache()
+	require.NoError(t, astCache.ClearAllData())
 
 	// Insert test nodes
 	node1 := &models.ASTNode{

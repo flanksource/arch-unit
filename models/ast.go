@@ -222,40 +222,50 @@ type ASTExporter interface {
 
 // ASTNode represents a node in the AST stored in database
 type ASTNode struct {
-	ID                   int64         `json:"id"`
-	ParentID             int64         `json:"parent_id,omitempty"`     // Nullable for root nodes, For a field, parent is the struct/class, for a struct/class parent is package,
-	DependencyID         *int64        `json:"dependency_id,omitempty"` // Id of the dependency that contains this node
-	FilePath             string        `json:"file_path"`
-	PackageName          string        `json:"package_name,omitempty"`
-	TypeName             string        `json:"type_name,omitempty"`
-	MethodName           string        `json:"method_name,omitempty"`
-	FieldName            string        `json:"field_name,omitempty"`
-	NodeType             NodeType      `json:"node_type"` // "package", "type", "method", "field", "variable"
-	StartLine            int           `json:"start_line"`
-	EndLine              int           `json:"end_line"`
-	CyclomaticComplexity int           `json:"cyclomatic_complexity"`
-	ParameterCount       int           `json:"parameter_count"`
-	ReturnCount          int           `json:"return_count"`
-	LineCount            int           `json:"line_count"`
-	Imports              []string      `json:"imports,omitempty"`       // List of import paths
-	Parameters           []Parameter   `json:"parameters,omitempty"`    // Detailed parameter information
-	ReturnValues         []ReturnValue `json:"return_values,omitempty"` // Return value information
-	LastModified         time.Time     `json:"last_modified"`
-	FileHash             string        `json:"file_hash,omitempty"`
+	ID                   int64         `json:"id" gorm:"primaryKey;autoIncrement"`
+	ParentID             int64         `json:"parent_id,omitempty" gorm:"column:parent_id;index"`     // Nullable for root nodes, For a field, parent is the struct/class, for a struct/class parent is package,
+	DependencyID         *int64        `json:"dependency_id,omitempty" gorm:"column:dependency_id;index"` // Id of the dependency that contains this node
+	FilePath             string        `json:"file_path" gorm:"column:file_path;not null;index"`
+	PackageName          string        `json:"package_name,omitempty" gorm:"column:package_name;index"`
+	TypeName             string        `json:"type_name,omitempty" gorm:"column:type_name;index"`
+	MethodName           string        `json:"method_name,omitempty" gorm:"column:method_name;index"`
+	FieldName            string        `json:"field_name,omitempty" gorm:"column:field_name"`
+	NodeType             NodeType      `json:"node_type" gorm:"column:node_type;not null;index"` // "package", "type", "method", "field", "variable"
+	StartLine            int           `json:"start_line" gorm:"column:start_line"`
+	EndLine              int           `json:"end_line" gorm:"column:end_line"`
+	CyclomaticComplexity int           `json:"cyclomatic_complexity" gorm:"column:cyclomatic_complexity;default:0;index"`
+	ParameterCount       int           `json:"parameter_count" gorm:"column:parameter_count;default:0"`
+	ReturnCount          int           `json:"return_count" gorm:"column:return_count;default:0"`
+	LineCount            int           `json:"line_count" gorm:"column:line_count;default:0"`
+	Imports              []string      `json:"imports,omitempty" gorm:"-"`       // List of import paths - not stored in DB
+	Parameters           []Parameter   `json:"parameters,omitempty" gorm:"serializer:json"`    // Detailed parameter information
+	ReturnValues         []ReturnValue `json:"return_values,omitempty" gorm:"serializer:json"` // Return value information
+	LastModified         time.Time     `json:"last_modified" gorm:"column:last_modified;index"`
+	FileHash             string        `json:"file_hash,omitempty" gorm:"column:file_hash"`
 	// Summary is an AI generated/enhanced summary of the node,
 	// For fields, its a max of 5 words, for method, a max of 20 works, and for types a maximum of 50
-	Summary string `json:"summary,omitempty"`
+	Summary string `json:"summary,omitempty" gorm:"column:summary"`
+}
+
+// TableName specifies the table name for ASTNode
+func (ASTNode) TableName() string {
+	return "ast_nodes"
 }
 
 // ASTRelationship represents a relationship between AST nodes
 type ASTRelationship struct {
-	ID               int64            `json:"id"`
-	FromASTID        int64            `json:"from_ast_id"`
-	ToASTID          *int64           `json:"to_ast_id,omitempty"` // Nullable for external calls
-	LineNo           int              `json:"line_no,omitempty"`
-	RelationshipType RelationshipType `json:"relationship_type"`
-	Comments         string           `json:"comments,omitempty"` // Additional comments or context found in the code
-	Text             string           `json:"text"`               // Text of the relationship, could be the line(s) with the function call, the line in a go.mod or Chart.yaml=
+	ID               int64            `json:"id" gorm:"primaryKey;autoIncrement"`
+	FromASTID        int64            `json:"from_ast_id" gorm:"column:from_ast_id;not null;index"`
+	ToASTID          *int64           `json:"to_ast_id,omitempty" gorm:"column:to_ast_id;index"` // Nullable for external calls
+	LineNo           int              `json:"line_no,omitempty" gorm:"column:line_no;index"`
+	RelationshipType RelationshipType `json:"relationship_type" gorm:"column:relationship_type;not null;index"`
+	Comments         string           `json:"comments,omitempty" gorm:"column:comments"` // Additional comments or context found in the code
+	Text             string           `json:"text" gorm:"column:text"`               // Text of the relationship, could be the line(s) with the function call, the line in a go.mod or Chart.yaml=
+}
+
+// TableName specifies the table name for ASTRelationship
+func (ASTRelationship) TableName() string {
+	return "ast_relationships"
 }
 
 type RelationshipType string
@@ -279,14 +289,19 @@ type DependencyRelationship struct {
 
 // LibraryNode represents a node in an external library/framework
 type LibraryNode struct {
-	ID        int64  `json:"id"`
-	Package   string `json:"package"`
-	Class     string `json:"class,omitempty"`
-	Method    string `json:"method,omitempty"`
-	Field     string `json:"field,omitempty"`
-	NodeType  string `json:"node_type"`           // 'package', 'class', 'method', 'field'
-	Language  string `json:"language,omitempty"`  // 'go', 'python', 'javascript', etc.
-	Framework string `json:"framework,omitempty"` // 'stdlib', 'gin', 'django', 'react', etc.
+	ID        int64  `json:"id" gorm:"primaryKey;autoIncrement"`
+	Package   string `json:"package" gorm:"column:package;not null;index"`
+	Class     string `json:"class,omitempty" gorm:"column:class;index"`
+	Method    string `json:"method,omitempty" gorm:"column:method;index"`
+	Field     string `json:"field,omitempty" gorm:"column:field"`
+	NodeType  string `json:"node_type" gorm:"column:node_type;not null;index"`           // 'package', 'class', 'method', 'field'
+	Language  string `json:"language,omitempty" gorm:"column:language"`  // 'go', 'python', 'javascript', etc.
+	Framework string `json:"framework,omitempty" gorm:"column:framework;index"` // 'stdlib', 'gin', 'django', 'react', etc.
+}
+
+// TableName specifies the table name for LibraryNode
+func (LibraryNode) TableName() string {
+	return "library_nodes"
 }
 
 // GetFullName returns the full qualified name of a library node
@@ -314,13 +329,18 @@ func (n *LibraryNode) GetFullName() string {
 
 // LibraryRelationship represents a relationship between AST node and library node
 type LibraryRelationship struct {
-	ID               int64        `json:"id"`
-	ASTID            int64        `json:"ast_id"`
-	LibraryID        int64        `json:"library_id"`
-	LineNo           int          `json:"line_no"`
-	RelationshipType string       `json:"relationship_type"` // 'import', 'call', 'reference', 'extends'
-	Text             string       `json:"text,omitempty"`    // The actual usage text
-	LibraryNode      *LibraryNode `json:"library_node,omitempty"`
+	ID               int64        `json:"id" gorm:"primaryKey;autoIncrement"`
+	ASTID            int64        `json:"ast_id" gorm:"column:ast_id;not null;index"`
+	LibraryID        int64        `json:"library_id" gorm:"column:library_id;not null;index"`
+	LineNo           int          `json:"line_no" gorm:"column:line_no;index"`
+	RelationshipType string       `json:"relationship_type" gorm:"column:relationship_type;not null;index"` // 'import', 'call', 'reference', 'extends'
+	Text             string       `json:"text,omitempty" gorm:"column:text"`    // The actual usage text
+	LibraryNode      *LibraryNode `json:"library_node,omitempty" gorm:"foreignKey:LibraryID;references:ID"`
+}
+
+// TableName specifies the table name for LibraryRelationship
+func (LibraryRelationship) TableName() string {
+	return "library_relationships"
 }
 
 // ComplexityViolation represents a violation of complexity constraints

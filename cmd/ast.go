@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
+	"text/template"
 
 	"github.com/flanksource/arch-unit/analysis"
 	"github.com/flanksource/arch-unit/internal/cache"
@@ -179,6 +180,14 @@ func init() {
 }
 
 func runAST(cmd *cobra.Command, args []string) error {
+	// Validate template flags
+	if astFormat == "template" && astTemplate == "" {
+		return fmt.Errorf("--template flag is required when using --format template")
+	}
+	if astTemplate != "" && astFormat != "template" {
+		return fmt.Errorf("--template flag can only be used with --format template")
+	}
+
 	// Initialize AST cache
 	astCache := cache.MustGetASTCache()
 
@@ -300,8 +309,17 @@ func executeAQLQuery(astCache *cache.ASTCache, aqlQuery string, workingDir strin
 	// Wrap the query in a temporary rule
 	ruleText := fmt.Sprintf(`RULE "temp" { LIMIT(%s) }`, aqlQuery)
 
-	// Parse the AQL
-	ruleSet, err := parser.ParseAQLFile(ruleText)
+	// Parse the AQL - support both YAML and legacy formats
+	var ruleSet *models.AQLRuleSet
+	var err error
+	if parser.IsLegacyAQLFormat(ruleText) {
+		// Legacy AQL format
+		ruleSet, err = parser.ParseAQLFile(ruleText)
+	} else {
+		// YAML format
+		ruleSet, err = parser.LoadAQLFromYAML(ruleText)
+	}
+	
 	if err != nil {
 		return fmt.Errorf("failed to parse AQL query: %w", err)
 	}
@@ -409,7 +427,7 @@ func analyzeFiles(astCache *cache.ASTCache, workingDir string) error {
 	}
 
 	if len(sourceFiles) == 0 {
-		logger.Infof("No supported source files found in %s", workingDir)
+		logger.Infof("No Go files found in %s", workingDir)
 		return nil
 	}
 
@@ -608,6 +626,8 @@ func displayNodes(astCache *cache.ASTCache, nodes []*models.ASTNode, pattern str
 		return outputNodesJSON(nodes)
 	case "table":
 		return outputNodesTable(nodes, workingDir)
+	case "template":
+		return outputNodesTemplate(nodes, workingDir)
 	default: // tree
 		return outputNodesTree(astCache, nodes, pattern, workingDir)
 	}
@@ -641,6 +661,59 @@ func outputNodesTable(nodes []*models.ASTNode, workingDir string) error {
 	}
 
 	w.Flush()
+	return nil
+}
+
+// outputNodesTemplate outputs nodes using a template
+func outputNodesTemplate(nodes []*models.ASTNode, workingDir string) error {
+	tmpl, err := template.New("ast").Parse(astTemplate)
+	if err != nil {
+		return fmt.Errorf("failed to parse template: %w", err)
+	}
+
+	for _, node := range nodes {
+		// Create template data
+		data := struct {
+			Package    string
+			Class      string
+			Type       string
+			Method     string
+			Field      string
+			File       string
+			Lines      int
+			Complexity int
+			Params     int
+			Returns    int
+			NodeType   string
+			StartLine  int
+			EndLine    int
+		}{
+			Package:    node.PackageName,
+			Class:      node.TypeName,
+			Type:       node.TypeName,
+			Method:     node.MethodName,
+			Field:      node.FieldName,
+			File:       node.FilePath,
+			Lines:      node.LineCount,
+			Complexity: node.CyclomaticComplexity,
+			Params:     node.ParameterCount,
+			Returns:    node.ReturnCount,
+			NodeType:   string(node.NodeType),
+			StartLine:  node.StartLine,
+			EndLine:    node.EndLine,
+		}
+
+		// Make file path relative to working directory
+		if strings.HasPrefix(data.File, workingDir+"/") {
+			data.File = strings.TrimPrefix(data.File, workingDir+"/")
+		}
+
+		if err := tmpl.Execute(os.Stdout, data); err != nil {
+			return fmt.Errorf("failed to execute template: %w", err)
+		}
+		fmt.Println() // Add newline after each node
+	}
+
 	return nil
 }
 

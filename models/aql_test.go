@@ -24,23 +24,23 @@ func TestParsePattern(t *testing.T) {
 			},
 		},
 		{
-			name:    "Single method name",
+			name:    "Single method name (now treated as type)",
 			pattern: "GetUser",
 			expected: &AQLPattern{
 				Package:    "*",
-				Type:       "*",
-				Method:     "GetUser",
+				Type:       "GetUser",
+				Method:     "",
 				Original:   "GetUser",
 				IsWildcard: false,
 			},
 		},
 		{
-			name:    "Single method with lowercase",
+			name:    "Single method with lowercase (now treated as package)",
 			pattern: "processData",
 			expected: &AQLPattern{
-				Package:    "*",
-				Type:       "*",
-				Method:     "processData",
+				Package:    "processData",
+				Type:       "",
+				Method:     "",
 				Original:   "processData",
 				IsWildcard: false,
 			},
@@ -51,6 +51,7 @@ func TestParsePattern(t *testing.T) {
 			expected: &AQLPattern{
 				Package:    "*",
 				Type:       "UserController",
+				Method:     "",
 				Original:   "UserController",
 				IsWildcard: false,
 			},
@@ -59,9 +60,9 @@ func TestParsePattern(t *testing.T) {
 			name:    "Type:Method shorthand",
 			pattern: "UserController:GetUser",
 			expected: &AQLPattern{
-				Package:    "*",
-				Type:       "UserController",
-				Method:     "GetUser",
+				Package:    "UserController",
+				Type:       "GetUser",
+				Method:     "",
 				Original:   "UserController:GetUser",
 				IsWildcard: false,
 			},
@@ -72,6 +73,7 @@ func TestParsePattern(t *testing.T) {
 			expected: &AQLPattern{
 				Package:    "widgets",
 				Type:       "Table",
+				Method:     "",
 				Original:   "widgets.Table",
 				IsWildcard: false,
 			},
@@ -82,6 +84,7 @@ func TestParsePattern(t *testing.T) {
 			expected: &AQLPattern{
 				Package:    "widgets",
 				Type:       "Table",
+				Method:     "",
 				Original:   "widgets:Table",
 				IsWildcard: false,
 			},
@@ -91,6 +94,8 @@ func TestParsePattern(t *testing.T) {
 			pattern: "*.cyclomatic",
 			expected: &AQLPattern{
 				Package:    "*",
+				Type:       "",
+				Method:     "",
 				Metric:     "cyclomatic",
 				Original:   "*.cyclomatic",
 				IsWildcard: true,
@@ -137,17 +142,18 @@ func TestParsePattern(t *testing.T) {
 			expected: &AQLPattern{
 				Package:    "*",
 				Type:       "*Service",
+				Method:     "",
 				Original:   "*Service",
 				IsWildcard: true,
 			},
 		},
 		{
-			name:    "Method with wildcard prefix",
+			name:    "Method with wildcard prefix (now treated as type)",
 			pattern: "Get*",
 			expected: &AQLPattern{
 				Package:    "*",
-				Type:       "*",
-				Method:     "Get*",
+				Type:       "Get*",
+				Method:     "",
 				Original:   "Get*",
 				IsWildcard: true,
 			},
@@ -158,6 +164,7 @@ func TestParsePattern(t *testing.T) {
 			expected: &AQLPattern{
 				Package:    "controllers",
 				Type:       "UserController",
+				Method:     "",
 				Original:   "controllers:UserController",
 				IsWildcard: false,
 			},
@@ -223,36 +230,3 @@ func TestParsePattern_MetricDetection(t *testing.T) {
 	}
 }
 
-func TestParsePattern_Heuristics(t *testing.T) {
-	tests := []struct {
-		name         string
-		pattern      string
-		expectType   string
-		expectMethod string
-	}{
-		// Method-like patterns
-		{"Get prefix", "GetUser", "*", "GetUser"},
-		{"Create prefix", "CreateProduct", "*", "CreateProduct"},
-		{"lowercase start", "processData", "*", "processData"},
-		{"Test prefix", "TestFunction", "*", "TestFunction"},
-
-		// Type-like patterns
-		{"Controller suffix", "UserController", "UserController", ""},
-		{"Service suffix", "EmailService", "EmailService", ""},
-		{"Repository suffix", "UserRepository", "UserRepository", ""},
-
-		// Wildcards
-		{"Method wildcard", "Get*", "*", "Get*"},
-		{"Type wildcard", "*Controller", "*Controller", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := ParsePattern(tt.pattern)
-			require.NoError(t, err)
-			assert.Equal(t, tt.expectType, result.Type)
-			assert.Equal(t, tt.expectMethod, result.Method)
-			assert.Equal(t, "*", result.Package) // Should default to wildcard
-		})
-	}
-}

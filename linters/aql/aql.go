@@ -172,8 +172,17 @@ func (a *AQL) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Viola
 			continue
 		}
 
-		// Parse AQL rules
-		ruleSet, err := parser.ParseAQLFile(ruleText)
+		// Parse AQL rules - support both YAML and legacy formats
+		var ruleSet *models.AQLRuleSet
+		var err error
+		if parser.IsLegacyAQLFormat(ruleText) {
+			// Legacy AQL format
+			ruleSet, err = parser.ParseAQLFile(ruleText)
+		} else {
+			// YAML format
+			ruleSet, err = parser.LoadAQLFromYAML(ruleText)
+		}
+		
 		if err != nil {
 			violation := models.Violation{
 				File:    sourceFile,

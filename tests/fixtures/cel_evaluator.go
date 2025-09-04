@@ -7,6 +7,8 @@ import (
 
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/gomplate/v3"
+	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/ext"
 )
 
 // CELEvaluator evaluates CEL expressions against test results using gomplate
@@ -27,7 +29,7 @@ func (e *CELEvaluator) EvaluateNodes(expression string, nodes []*models.ASTNode)
 	}
 
 	// Convert nodes to CEL-compatible format
-	nodeList := make([]interface{}, len(nodes))
+	nodeList := make([]map[string]interface{}, len(nodes))
 	for i, node := range nodes {
 		nodeList[i] = node.AsMap()
 	}
@@ -37,26 +39,50 @@ func (e *CELEvaluator) EvaluateNodes(expression string, nodes []*models.ASTNode)
 		"nodes": nodeList,
 	}
 
-	// Use gomplate to evaluate the CEL expression with access to its function library
-	tmpl := gomplate.Template{
-		Template: expression,
-	}
-
-	result, err := gomplate.RunTemplate(templateData, tmpl)
+	// Create our own CEL environment to avoid conflicts with gomplate's default AnyType declarations
+	env, err := cel.NewEnv(
+		cel.Variable("nodes", cel.ListType(cel.MapType(cel.StringType, cel.DynType))),
+		cel.StdLib(),
+		ext.Strings(),
+	)
 	if err != nil {
-		return false, fmt.Errorf("failed to evaluate CEL expression with gomplate: %w", err)
+		return false, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	// Parse the result as boolean
-	resultStr := strings.TrimSpace(result)
-	switch strings.ToLower(resultStr) {
-	case "true":
-		return true, nil
-	case "false":
-		return false, nil
-	default:
-		return false, fmt.Errorf("CEL expression did not return a boolean: got %q", resultStr)
+	// Compile the expression
+	ast, issues := env.Compile(expression)
+	if issues != nil && issues.Err() != nil {
+		return false, fmt.Errorf("failed to compile CEL expression: %w", issues.Err())
 	}
+
+	// Create program
+	prg, err := env.Program(ast)
+	if err != nil {
+		return false, fmt.Errorf("failed to create CEL program: %w", err)
+	}
+
+	// Evaluate
+	out, _, err := prg.Eval(templateData)
+	if err != nil {
+		return false, fmt.Errorf("failed to evaluate CEL expression: %w", err)
+	}
+
+	// Convert CEL result to Go boolean
+	result := out.Value()
+	if boolResult, ok := result.(bool); ok {
+		return boolResult, nil
+	}
+
+	// Try to convert string results
+	if stringResult := fmt.Sprintf("%v", result); stringResult != "" {
+		if strings.ToLower(strings.TrimSpace(stringResult)) == "true" {
+			return true, nil
+		} else if strings.ToLower(strings.TrimSpace(stringResult)) == "false" {
+			return false, nil
+		}
+	}
+
+	return false, fmt.Errorf("CEL expression did not return a boolean: got %T(%v)", result, result)
 }
 
 // EvaluateOutput evaluates a CEL expression against command output
@@ -70,26 +96,50 @@ func (e *CELEvaluator) EvaluateOutput(expression string, output string) (bool, e
 		"output": output,
 	}
 
-	// Use gomplate to evaluate the CEL expression with access to its function library
-	tmpl := gomplate.Template{
-		Template: expression,
-	}
-
-	result, err := gomplate.RunTemplate(templateData, tmpl)
+	// Create our own CEL environment to avoid conflicts with gomplate's default AnyType declarations
+	env, err := cel.NewEnv(
+		cel.Variable("output", cel.StringType),
+		cel.StdLib(),
+		ext.Strings(),
+	)
 	if err != nil {
-		return false, fmt.Errorf("failed to evaluate CEL expression with gomplate: %w", err)
+		return false, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	// Parse the result as boolean
-	resultStr := strings.TrimSpace(result)
-	switch strings.ToLower(resultStr) {
-	case "true":
-		return true, nil
-	case "false":
-		return false, nil
-	default:
-		return false, fmt.Errorf("CEL expression did not return a boolean: got %q", resultStr)
+	// Compile the expression
+	ast, issues := env.Compile(expression)
+	if issues != nil && issues.Err() != nil {
+		return false, fmt.Errorf("failed to compile CEL expression: %w", issues.Err())
 	}
+
+	// Create program
+	prg, err := env.Program(ast)
+	if err != nil {
+		return false, fmt.Errorf("failed to create CEL program: %w", err)
+	}
+
+	// Evaluate
+	out, _, err := prg.Eval(templateData)
+	if err != nil {
+		return false, fmt.Errorf("failed to evaluate CEL expression: %w", err)
+	}
+
+	// Convert CEL result to Go boolean
+	result := out.Value()
+	if boolResult, ok := result.(bool); ok {
+		return boolResult, nil
+	}
+
+	// Try to convert string results
+	if stringResult := fmt.Sprintf("%v", result); stringResult != "" {
+		if strings.ToLower(strings.TrimSpace(stringResult)) == "true" {
+			return true, nil
+		} else if strings.ToLower(strings.TrimSpace(stringResult)) == "false" {
+			return false, nil
+		}
+	}
+
+	return false, fmt.Errorf("CEL expression did not return a boolean: got %T(%v)", result, result)
 }
 
 // EvaluateResult evaluates a CEL expression against a generic result map
@@ -108,26 +158,42 @@ func (e *CELEvaluator) EvaluateResult(expression string, result map[string]inter
 		templateData[key] = value
 	}
 
-	// Use gomplate to evaluate the CEL expression with access to its function library
-	tmpl := gomplate.Template{
-		Template: expression,
+	// Use gomplate's CEL evaluation with proper type information
+	// Build CelEnvs dynamically based on available data
+	var celEnvs []cel.EnvOption
+	celEnvs = append(celEnvs, cel.Variable("result", cel.MapType(cel.StringType, cel.DynType)))
+	
+	// Add individual field variables with dynamic types
+	for key := range result {
+		celEnvs = append(celEnvs, cel.Variable(key, cel.DynType))
 	}
 
-	output, err := gomplate.RunTemplate(templateData, tmpl)
+	tmpl := gomplate.Template{
+		Expression: expression,
+		CelEnvs:    celEnvs,
+	}
+
+	// Use RunExpression for CEL expressions, not RunTemplate
+	output, err := gomplate.RunExpression(templateData, tmpl)
 	if err != nil {
 		return false, fmt.Errorf("failed to evaluate CEL expression with gomplate: %w", err)
 	}
 
-	// Parse the result as boolean
-	outputStr := strings.TrimSpace(output)
-	switch strings.ToLower(outputStr) {
-	case "true":
-		return true, nil
-	case "false":
-		return false, nil
-	default:
-		return false, fmt.Errorf("CEL expression did not return a boolean: got %q", outputStr)
+	// Convert result to boolean
+	if boolResult, ok := output.(bool); ok {
+		return boolResult, nil
 	}
+
+	// Try to convert string results
+	if stringResult := fmt.Sprintf("%v", output); stringResult != "" {
+		if strings.ToLower(strings.TrimSpace(stringResult)) == "true" {
+			return true, nil
+		} else if strings.ToLower(strings.TrimSpace(stringResult)) == "false" {
+			return false, nil
+		}
+	}
+
+	return false, fmt.Errorf("CEL expression did not return a boolean: got %T(%v)", output, output)
 }
 
 // ValidateCELExpression validates a CEL expression without evaluating it
@@ -138,17 +204,23 @@ func (e *CELEvaluator) ValidateCELExpression(expression string) error {
 
 	// Create minimal template data for validation
 	templateData := map[string]interface{}{
-		"nodes":  []interface{}{},
+		"nodes":  []map[string]interface{}{},
 		"output": "",
 		"result": map[string]interface{}{},
 	}
 
-	// Use gomplate to validate the CEL expression syntax
+	// Use gomplate's CEL evaluation with proper type information for validation
 	tmpl := gomplate.Template{
-		Template: expression,
+		Expression: expression,
+		CelEnvs: []cel.EnvOption{
+			cel.Variable("nodes", cel.ListType(cel.MapType(cel.StringType, cel.DynType))),
+			cel.Variable("output", cel.StringType),
+			cel.Variable("result", cel.MapType(cel.StringType, cel.DynType)),
+		},
 	}
 
-	_, err := gomplate.RunTemplate(templateData, tmpl)
+	// Use RunExpression for CEL validation
+	_, err := gomplate.RunExpression(templateData, tmpl)
 	if err != nil {
 		return fmt.Errorf("invalid CEL expression: %w", err)
 	}

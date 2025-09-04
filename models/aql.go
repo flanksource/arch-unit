@@ -10,19 +10,19 @@ import (
 
 // AQLRule represents a complete AQL rule
 type AQLRule struct {
-	Name       string          `json:"name"`
-	Statements []*AQLStatement `json:"statements"`
-	SourceFile string          `json:"source_file,omitempty"`
-	LineNumber int             `json:"line_number,omitempty"`
+	Name       string          `json:"name" yaml:"name"`
+	Statements []*AQLStatement `json:"statements" yaml:"statements"`
+	SourceFile string          `json:"source_file,omitempty" yaml:"source_file,omitempty"`
+	LineNumber int             `json:"line_number,omitempty" yaml:"line_number,omitempty"`
 }
 
 // AQLStatement represents a statement within an AQL rule
 type AQLStatement struct {
-	Type        AQLStatementType `json:"type"`
-	Condition   *AQLCondition    `json:"condition,omitempty"`    // For LIMIT statements
-	Pattern     *AQLPattern      `json:"pattern,omitempty"`      // For single pattern statements
-	FromPattern *AQLPattern      `json:"from_pattern,omitempty"` // For relationship statements
-	ToPattern   *AQLPattern      `json:"to_pattern,omitempty"`   // For relationship statements
+	Type        AQLStatementType `json:"type" yaml:"type"`
+	Condition   *AQLCondition    `json:"condition,omitempty" yaml:"condition,omitempty"`       // For LIMIT statements
+	Pattern     *AQLPattern      `json:"pattern,omitempty" yaml:"pattern,omitempty"`           // For single pattern statements
+	FromPattern *AQLPattern      `json:"from_pattern,omitempty" yaml:"from_pattern,omitempty"` // For relationship statements
+	ToPattern   *AQLPattern      `json:"to_pattern,omitempty" yaml:"to_pattern,omitempty"`     // For relationship statements
 }
 
 // AQLStatementType represents the type of AQL statement
@@ -37,10 +37,10 @@ const (
 
 // AQLCondition represents a conditional expression in AQL
 type AQLCondition struct {
-	Pattern  *AQLPattern     `json:"pattern"`
-	Property string          `json:"property,omitempty"` // Backward compatibility
-	Operator AQLOperatorType `json:"operator"`
-	Value    *AQLValue       `json:"value"`
+	Pattern  *AQLPattern     `json:"pattern" yaml:"pattern"`
+	Property string          `json:"property,omitempty" yaml:"property,omitempty"` // Backward compatibility
+	Operator AQLOperatorType `json:"operator" yaml:"operator"`
+	Value    interface{}     `json:"value" yaml:"value"` // Can hold raw values for backward compatibility
 }
 
 // AQLOperatorType represents comparison operators
@@ -69,21 +69,21 @@ const (
 
 // AQLPattern represents a pattern for matching AST elements
 type AQLPattern struct {
-	Package    string `json:"package,omitempty"`
-	Type       string `json:"type,omitempty"`
-	Method     string `json:"method,omitempty"`
-	Field      string `json:"field,omitempty"`
-	Metric     string `json:"metric,omitempty"` // "cyclomatic", "parameters", "lines"
-	IsWildcard bool   `json:"is_wildcard"`
-	Original   string `json:"original"` // Original pattern text
+	Package    string `json:"package,omitempty" yaml:"package,omitempty"`
+	Type       string `json:"type,omitempty" yaml:"type,omitempty"`
+	Method     string `json:"method,omitempty" yaml:"method,omitempty"`
+	Field      string `json:"field,omitempty" yaml:"field,omitempty"`
+	Metric     string `json:"metric,omitempty" yaml:"metric,omitempty"` // "cyclomatic", "parameters", "lines"
+	IsWildcard bool   `json:"is_wildcard" yaml:"is_wildcard"`
+	Original   string `json:"original" yaml:"original"` // Original pattern text
 }
 
 // AQLValue represents a value in AQL expressions
 type AQLValue struct {
-	Type      AQLValueType `json:"type"`
-	IntValue  int          `json:"int_value,omitempty"`
-	StrValue  string       `json:"str_value,omitempty"`
-	BoolValue bool         `json:"bool_value,omitempty"`
+	Type      AQLValueType `json:"type" yaml:"type"`
+	IntValue  int          `json:"int_value,omitempty" yaml:"int_value,omitempty"`
+	StrValue  string       `json:"str_value,omitempty" yaml:"str_value,omitempty"`
+	BoolValue bool         `json:"bool_value,omitempty" yaml:"bool_value,omitempty"`
 }
 
 // AQLValueType represents the type of a value
@@ -135,35 +135,64 @@ func (s *AQLStatement) String() string {
 
 // String returns string representation of AQL condition
 func (c *AQLCondition) String() string {
-	return fmt.Sprintf("%s %s %s", c.Pattern.String(), string(c.Operator), c.Value.String())
+	valueStr := fmt.Sprintf("%v", c.Value)
+	return fmt.Sprintf("%s %s %s", c.Pattern.String(), string(c.Operator), valueStr)
 }
 
 // String returns string representation of AQL pattern
 func (p *AQLPattern) String() string {
+	if p == nil {
+		return ""
+	}
+	
 	if p.Original != "" {
 		return p.Original
 	}
 
-	parts := []string{}
-	if p.Package != "" {
-		parts = append(parts, p.Package)
-	}
-	if p.Type != "" {
-		parts = append(parts, p.Type)
-	}
-	if p.Method != "" {
-		parts = append(parts, p.Method)
-	}
-	if p.Field != "" {
-		parts = append(parts, p.Field)
+	// Handle special case for simple wildcard
+	if p.Package == "*" && p.Type == "*" && p.Method == "*" && p.Field == "" && p.Metric == "" {
+		return "*"
 	}
 
-	pattern := strings.Join(parts, ":")
+	// Build pattern using appropriate notation
+	var result string
+	
+	// Special cases for dot notation
+	if p.Package != "" && p.Type != "" && p.Method == "*" && p.Field == "" && p.Metric == "" {
+		// Package.Type format (e.g., "pkg.*", "*.UserService")
+		if p.Package == "*" {
+			result = "*." + p.Type
+		} else if p.Type == "*" {
+			result = p.Package + ".*"
+		} else {
+			result = p.Package + "." + p.Type
+		}
+	} else if p.Package == "*" && p.Type != "" && p.Type != "*" && p.Method != "" && p.Method != "*" {
+		// Special case for "*.Type:Method" format
+		result = "*." + p.Type + ":" + p.Method
+	} else {
+		// Fall back to colon notation
+		parts := []string{}
+		if p.Package != "" {
+			parts = append(parts, p.Package)
+		}
+		if p.Type != "" {
+			parts = append(parts, p.Type)
+		}
+		if p.Method != "" {
+			parts = append(parts, p.Method)
+		}
+		if p.Field != "" {
+			parts = append(parts, p.Field)
+		}
+		result = strings.Join(parts, ":")
+	}
+
 	if p.Metric != "" {
-		pattern += "." + p.Metric
+		result += "." + p.Metric
 	}
 
-	return pattern
+	return result
 }
 
 // String returns string representation of AQL value
@@ -191,56 +220,95 @@ func ParsePattern(pattern string) (*AQLPattern, error) {
 	// Only treat as metric if it's a known metric name
 	if dotIndex := strings.LastIndex(pattern, "."); dotIndex != -1 {
 		possibleMetric := pattern[dotIndex+1:]
-		if possibleMetric == "cyclomatic" || possibleMetric == "parameters" ||
+		if possibleMetric == "cyclomatic" || possibleMetric == "parameters" || possibleMetric == "params" ||
 			possibleMetric == "returns" || possibleMetric == "lines" {
 			p.Metric = possibleMetric
 			pattern = pattern[:dotIndex]
-		} else if !strings.Contains(pattern, ":") {
-			// Convert dot notation to colon notation
-			// e.g., "widgets.Table" -> "widgets:Table"
-			// or "widgets.Table.draw" -> "widgets:Table:draw"
-			pattern = strings.ReplaceAll(pattern, ".", ":")
 		}
 	}
 
-	// Split by colons to get package:type:method:field
-	parts := strings.Split(pattern, ":")
+	// Handle different pattern formats:
+	// - "*" -> wildcard for all
+	// - "pkg.*" -> package + wildcard type
+	// - "*.Type" -> wildcard package + specific type
+	// - "*.Type:Method" -> wildcard package + specific type + method
+	// - "main.Calculator:Add" -> specific package + type + method
+
+	var parts []string
+	if strings.Contains(pattern, ":") {
+		// Mixed format: handle dot notation before colon
+		if colonIndex := strings.Index(pattern, ":"); colonIndex != -1 {
+			beforeColon := pattern[:colonIndex]
+			afterColon := pattern[colonIndex+1:]
+			
+			if strings.Contains(beforeColon, ".") {
+				// Handle "*.Type:Method" or "package.Type:Method" 
+				dotParts := strings.Split(beforeColon, ".")
+				if len(dotParts) == 2 {
+					parts = append(dotParts, afterColon)
+				} else {
+					parts = []string{beforeColon, afterColon}
+				}
+			} else {
+				// Standard colon format
+				parts = strings.Split(pattern, ":")
+			}
+		} else {
+			parts = strings.Split(pattern, ":")
+		}
+	} else if strings.Contains(pattern, ".") {
+		// Handle dot patterns
+		if strings.HasSuffix(pattern, ".*") {
+			// "pkg.*" format
+			parts = []string{pattern[:len(pattern)-2], "*"}
+		} else if strings.HasPrefix(pattern, "*.") {
+			// "*.Type" format
+			parts = []string{"*", pattern[2:]}
+		} else {
+			// Regular dot notation: package.type
+			parts = strings.Split(pattern, ".")
+		}
+	} else {
+		// Single component
+		parts = []string{pattern}
+	}
+
+	// Initialize defaults 
+	p.Package = "*"
+	p.Type = "" 
+	p.Method = ""
 
 	switch len(parts) {
 	case 1:
-		// Single string - determine if it's likely a method, type, or package
+		// Single string - use simple rules for backward compatibility
 		single := parts[0]
 		if single == "*" {
-			p.Package = "*"
+			// Full wildcard - keep package default, others empty
+			// Note: Type and Method remain empty as initialized
 		} else if strings.Contains(single, "/") {
-			// Contains slash, likely a package path
+			// Contains slash - likely a package path
 			p.Package = single
-		} else if isLikelyMethodName(single) {
-			// Looks like a method name - search for it anywhere
-			p.Package = "*"
-			p.Type = "*"
-			p.Method = single
-		} else if isLikelyTypeName(single) {
-			// Looks like a type name - search for type in any package
-			p.Package = "*"
+		} else if strings.HasSuffix(single, "*") || strings.HasPrefix(single, "*") {
+			// Wildcards - treat as type pattern for backward compatibility  
 			p.Type = single
 		} else {
-			// Default to package for backward compatibility
-			p.Package = single
+			// For backward compatibility: single names without special chars default to package
+			// But if it looks like a type (starts with uppercase) or method (common prefixes), handle appropriately
+			if len(single) > 0 {
+				firstChar := single[0]
+				if firstChar >= 'A' && firstChar <= 'Z' {
+					// Starts with uppercase - could be type
+					p.Type = single
+				} else {
+					// Default to package for backward compatibility
+					p.Package = single
+				}
+			}
 		}
 	case 2:
-		// Two parts - could be package:type or type:method
-		// If first part doesn't look like a package, treat as type:method
-		if !strings.Contains(parts[0], "/") && isLikelyTypeName(parts[0]) && isLikelyMethodName(parts[1]) {
-			// Type:Method pattern - assume any package
-			p.Package = "*"
-			p.Type = parts[0]
-			p.Method = parts[1]
-		} else {
-			// Traditional package:type
-			p.Package = parts[0]
-			p.Type = parts[1]
-		}
+		// package:type or *.type format
+		p.Package = parts[0]
+		p.Type = parts[1]
 	case 3:
 		// package:type:method
 		p.Package = parts[0]
@@ -259,101 +327,7 @@ func ParsePattern(pattern string) (*AQLPattern, error) {
 	return p, nil
 }
 
-// isLikelyMethodName checks if a string looks like a method name
-func isLikelyMethodName(s string) bool {
-	if s == "" || s == "*" {
-		return false
-	}
 
-	// Check for wildcards in method-like patterns
-	cleanName := strings.TrimPrefix(strings.TrimSuffix(s, "*"), "*")
-	if cleanName == "" {
-		return false
-	}
-
-	// Common method prefixes
-	methodPrefixes := []string{
-		"Get", "Set", "Create", "Update", "Delete", "Remove",
-		"Find", "Search", "Save", "Load", "Process", "Validate",
-		"Handle", "Execute", "Run", "Start", "Stop", "Init",
-		"Read", "Write", "Open", "Close", "Connect", "Disconnect",
-		"Parse", "Format", "Convert", "Transform", "Calculate",
-		"Check", "Verify", "Test", "Is", "Has", "Can", "Should",
-		"Add", "Append", "Insert", "Push", "Pop", "Clear",
-		"get", "set", "create", "update", "delete", "remove",
-	}
-
-	for _, prefix := range methodPrefixes {
-		if strings.HasPrefix(cleanName, prefix) {
-			return true
-		}
-	}
-
-	// Check if starts with lowercase (common for methods in many languages)
-	// But exclude common package names
-	if len(cleanName) > 0 && cleanName[0] >= 'a' && cleanName[0] <= 'z' {
-		// Common package names that shouldn't be treated as methods
-		packageNames := []string{
-			"controllers", "models", "services", "utils", "helpers",
-			"handlers", "middleware", "repositories", "views", "templates",
-			"internal", "pkg", "cmd", "api", "web", "app", "lib",
-			"config", "database", "auth", "tests", "docs", "scripts",
-		}
-		for _, pkg := range packageNames {
-			if cleanName == pkg {
-				return false
-			}
-		}
-		return true
-	}
-
-	// Check for test methods
-	if strings.HasPrefix(cleanName, "Test") || strings.HasPrefix(cleanName, "Benchmark") {
-		return true
-	}
-
-	return false
-}
-
-// isLikelyTypeName checks if a string looks like a type/class name
-func isLikelyTypeName(s string) bool {
-	if s == "" || s == "*" {
-		return false
-	}
-
-	// Check for wildcards
-	cleanName := strings.TrimPrefix(strings.TrimSuffix(s, "*"), "*")
-	if cleanName == "" {
-		return false
-	}
-
-	// Common type suffixes
-	typeSuffixes := []string{
-		"Controller", "Service", "Repository", "Model", "View",
-		"Manager", "Handler", "Factory", "Builder", "Provider",
-		"Adapter", "Decorator", "Observer", "Strategy", "Command",
-		"Client", "Server", "Request", "Response", "Error",
-		"Config", "Options", "Settings", "Context", "State",
-		"Interface", "Abstract", "Base", "Impl", "Mock",
-		"DTO", "DAO", "Entity", "Domain", "Aggregate",
-	}
-
-	for _, suffix := range typeSuffixes {
-		if strings.HasSuffix(cleanName, suffix) {
-			return true
-		}
-	}
-
-	// Check if starts with uppercase (common for types/classes)
-	if len(cleanName) > 0 && cleanName[0] >= 'A' && cleanName[0] <= 'Z' {
-		// But not if it looks like a method prefix
-		if !isLikelyMethodName(s) {
-			return true
-		}
-	}
-
-	return false
-}
 
 // Matches checks if an AST node matches this pattern
 func (p *AQLPattern) Matches(node *ASTNode) bool {
@@ -389,9 +363,17 @@ func (p *AQLPattern) GetMetricValue(node *ASTNode) (int, error) {
 	switch p.Metric {
 	case "cyclomatic":
 		return node.CyclomaticComplexity, nil
-	case "parameters":
+	case "parameters", "params":
+		// Use ParameterCount if available, otherwise fall back to len(Parameters)
+		if node.ParameterCount > 0 {
+			return node.ParameterCount, nil
+		}
 		return len(node.Parameters), nil
 	case "returns":
+		// Use ReturnCount if available, otherwise fall back to len(ReturnValues)
+		if node.ReturnCount > 0 {
+			return node.ReturnCount, nil
+		}
 		return len(node.ReturnValues), nil
 	case "lines":
 		return node.LineCount, nil
@@ -434,16 +416,44 @@ func (c *AQLCondition) Evaluate(node *ASTNode) (bool, error) {
 		return false, nil
 	}
 
-	if c.Pattern.Metric == "" {
+	// Get the metric from Pattern.Metric or fallback to Property field for backward compatibility
+	metric := c.Pattern.Metric
+	if metric == "" {
+		metric = c.Property
+	}
+	
+	if metric == "" {
 		return false, fmt.Errorf("condition requires a metric")
 	}
 
-	nodeValue, err := c.Pattern.GetMetricValue(node)
+	// Create a temporary pattern with the metric for GetMetricValue
+	tempPattern := &AQLPattern{
+		Package:    c.Pattern.Package,
+		Type:       c.Pattern.Type,
+		Method:     c.Pattern.Method,
+		Field:      c.Pattern.Field,
+		Metric:     metric,
+		IsWildcard: c.Pattern.IsWildcard,
+		Original:   c.Pattern.Original,
+	}
+
+	nodeValue, err := tempPattern.GetMetricValue(node)
 	if err != nil {
 		return false, err
 	}
 
-	compareValue := c.Value.IntValue
+	// Extract numeric value from interface{}
+	var compareValue int
+	switch v := c.Value.(type) {
+	case int:
+		compareValue = v
+	case float64:
+		compareValue = int(v)
+	case *AQLValue:
+		compareValue = v.IntValue
+	default:
+		return false, fmt.Errorf("value must be numeric for comparison")
+	}
 
 	switch c.Operator {
 	case AQLOperatorGT:
@@ -465,8 +475,8 @@ func (c *AQLCondition) Evaluate(node *ASTNode) (bool, error) {
 
 // AQLRuleSet represents a collection of AQL rules
 type AQLRuleSet struct {
-	Rules      []*AQLRule `json:"rules"`
-	SourceFile string     `json:"source_file,omitempty"`
+	Rules      []*AQLRule `json:"rules" yaml:"rules"`
+	SourceFile string     `json:"source_file,omitempty" yaml:"source_file,omitempty"`
 }
 
 // AddRule adds a rule to the rule set

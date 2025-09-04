@@ -135,12 +135,17 @@ func (d Dependency) Matches(filter string) bool {
 
 // DependencyAlias represents a cached mapping from package to Git repository
 type DependencyAlias struct {
-	ID          int64  `json:"id"`
-	PackageName string `json:"package_name"` // e.g., "express", "docker.io/library/nginx"
-	PackageType string `json:"package_type"` // "npm", "docker", "helm", "go", etc.
-	GitURL      string `json:"git_url"`      // Final resolved and validated Git URL (empty if none found)
-	LastChecked int64  `json:"last_checked"` // Unix timestamp for cache invalidation
-	CreatedAt   int64  `json:"created_at"`
+	ID          int64  `json:"id" gorm:"primaryKey;autoIncrement"`
+	PackageName string `json:"package_name" gorm:"column:package_name;not null;index"` // e.g., "express", "docker.io/library/nginx"
+	PackageType string `json:"package_type" gorm:"column:package_type;not null;index"` // "npm", "docker", "helm", "go", etc.
+	GitURL      string `json:"git_url" gorm:"column:git_url;not null"`      // Final resolved and validated Git URL (empty if none found)
+	LastChecked int64  `json:"last_checked" gorm:"column:last_checked;not null"` // Unix timestamp for cache invalidation
+	CreatedAt   int64  `json:"created_at" gorm:"column:created_at;not null"`
+}
+
+// TableName specifies the table name for DependencyAlias
+func (DependencyAlias) TableName() string {
+	return "dependency_aliases"
 }
 
 // IsExpired checks if the alias cache entry is stale (> 7 days)

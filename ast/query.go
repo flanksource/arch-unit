@@ -149,6 +149,10 @@ func (a *Analyzer) QueryPattern(pattern string) ([]*models.ASTNode, error) {
 			return nil, err
 		}
 
+		// Set parameter and return counts
+		node.ParameterCount = parameterCount
+		node.ReturnCount = returnCount
+
 		// Deserialize parameters
 		if len(parametersJSON) > 0 {
 			if err := json.Unmarshal(parametersJSON, &node.Parameters); err != nil {
@@ -256,9 +260,19 @@ func (a *Analyzer) executeMetricQuery(query string) ([]*models.ASTNode, error) {
 		case "cyclomatic":
 			metricValue = node.CyclomaticComplexity
 		case "parameters", "params": // params is an alias for parameters
-			metricValue = len(node.Parameters)
+			// Use ParameterCount if available, otherwise fall back to len(Parameters)
+			if node.ParameterCount > 0 {
+				metricValue = node.ParameterCount
+			} else {
+				metricValue = len(node.Parameters)
+			}
 		case "returns":
-			metricValue = len(node.ReturnValues)
+			// Use ReturnCount if available, otherwise fall back to len(ReturnValues)
+			if node.ReturnCount > 0 {
+				metricValue = node.ReturnCount
+			} else {
+				metricValue = len(node.ReturnValues)
+			}
 		case "len": // Length of the node's full name
 			fullName := a.formatNodeAsPattern(node)
 			metricValue = len(fullName)
