@@ -1,7 +1,6 @@
 package ast
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -76,98 +75,43 @@ func (a *Analyzer) QueryPattern(pattern string) ([]*models.ASTNode, error) {
 		logger.Debugf("  IsWildcard: %t", aqlPattern.IsWildcard)
 	}
 
-	// Build SQL query
-	query := "SELECT id, file_path, package_name, type_name, method_name, field_name, node_type, start_line, end_line, cyclomatic_complexity, parameter_count, return_count, line_count, parameters_json, return_values_json FROM ast_nodes WHERE file_path LIKE ?"
-	workingDirPattern := a.workDir + "/%"
-	args := []interface{}{workingDirPattern}
+	// Build GORM query conditions
+	var nodes []*models.ASTNode
+	query := a.cache.GetDB().Where("file_path LIKE ?", a.workDir+"/%")
 
 	if aqlPattern.Package != "" && aqlPattern.Package != "*" {
 		if strings.Contains(aqlPattern.Package, "*") {
-			query += " AND package_name LIKE ?"
-			args = append(args, strings.ReplaceAll(aqlPattern.Package, "*", "%"))
+			query = query.Where("package_name LIKE ?", strings.ReplaceAll(aqlPattern.Package, "*", "%"))
 		} else {
-			query += " AND package_name = ?"
-			args = append(args, aqlPattern.Package)
+			query = query.Where("package_name = ?", aqlPattern.Package)
 		}
 	}
 
 	if aqlPattern.Type != "" && aqlPattern.Type != "*" {
 		if strings.Contains(aqlPattern.Type, "*") {
-			query += " AND type_name LIKE ?"
-			args = append(args, strings.ReplaceAll(aqlPattern.Type, "*", "%"))
+			query = query.Where("type_name LIKE ?", strings.ReplaceAll(aqlPattern.Type, "*", "%"))
 		} else {
-			query += " AND type_name = ?"
-			args = append(args, aqlPattern.Type)
+			query = query.Where("type_name = ?", aqlPattern.Type)
 		}
 	}
 
 	if aqlPattern.Method != "" && aqlPattern.Method != "*" {
 		if strings.Contains(aqlPattern.Method, "*") {
-			query += " AND method_name LIKE ?"
-			args = append(args, strings.ReplaceAll(aqlPattern.Method, "*", "%"))
+			query = query.Where("method_name LIKE ?", strings.ReplaceAll(aqlPattern.Method, "*", "%"))
 		} else {
-			query += " AND method_name = ?"
-			args = append(args, aqlPattern.Method)
+			query = query.Where("method_name = ?", aqlPattern.Method)
 		}
 	}
 
-	// Log verbose SQL information
+	// Log verbose query information
 	if logger.IsLevelEnabled(3) { // Debug level
-		logger.Debugf("Generated SQL query: %s", query)
-		logger.Debugf("Query arguments: %v", args)
+		logger.Debugf("Executing GORM query with pattern: %+v", aqlPattern)
 	}
 
-	rows, err := a.cache.QueryRaw(query, args...)
+	// Execute the query
+	err = query.Find(&nodes).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to query AST nodes: %w", err)
-	}
-	defer rows.Close()
-
-	var nodes []*models.ASTNode
-	for rows.Next() {
-		node := &models.ASTNode{}
-		var parametersJSON, returnValuesJSON []byte
-		var parameterCount, returnCount int
-		err := rows.Scan(
-			&node.ID,
-			&node.FilePath,
-			&node.PackageName,
-			&node.TypeName,
-			&node.MethodName,
-			&node.FieldName,
-			&node.NodeType,
-			&node.StartLine,
-			&node.EndLine,
-			&node.CyclomaticComplexity,
-			&parameterCount,
-			&returnCount,
-			&node.LineCount,
-			&parametersJSON,
-			&returnValuesJSON,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		// Set parameter and return counts
-		node.ParameterCount = parameterCount
-		node.ReturnCount = returnCount
-
-		// Deserialize parameters
-		if len(parametersJSON) > 0 {
-			if err := json.Unmarshal(parametersJSON, &node.Parameters); err != nil {
-				logger.Warnf("Failed to unmarshal parameters for node %d: %v", node.ID, err)
-			}
-		}
-
-		// Deserialize return values
-		if len(returnValuesJSON) > 0 {
-			if err := json.Unmarshal(returnValuesJSON, &node.ReturnValues); err != nil {
-				logger.Warnf("Failed to unmarshal return values for node %d: %v", node.ID, err)
-			}
-		}
-
-		nodes = append(nodes, node)
 	}
 
 	// Log verbose results

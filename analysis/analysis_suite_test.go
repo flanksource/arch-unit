@@ -1,4 +1,4 @@
-package fixtures_test
+package analysis_test
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestFixtures(t *testing.T) {
+func TestAnalysis(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Fixtures Suite")
+	RunSpecs(t, "Analysis Suite")
 }

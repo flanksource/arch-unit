@@ -1,3 +1,4 @@
+out.*
 # Binaries for programs and plugins
 *.exe
 *.exe~
@@ -56,3 +57,4 @@ hack/
 
 *.backup*
 .task
+examples/

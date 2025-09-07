@@ -434,7 +434,15 @@ func (fn *FixtureNode) Walk(vistor func(f *FixtureNode)) {
 func (fn *FixtureNode) GetAllTests() []*FixtureResult {
 	var tests []*FixtureResult
 	fn.Walk(func(f *FixtureNode) {
-		tests = append(tests, f.Results)
+		if f.Type == TestNode && f.Test != nil {
+			// Create a FixtureResult from the FixtureTest
+			result := &FixtureResult{
+				Name: f.Test.Name,
+				Type: "query", // Default type for tests
+				Test: *f.Test,
+			}
+			tests = append(tests, result)
+		}
 	})
 	return tests
 }

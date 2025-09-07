@@ -1,232 +1,178 @@
-package models
+package models_test
 
 import (
-	"testing"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/flanksource/arch-unit/models"
 )
 
-func TestParsePattern(t *testing.T) {
-	tests := []struct {
-		name     string
-		pattern  string
-		expected *AQLPattern
-		wantErr  bool
-	}{
-		{
-			name:    "Package with slash",
-			pattern: "internal/controllers",
-			expected: &AQLPattern{
-				Package:    "internal/controllers",
-				Original:   "internal/controllers",
-				IsWildcard: false,
-			},
-		},
-		{
-			name:    "Single method name (now treated as type)",
-			pattern: "GetUser",
-			expected: &AQLPattern{
-				Package:    "*",
-				Type:       "GetUser",
-				Method:     "",
-				Original:   "GetUser",
-				IsWildcard: false,
-			},
-		},
-		{
-			name:    "Single method with lowercase (now treated as package)",
-			pattern: "processData",
-			expected: &AQLPattern{
-				Package:    "processData",
-				Type:       "",
-				Method:     "",
-				Original:   "processData",
-				IsWildcard: false,
-			},
-		},
-		{
-			name:    "Single type name",
-			pattern: "UserController",
-			expected: &AQLPattern{
-				Package:    "*",
-				Type:       "UserController",
-				Method:     "",
-				Original:   "UserController",
-				IsWildcard: false,
-			},
-		},
-		{
-			name:    "Type:Method shorthand",
-			pattern: "UserController:GetUser",
-			expected: &AQLPattern{
-				Package:    "UserController",
-				Type:       "GetUser",
-				Method:     "",
-				Original:   "UserController:GetUser",
-				IsWildcard: false,
-			},
-		},
-		{
-			name:    "Dot notation for package.Type",
-			pattern: "widgets.Table",
-			expected: &AQLPattern{
-				Package:    "widgets",
-				Type:       "Table",
-				Method:     "",
-				Original:   "widgets.Table",
-				IsWildcard: false,
-			},
-		},
-		{
-			name:    "Colon notation for package:Type",
-			pattern: "widgets:Table",
-			expected: &AQLPattern{
-				Package:    "widgets",
-				Type:       "Table",
-				Method:     "",
-				Original:   "widgets:Table",
-				IsWildcard: false,
-			},
-		},
-		{
-			name:    "Metric pattern with dot",
-			pattern: "*.cyclomatic",
-			expected: &AQLPattern{
-				Package:    "*",
-				Type:       "",
-				Method:     "",
-				Metric:     "cyclomatic",
-				Original:   "*.cyclomatic",
-				IsWildcard: true,
-			},
-		},
-		{
-			name:    "Complex pattern with metric",
-			pattern: "controllers:UserController:Get*.lines",
-			expected: &AQLPattern{
-				Package:    "controllers",
-				Type:       "UserController",
-				Method:     "Get*",
-				Metric:     "lines",
-				Original:   "controllers:UserController:Get*.lines",
-				IsWildcard: true,
-			},
-		},
-		{
-			name:    "Dot notation with method",
-			pattern: "widgets.Table.draw",
-			expected: &AQLPattern{
-				Package:    "widgets",
-				Type:       "Table",
-				Method:     "draw",
-				Original:   "widgets.Table.draw",
-				IsWildcard: false,
-			},
-		},
-		{
-			name:    "Package:Type:Method:Field",
-			pattern: "models:User:GetName:id",
-			expected: &AQLPattern{
-				Package:    "models",
-				Type:       "User",
-				Method:     "GetName",
-				Field:      "id",
-				Original:   "models:User:GetName:id",
-				IsWildcard: false,
-			},
-		},
-		{
-			name:    "Type with wildcard suffix",
-			pattern: "*Service",
-			expected: &AQLPattern{
-				Package:    "*",
-				Type:       "*Service",
-				Method:     "",
-				Original:   "*Service",
-				IsWildcard: true,
-			},
-		},
-		{
-			name:    "Method with wildcard prefix (now treated as type)",
-			pattern: "Get*",
-			expected: &AQLPattern{
-				Package:    "*",
-				Type:       "Get*",
-				Method:     "",
-				Original:   "Get*",
-				IsWildcard: true,
-			},
-		},
-		{
-			name:    "Traditional package:type",
-			pattern: "controllers:UserController",
-			expected: &AQLPattern{
-				Package:    "controllers",
-				Type:       "UserController",
-				Method:     "",
-				Original:   "controllers:UserController",
-				IsWildcard: false,
-			},
-		},
-		{
-			name:    "Full pattern with all parts",
-			pattern: "controllers:UserController:GetUser:id",
-			expected: &AQLPattern{
-				Package:    "controllers",
-				Type:       "UserController",
-				Method:     "GetUser",
-				Field:      "id",
-				Original:   "controllers:UserController:GetUser:id",
-				IsWildcard: false,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := ParsePattern(tt.pattern)
-			if tt.wantErr {
-				assert.Error(t, err)
+var _ = Describe("ParsePattern", func() {
+	DescribeTable("parsing various AQL patterns",
+		func(pattern string, expected *models.AQLPattern, wantErr bool) {
+			result, err := models.ParsePattern(pattern)
+			if wantErr {
+				Expect(err).To(HaveOccurred())
 			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.expected, result)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).To(Equal(expected))
 			}
-		})
-	}
-}
+		},
+		Entry("Package with slash", "internal/controllers", &models.AQLPattern{
+			Package:    "internal/controllers",
+			Original:   "internal/controllers",
+			IsWildcard: false,
+		}, false),
+		Entry("Single method name (now treated as type)", "GetUser", &models.AQLPattern{
+			Package:    "*",
+			Type:       "GetUser",
+			Method:     "",
+			Original:   "GetUser",
+			IsWildcard: false,
+		}, false),
+		Entry("Single method with lowercase (now treated as package)", "processData", &models.AQLPattern{
+			Package:    "processData",
+			Type:       "",
+			Method:     "",
+			Original:   "processData",
+			IsWildcard: false,
+		}, false),
+		Entry("Single type name", "UserController", &models.AQLPattern{
+			Package:    "*",
+			Type:       "UserController",
+			Method:     "",
+			Original:   "UserController",
+			IsWildcard: false,
+		}, false),
+		Entry("Type:Method shorthand", "UserController:GetUser", &models.AQLPattern{
+			Package:    "UserController",
+			Type:       "GetUser",
+			Method:     "",
+			Original:   "UserController:GetUser",
+			IsWildcard: false,
+		}, false),
+		Entry("Dot notation for package.Type", "widgets.Table", &models.AQLPattern{
+			Package:    "widgets",
+			Type:       "Table",
+			Method:     "",
+			Original:   "widgets.Table",
+			IsWildcard: false,
+		}, false),
+		Entry("Colon notation for package:Type", "widgets:Table", &models.AQLPattern{
+			Package:    "widgets",
+			Type:       "Table",
+			Method:     "",
+			Original:   "widgets:Table",
+			IsWildcard: false,
+		}, false),
+		Entry("Metric pattern with dot", "*.cyclomatic", &models.AQLPattern{
+			Package:    "*",
+			Type:       "",
+			Method:     "",
+			Metric:     "cyclomatic",
+			Original:   "*.cyclomatic",
+			IsWildcard: true,
+		}, false),
+		Entry("Complex pattern with metric", "controllers:UserController:Get*.lines", &models.AQLPattern{
+			Package:    "controllers",
+			Type:       "UserController",
+			Method:     "Get*",
+			Metric:     "lines",
+			Original:   "controllers:UserController:Get*.lines",
+			IsWildcard: true,
+		}, false),
+		Entry("Dot notation with method", "widgets.Table.draw", &models.AQLPattern{
+			Package:    "widgets",
+			Type:       "Table",
+			Method:     "draw",
+			Original:   "widgets.Table.draw",
+			IsWildcard: false,
+		}, false),
+		Entry("Package:Type:Method:Field", "models:User:GetName:id", &models.AQLPattern{
+			Package:    "models",
+			Type:       "User",
+			Method:     "GetName",
+			Field:      "id",
+			Original:   "models:User:GetName:id",
+			IsWildcard: false,
+		}, false),
+		Entry("Type with wildcard suffix", "*Service", &models.AQLPattern{
+			Package:    "*",
+			Type:       "*Service",
+			Method:     "",
+			Original:   "*Service",
+			IsWildcard: true,
+		}, false),
+		Entry("Method with wildcard prefix (now treated as type)", "Get*", &models.AQLPattern{
+			Package:    "*",
+			Type:       "Get*",
+			Method:     "",
+			Original:   "Get*",
+			IsWildcard: true,
+		}, false),
+		Entry("Traditional package:type", "controllers:UserController", &models.AQLPattern{
+			Package:    "controllers",
+			Type:       "UserController",
+			Method:     "",
+			Original:   "controllers:UserController",
+			IsWildcard: false,
+		}, false),
+		Entry("Full pattern with all parts", "controllers:UserController:GetUser:id", &models.AQLPattern{
+			Package:    "controllers",
+			Type:       "UserController",
+			Method:     "GetUser",
+			Field:      "id",
+			Original:   "controllers:UserController:GetUser:id",
+			IsWildcard: false,
+		}, false),
+	)
+})
 
-func TestParsePattern_MetricDetection(t *testing.T) {
-	// Test that known metrics are detected with wildcard pattern
-	knownMetrics := []string{"cyclomatic", "parameters", "returns", "lines"}
-	for _, metric := range knownMetrics {
-		// Use wildcard pattern with metric
-		pattern := "*." + metric
-		result, err := ParsePattern(pattern)
-		require.NoError(t, err)
-		assert.Equal(t, metric, result.Metric)
-		assert.Equal(t, "*", result.Package)
-	}
+var _ = Describe("ParsePattern metric detection", func() {
+	Context("when using known metrics", func() {
+		DescribeTable("detecting metrics with wildcard pattern",
+			func(metric string) {
+				pattern := "*." + metric
+				result, err := models.ParsePattern(pattern)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.Metric).To(Equal(metric))
+				Expect(result.Package).To(Equal("*"))
+			},
+			Entry("cyclomatic metric", "cyclomatic"),
+			Entry("parameters metric", "parameters"),
+			Entry("returns metric", "returns"),
+			Entry("lines metric", "lines"),
+		)
 
-	// Test metrics with package/path patterns
-	packagePatterns := []string{"internal/service", "controllers", "models"}
-	for _, pkg := range packagePatterns {
-		pattern := pkg + ".lines"
-		result, err := ParsePattern(pattern)
-		require.NoError(t, err)
-		assert.Equal(t, "lines", result.Metric)
-		assert.Equal(t, pkg, result.Package)
-	}
+		DescribeTable("detecting metrics with package patterns",
+			func(pkg string) {
+				pattern := pkg + ".lines"
+				result, err := models.ParsePattern(pattern)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.Metric).To(Equal("lines"))
+				Expect(result.Package).To(Equal(pkg))
+			},
+			Entry("internal/service package", "internal/service"),
+			Entry("controllers package", "controllers"),
+			Entry("models package", "models"),
+		)
+	})
 
-	// Test that unknown words after dot are treated as type names
-	unknownWords := []string{"Table", "Widget", "Controller", "Service"}
-	for _, word := range unknownWords {
-		pattern := "mypackage." + word
-		result, err := ParsePattern(pattern)
-		require.NoError(t, err)
-		assert.Empty(t, result.Metric)
-		assert.Equal(t, "mypackage", result.Package)
-		assert.Equal(t, word, result.Type)
-	}
-}
+	Context("when using unknown words after dot", func() {
+		DescribeTable("treating unknown words as type names",
+			func(word string) {
+				pattern := "mypackage." + word
+				result, err := models.ParsePattern(pattern)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.Metric).To(BeEmpty())
+				Expect(result.Package).To(Equal("mypackage"))
+				Expect(result.Type).To(Equal(word))
+			},
+			Entry("Table type", "Table"),
+			Entry("Widget type", "Widget"),
+			Entry("Controller type", "Controller"),
+			Entry("Service type", "Service"),
+		)
+	})
+})
 

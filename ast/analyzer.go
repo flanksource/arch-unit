@@ -108,9 +108,8 @@ func (a *Analyzer) AnalyzeFiles() error {
 		langCounts[file.language]++
 	}
 
-	ctx.Infof("Found %d source files:", len(sourceFiles))
 	for lang, count := range langCounts {
-		ctx.Infof("  %s: %d files", lang, count)
+		ctx.Tracef("  %s: %d files", lang, count)
 	}
 
 	// Initialize library resolver
@@ -134,18 +133,14 @@ func (a *Analyzer) AnalyzeFiles() error {
 	cachedCount := 0
 
 	// Process files
-	for i, file := range sourceFiles {
-		if i > 0 && i%10 == 0 {
-			ctx.Infof("⏳ Progress: %d/%d files (%.1f%%), %d cached, %d errors",
-				i, len(sourceFiles), float64(i)/float64(len(sourceFiles))*100, cachedCount, errorCount)
-		}
+	for _, file := range sourceFiles {
 
 		// Check if already cached
 		relPath, _ := filepath.Rel(a.workDir, file.path)
 		needsAnalysis, err := a.cache.NeedsReanalysis(file.path)
 		if err == nil && !needsAnalysis {
 			cachedCount++
-			ctx.Debugf("✓ Using cached AST for %s", relPath)
+			ctx.Tracef("✓ Using cached AST for %s", relPath)
 			continue
 		}
 
@@ -172,9 +167,8 @@ func (a *Analyzer) AnalyzeFiles() error {
 	}
 
 	elapsed := time.Since(startTime)
-	ctx.Infof("✅ AST analysis completed in %.2fs", elapsed.Seconds())
-	ctx.Infof("📈 Processed: %d new, %d cached, %d errors (total: %d files)",
-		processedCount, cachedCount, errorCount, len(sourceFiles))
+	ctx.Debugf("📈 Analysis: %d new, %d cached, %d errors (total: %d files) in %.2fs",
+		processedCount, cachedCount, errorCount, len(sourceFiles), elapsed.Seconds())
 	return nil
 }
 

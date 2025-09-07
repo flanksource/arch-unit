@@ -3,16 +3,20 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"testing"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	"github.com/flanksource/arch-unit/models"
 )
 
-func TestLoadConfig(t *testing.T) {
-	// Create a temporary directory and config file
-	tempDir := t.TempDir()
+var _ = Describe("Config Parser", func() {
+	Describe("loading configuration", func() {
+		It("should load and parse YAML config files correctly", func() {
+			// Create a temporary directory and config file
+			tempDir := GinkgoT().TempDir()
 
-	configContent := `
+			configContent := `
 version: "1.0"
 debounce: "30s"
 rules:
@@ -31,127 +35,78 @@ linters:
     enabled: true
 `
 
-	configPath := filepath.Join(tempDir, ConfigFileName)
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
-		t.Fatalf("Failed to create config file: %v", err)
-	}
+			configPath := filepath.Join(tempDir, ConfigFileName)
+			err := os.WriteFile(configPath, []byte(configContent), 0644)
+			Expect(err).NotTo(HaveOccurred())
 
-	// Test loading config
-	parser := NewParser(tempDir)
-	config, err := parser.LoadConfig()
-	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
-	}
+			// Test loading config
+			parser := NewParser(tempDir)
+			config, err := parser.LoadConfig()
+			Expect(err).NotTo(HaveOccurred())
 
-	// Validate config
-	if config.Version != "1.0" {
-		t.Errorf("Expected version '1.0', got '%s'", config.Version)
-	}
+			// Validate config
+			Expect(config.Version).To(Equal("1.0"))
+			Expect(config.Debounce).To(Equal("30s"))
 
-	if config.Debounce != "30s" {
-		t.Errorf("Expected debounce '30s', got '%s'", config.Debounce)
-	}
+			// Check rules
+			Expect(config.Rules).To(HaveLen(2))
 
-	// Check rules
-	if len(config.Rules) != 2 {
-		t.Errorf("Expected 2 rule patterns, got %d", len(config.Rules))
-	}
+			globalRules, exists := config.Rules["**"]
+			Expect(exists).To(BeTrue())
+			Expect(globalRules.Imports).To(HaveLen(2))
 
-	globalRules, exists := config.Rules["**"]
-	if !exists {
-		t.Fatal("Expected global rules '**' to exist")
-	}
+			// Check linters
+			Expect(config.Linters).To(HaveLen(1))
 
-	if len(globalRules.Imports) != 2 {
-		t.Errorf("Expected 2 global import rules, got %d", len(globalRules.Imports))
-	}
+			golangciLint, exists := config.Linters["golangci-lint"]
+			Expect(exists).To(BeTrue())
+			Expect(golangciLint.Enabled).To(BeTrue())
+		})
+	})
 
-	// Check linters
-	if len(config.Linters) != 1 {
-		t.Errorf("Expected 1 linter, got %d", len(config.Linters))
-	}
+	Describe("getting rules for files", func() {
+		var config *models.Config
 
-	golangciLint, exists := config.Linters["golangci-lint"]
-	if !exists {
-		t.Fatal("Expected golangci-lint config to exist")
-	}
-
-	if !golangciLint.Enabled {
-		t.Error("Expected golangci-lint to be enabled")
-	}
-}
-
-func TestGetRulesForFile(t *testing.T) {
-	config := &models.Config{
-		Rules: map[string]models.RuleConfig{
-			"**": {
-				Imports: []string{"!internal/", "!fmt:Println"},
-			},
-			"**/*_test.go": {
-				Imports: []string{"+testing", "+fmt:Println"},
-			},
-			"**/main.go": {
-				Imports: []string{"+os:Exit"},
-			},
-		},
-	}
-
-	testCases := []struct {
-		filePath       string
-		expectedRules  int
-		shouldHaveFmt  bool
-		shouldHaveTest bool
-	}{
-		{
-			filePath:       "service.go",
-			expectedRules:  2,    // global rules
-			shouldHaveFmt:  true, // deny rule
-			shouldHaveTest: false,
-		},
-		{
-			filePath:       "service_test.go",
-			expectedRules:  4,    // global + test rules
-			shouldHaveFmt:  true, // both deny and allow
-			shouldHaveTest: true,
-		},
-		{
-			filePath:       "cmd/main.go",
-			expectedRules:  3,    // global + main rules
-			shouldHaveFmt:  true, // deny rule
-			shouldHaveTest: false,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.filePath, func(t *testing.T) {
-			ruleSet, err := config.GetRulesForFile(tc.filePath)
-			if err != nil {
-				t.Fatalf("Failed to get rules for %s: %v", tc.filePath, err)
-			}
-
-			if len(ruleSet.Rules) != tc.expectedRules {
-				t.Errorf("Expected %d rules for %s, got %d", tc.expectedRules, tc.filePath, len(ruleSet.Rules))
-			}
-
-			hasFmtRule := false
-			hasTestRule := false
-
-			for _, rule := range ruleSet.Rules {
-				if rule.Package == "fmt" && rule.Method == "Println" {
-					hasFmtRule = true
-				}
-				if rule.Pattern == "testing" {
-					hasTestRule = true
-				}
-			}
-
-			if hasFmtRule != tc.shouldHaveFmt {
-				t.Errorf("Expected fmt rule presence %v for %s, got %v", tc.shouldHaveFmt, tc.filePath, hasFmtRule)
-			}
-
-			if hasTestRule != tc.shouldHaveTest {
-				t.Errorf("Expected test rule presence %v for %s, got %v", tc.shouldHaveTest, tc.filePath, hasTestRule)
+		BeforeEach(func() {
+			config = &models.Config{
+				Rules: map[string]models.RuleConfig{
+					"**": {
+						Imports: []string{"!internal/", "!fmt:Println"},
+					},
+					"**/*_test.go": {
+						Imports: []string{"+testing", "+fmt:Println"},
+					},
+					"**/main.go": {
+						Imports: []string{"+os:Exit"},
+					},
+				},
 			}
 		})
-	}
-}
+
+		DescribeTable("applying pattern-based rules to different file types",
+			func(filePath string, expectedRules int, shouldHaveFmt, shouldHaveTest bool) {
+				ruleSet, err := config.GetRulesForFile(filePath)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ruleSet.Rules).To(HaveLen(expectedRules))
+
+				hasFmtRule := false
+				hasTestRule := false
+
+				for _, rule := range ruleSet.Rules {
+					if rule.Package == "fmt" && rule.Method == "Println" {
+						hasFmtRule = true
+					}
+					if rule.Pattern == "testing" {
+						hasTestRule = true
+					}
+				}
+
+				Expect(hasFmtRule).To(Equal(shouldHaveFmt), "fmt rule presence for %s", filePath)
+				Expect(hasTestRule).To(Equal(shouldHaveTest), "test rule presence for %s", filePath)
+			},
+			Entry("regular Go file", "service.go", 2, true, false),      // global rules
+			Entry("test Go file", "service_test.go", 4, true, true),    // global + test rules
+			Entry("main Go file", "cmd/main.go", 3, true, false),       // global + main rules
+		)
+	})
+})

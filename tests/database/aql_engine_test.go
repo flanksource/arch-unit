@@ -25,9 +25,8 @@ var _ = Describe("AQL Engine", func() {
 	BeforeEach(func() {
 		// For AQL tests, we need to use the cache singleton but with our test DB
 		// Reset the cache first to ensure clean state
-		cache.ResetASTCache()
 		cache.ResetGormDB()
-		
+
 		// Override the cache directory to use our test DB path
 		var err error
 		astCache, err = cache.NewASTCacheWithPath(testDB.TempDir())

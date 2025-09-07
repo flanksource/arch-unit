@@ -63,14 +63,10 @@ func runASTView(cmd *cobra.Command, args []string) error {
 	// Create analyzer
 	analyzer := ast.NewAnalyzer(astCache, workingDir)
 
-	// Analyze files if needed (check cache first)
-	logger.Infof("Analyzing source files...")
 	if err := analyzer.AnalyzeFiles(); err != nil {
 		return fmt.Errorf("failed to analyze files: %w", err)
 	}
 
-	// Query nodes by pattern
-	logger.Debugf("Querying pattern: %s", pattern)
 	nodes, err := analyzer.QueryPattern(pattern)
 	if err != nil {
 		return fmt.Errorf("failed to query pattern: %w", err)

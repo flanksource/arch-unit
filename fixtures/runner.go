@@ -25,7 +25,7 @@ type RunnerOptions struct {
 	WorkDir        string   // Working directory
 	MaxWorkers     int      // Maximum number of parallel workers
 	Logger         logger.Logger
-	ExecutablePath string   // Path to the current executable (for fixtures to use)
+	ExecutablePath string // Path to the current executable (for fixtures to use)
 }
 
 // Runner manages fixture test execution using typed tasks
@@ -189,7 +189,7 @@ func (r *Runner) executeFixtures() (*FixtureGroup, error) {
 	buildCmd := r.getBuildCommand()
 	var buildTask *clicky.Task
 
-	// Create build task if needed (as dependency for other tasks)  
+	// Create build task if needed (as dependency for other tasks)
 	if buildCmd != "" {
 		buildTypedTask := clicky.StartTask[bool](
 			fmt.Sprintf("Build: %s", buildCmd),
@@ -204,7 +204,7 @@ func (r *Runner) executeFixtures() (*FixtureGroup, error) {
 
 	// Create typed task group for fixture execution
 	fixtureGroup := task.StartGroup[FixtureResult]("Fixture Tests")
-	
+
 	taskToNodeMap := make(map[task.TypedTask[FixtureResult]]*FixtureNode)
 	r.tree.Walk(func(node *FixtureNode) {
 		if node.Test != nil {
@@ -294,13 +294,17 @@ func (r *Runner) executeBuildCommand(ctx flanksourceContext.Context, buildCmd st
 	return nil
 }
 
-
 // executeFixture runs a single fixture test
 func (r *Runner) executeFixture(ctx flanksourceContext.Context, fixture FixtureTest) (FixtureResult, error) {
 	// Get the appropriate fixture type from registry
 	fixtureType, err := DefaultRegistry.GetForFixture(fixture)
 	if err != nil {
-		return FixtureResult{}, fmt.Errorf("fixture type error: %w", err)
+		return FixtureResult{
+			Name:   fixture.Name,
+			Status: task.StatusERR,
+			Test:   fixture,
+			Error:  err.Error(),
+		}, nil
 	}
 
 	if r.options.WorkDir == "" {
@@ -328,11 +332,9 @@ func (r *Runner) executeFixture(ctx flanksourceContext.Context, fixture FixtureT
 	return result, nil
 }
 
-
 // renderBuildTemplate renders a gomplate template for build commands
 func renderBuildTemplate(template string, data map[string]interface{}) (string, error) {
 	return gomplate.RunTemplate(data, gomplate.Template{
 		Template: template,
 	})
 }
-

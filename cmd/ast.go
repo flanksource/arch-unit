@@ -319,7 +319,7 @@ func executeAQLQuery(astCache *cache.ASTCache, aqlQuery string, workingDir strin
 		// YAML format
 		ruleSet, err = parser.LoadAQLFromYAML(ruleText)
 	}
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to parse AQL query: %w", err)
 	}
@@ -427,7 +427,6 @@ func analyzeFiles(astCache *cache.ASTCache, workingDir string) error {
 	}
 
 	if len(sourceFiles) == 0 {
-		logger.Infof("No Go files found in %s", workingDir)
 		return nil
 	}
 
@@ -435,11 +434,6 @@ func analyzeFiles(astCache *cache.ASTCache, workingDir string) error {
 	langCounts := make(map[string]int)
 	for _, file := range sourceFiles {
 		langCounts[file.language]++
-	}
-
-	logger.Infof("Found %d source files:", len(sourceFiles))
-	for lang, count := range langCounts {
-		logger.Infof("  %s: %d files", lang, count)
 	}
 
 	// Initialize library resolver
@@ -461,10 +455,7 @@ func analyzeFiles(astCache *cache.ASTCache, workingDir string) error {
 	ctx := flanksourceContext.NewContext(context.Background())
 
 	// Process files
-	for i, file := range sourceFiles {
-		if i%10 == 0 {
-			logger.Infof("Progress: %d/%d files", i, len(sourceFiles))
-		}
+	for _, file := range sourceFiles {
 
 		var err error
 		switch file.language {
@@ -486,7 +477,6 @@ func analyzeFiles(astCache *cache.ASTCache, workingDir string) error {
 		}
 	}
 
-	logger.Infof("AST analysis completed")
 	return nil
 }
 

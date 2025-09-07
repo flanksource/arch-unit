@@ -22,9 +22,14 @@ type commandBlockBuilder struct {
 	isComplete   bool
 }
 
-// parseMarkdownWithGoldmark parses markdown content using goldmark AST parser
-func parseMarkdownWithGoldmark(content string, frontMatter *FrontMatter, sourceDir string) ([]FixtureNode, error) {
-	var fixtures []FixtureNode
+// parseMarkdownWithGoldmarkTree parses markdown content using goldmark AST parser and returns a tree structure
+func parseMarkdownWithGoldmarkTree(content string, frontMatter *FrontMatter, sourceDir string) (*FixtureNode, error) {
+	rootNode := &FixtureNode{
+		Name:     "Content",
+		Type:     SectionNode,
+		Level:    0,
+		Children: make([]*FixtureNode, 0),
+	}
 	
 	// Create goldmark parser with table extension
 	md := goldmark.New(
@@ -41,6 +46,8 @@ func parseMarkdownWithGoldmark(content string, frontMatter *FrontMatter, sourceD
 	// State for parsing
 	var currentCommand *commandBlockBuilder
 	var inCommandBlock bool
+	var sectionStack []*FixtureNode
+	var currentSection *FixtureNode = rootNode
 	
 	// Walk the AST
 	err := ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -50,38 +57,76 @@ func parseMarkdownWithGoldmark(content string, frontMatter *FrontMatter, sourceD
 		
 		switch node := n.(type) {
 		case *ast.Heading:
-			// Check if this is a command heading
-			if node.Level == 3 {
-				headingText := extractNodeText(node, source)
-				if strings.HasPrefix(strings.ToLower(headingText), "command:") {
-					// Complete previous command block if exists
-					if currentCommand != nil && !currentCommand.isComplete {
-						if fixture := buildFixtureFromCommand(currentCommand, frontMatter, sourceDir); fixture != nil {
-							fixtures = append(fixtures, *fixture)
-						}
-					}
-					
-					// Start new command block
-					commandName := strings.TrimSpace(strings.TrimPrefix(headingText, "command:"))
-					if commandName == "" {
-						commandName = strings.TrimSpace(strings.TrimPrefix(strings.ToLower(headingText), "command:"))
-					}
-					
-					currentCommand = &commandBlockBuilder{
-						name:        commandName,
-						validations: make([]string, 0),
-					}
-					inCommandBlock = true
-				} else {
-					inCommandBlock = false
-					// Complete current command if we're leaving command block
-					if currentCommand != nil && !currentCommand.isComplete {
-						if fixture := buildFixtureFromCommand(currentCommand, frontMatter, sourceDir); fixture != nil {
-							fixtures = append(fixtures, *fixture)
-						}
-						currentCommand = nil
+			headingText := extractNodeText(node, source)
+			level := node.Level
+			
+			// Check if this is a command heading first
+			if level == 3 && strings.HasPrefix(strings.ToLower(headingText), "command:") {
+				// Complete previous command block if exists
+				if currentCommand != nil && !currentCommand.isComplete {
+					if fixture := buildFixtureFromCommand(currentCommand, frontMatter, sourceDir); fixture != nil {
+						// Add test to the current section
+						currentSection.AddChild(&FixtureNode{
+							Name: fixture.Test.Name,
+							Type: TestNode,
+							Test: fixture.Test,
+							Children: make([]*FixtureNode, 0),
+						})
 					}
 				}
+				
+				// Start new command block
+				commandName := strings.TrimSpace(strings.TrimPrefix(headingText, "command:"))
+				if commandName == "" {
+					commandName = strings.TrimSpace(strings.TrimPrefix(strings.ToLower(headingText), "command:"))
+				}
+				
+				currentCommand = &commandBlockBuilder{
+					name:        commandName,
+					validations: make([]string, 0),
+				}
+				inCommandBlock = true
+				// Don't create a section node for command headings
+			} else {
+				// Complete current command if we're leaving command block
+				if currentCommand != nil && !currentCommand.isComplete {
+					if fixture := buildFixtureFromCommand(currentCommand, frontMatter, sourceDir); fixture != nil {
+						// Add test to the current section
+						currentSection.AddChild(&FixtureNode{
+							Name: fixture.Test.Name,
+							Type: TestNode,
+							Test: fixture.Test,
+							Children: make([]*FixtureNode, 0),
+						})
+					}
+					currentCommand = nil
+				}
+				inCommandBlock = false
+				
+				// Adjust section stack based on heading level
+				adjustSectionStack(&sectionStack, level-1)
+				
+				// Create section node for regular headings
+				sectionNode := &FixtureNode{
+					Name:     headingText,
+					Type:     SectionNode,
+					Level:    level,
+					Children: make([]*FixtureNode, 0),
+				}
+				
+				// Add to parent (root or parent section)
+				parent := rootNode
+				if len(sectionStack) > 0 {
+					parent = sectionStack[len(sectionStack)-1]
+				}
+				parent.AddChild(sectionNode)
+				
+				// Update stack
+				if len(sectionStack) >= level-1 {
+					sectionStack = sectionStack[:level-1]
+				}
+				sectionStack = append(sectionStack, sectionNode)
+				currentSection = sectionNode
 			}
 			
 		case *ast.FencedCodeBlock:
@@ -113,13 +158,24 @@ func parseMarkdownWithGoldmark(content string, frontMatter *FrontMatter, sourceD
 			}
 			
 		case *extast.Table:
-			// Handle existing table format - continue to parse as before
+			// Handle existing table format - add tests to current section
 			if !inCommandBlock {
 				tableFixtures, err := parseTableFromAST(node, source, frontMatter, sourceDir)
 				if err != nil {
 					return ast.WalkStop, err
 				}
-				fixtures = append(fixtures, tableFixtures...)
+				// Add table fixtures to current section
+				for _, fixture := range tableFixtures {
+					if fixture.Test != nil {
+						testNode := &FixtureNode{
+							Name: fixture.Test.Name,
+							Type: TestNode,
+							Test: fixture.Test,
+							Children: make([]*FixtureNode, 0),
+						}
+						currentSection.AddChild(testNode)
+					}
+				}
 			}
 		}
 		
@@ -133,9 +189,32 @@ func parseMarkdownWithGoldmark(content string, frontMatter *FrontMatter, sourceD
 	// Complete final command block if exists
 	if currentCommand != nil && !currentCommand.isComplete {
 		if fixture := buildFixtureFromCommand(currentCommand, frontMatter, sourceDir); fixture != nil {
-			fixtures = append(fixtures, *fixture)
+			// Add test to the current command section
+			currentSection.AddChild(&FixtureNode{
+				Name: fixture.Test.Name,
+				Type: TestNode,
+				Test: fixture.Test,
+				Children: make([]*FixtureNode, 0),
+			})
 		}
 	}
+	
+	return rootNode, nil
+}
+
+// parseMarkdownWithGoldmark provides backwards compatibility by converting tree to flat list
+func parseMarkdownWithGoldmark(content string, frontMatter *FrontMatter, sourceDir string) ([]FixtureNode, error) {
+	tree, err := parseMarkdownWithGoldmarkTree(content, frontMatter, sourceDir)
+	if err != nil {
+		return nil, err
+	}
+	
+	var fixtures []FixtureNode
+	tree.Walk(func(node *FixtureNode) {
+		if node.Test != nil {
+			fixtures = append(fixtures, *node)
+		}
+	})
 	
 	return fixtures, nil
 }
@@ -195,6 +274,8 @@ func extractValidationsFromList(listNode *ast.List, source []byte) []string {
 					regexText := strings.TrimSpace(strings.TrimPrefix(itemText, "regex:"))
 					// Remove quotes if present
 					regexText = strings.Trim(regexText, `"'`)
+					// Escape quotes in the regex pattern for CEL string
+					regexText = strings.ReplaceAll(regexText, `"`, `\"`)
 					validations = append(validations, fmt.Sprintf(`stdout.matches("%s")`, regexText))
 				} else if strings.HasPrefix(itemText, "not:") {
 					notText := strings.TrimSpace(strings.TrimPrefix(itemText, "not:"))

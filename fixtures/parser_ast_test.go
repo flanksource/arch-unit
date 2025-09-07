@@ -1,160 +1,135 @@
 package fixtures
 
 import (
-	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
-func TestParseMarkdownWithGoldmark_CommandBlocks(t *testing.T) {
-	tests := []struct {
-		name        string
-		content     string
-		expectedLen int
-		validate    func(t *testing.T, fixtures []FixtureNode)
-	}{
-		{
-			name: "simple command block",
-			content: `
+var _ = Describe("Parser AST", func() {
+	Context("when parsing markdown with goldmark command blocks", func() {
+		DescribeTable("should parse different command block structures",
+			func(content string, expectedLen int, validateFunc func(fixtures []FixtureNode)) {
+				fixtures, err := parseMarkdownWithGoldmark(content, nil, "/tmp/test")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(fixtures).To(HaveLen(expectedLen))
+				
+				if validateFunc != nil {
+					validateFunc(fixtures)
+				}
+			},
+			Entry("simple command block", `
 ### command: test help
 
-` + "```bash" + `
+`+"```bash"+`
 --help
-` + "```" + `
+`+"```"+`
 
-` + "```frontmatter" + `
+`+"```frontmatter"+`
 cwd: .
 exitCode: 0
-` + "```" + `
+`+"```"+`
 
 Validations:
 * cel: stdout.contains("Usage")
 * cel: exitCode == 0
-`,
-			expectedLen: 1,
-			validate: func(t *testing.T, fixtures []FixtureNode) {
+`, 1, func(fixtures []FixtureNode) {
 				f := fixtures[0]
-				assert.Equal(t, "test help", f.Test.Name)
-				assert.Equal(t, "--help", f.Test.CLIArgs)
-				assert.Equal(t, ".", f.Test.CWD)
-				assert.Equal(t, 0, f.Test.Expected.Properties["exitCode"])
-				assert.Contains(t, f.Test.CEL, "stdout.contains(\"Usage\")")
-				assert.Contains(t, f.Test.CEL, "exitCode == 0")
-			},
-		},
-		{
-			name: "command block with different validation types",
-			content: `
+				Expect(f.Test.Name).To(Equal("test help"))
+				Expect(f.Test.CLIArgs).To(Equal("--help"))
+				Expect(f.Test.CWD).To(Equal("."))
+				Expect(f.Test.Expected.Properties["exitCode"]).To(Equal(0))
+				Expect(f.Test.CEL).To(ContainSubstring("stdout.contains(\"Usage\")"))
+				Expect(f.Test.CEL).To(ContainSubstring("exitCode == 0"))
+			}),
+
+			Entry("command block with different validation types", `
 ### command: validation types test
 
-` + "```bash" + `
+`+"```bash"+`
 ast * --format json
-` + "```" + `
+`+"```"+`
 
-` + "```frontmatter" + `
+`+"```frontmatter"+`
 exitCode: 0
-` + "```" + `
+`+"```"+`
 
 Validations:
 * cel: json.length > 0
 * contains: node_type
 * regex: .*"file_path".*
 * not: contains: error
-`,
-			expectedLen: 1,
-			validate: func(t *testing.T, fixtures []FixtureNode) {
+`, 1, func(fixtures []FixtureNode) {
 				f := fixtures[0]
-				assert.Equal(t, "validation types test", f.Test.Name)
-				assert.Equal(t, "ast * --format json", f.Test.CLIArgs)
+				Expect(f.Test.Name).To(Equal("validation types test"))
+				Expect(f.Test.CLIArgs).To(Equal("ast * --format json"))
 				
 				// Check that different validation types are converted correctly
 				cel := f.Test.CEL
-				assert.Contains(t, cel, "json.length > 0")
-				assert.Contains(t, cel, "stdout.contains(\"node_type\")")
-				assert.Contains(t, cel, "stdout.matches(\".*\"file_path\".*\")")
-				assert.Contains(t, cel, "!stdout.contains(\"error\")")
-			},
-		},
-		{
-			name: "command block with environment variables",
-			content: `
+				Expect(cel).To(ContainSubstring("json.length > 0"))
+				Expect(cel).To(ContainSubstring("stdout.contains(\"node_type\")"))
+				Expect(cel).To(ContainSubstring("stdout.matches(\".\\\"file_path\\\".\")"))
+				Expect(cel).To(ContainSubstring("!stdout.contains(\"error\")"))
+			}),
+
+			Entry("command block with environment variables", `
 ### command: env test
 
-` + "```bash" + `
+`+"```bash"+`
 ast * --verbose
-` + "```" + `
+`+"```"+`
 
-` + "```frontmatter" + `
+`+"```frontmatter"+`
 cwd: ./test
 exitCode: 0
 env:
   LOG_LEVEL: debug
   OUTPUT: json
-` + "```" + `
+`+"```"+`
 
 Validations:
 * cel: exitCode == 0
-`,
-			expectedLen: 1,
-			validate: func(t *testing.T, fixtures []FixtureNode) {
+`, 1, func(fixtures []FixtureNode) {
 				f := fixtures[0]
-				assert.Equal(t, "env test", f.Test.Name)
-				assert.Equal(t, "./test", f.Test.CWD)
-				assert.NotNil(t, f.Test.Env)
-				assert.Equal(t, "debug", f.Test.Env["LOG_LEVEL"])
-				assert.Equal(t, "json", f.Test.Env["OUTPUT"])
-			},
-		},
-		{
-			name: "multiple command blocks",
-			content: `
+				Expect(f.Test.Name).To(Equal("env test"))
+				Expect(f.Test.CWD).To(Equal("./test"))
+				Expect(f.Test.Env).NotTo(BeNil())
+				Expect(f.Test.Env["LOG_LEVEL"]).To(Equal("debug"))
+				Expect(f.Test.Env["OUTPUT"]).To(Equal("json"))
+			}),
+
+			Entry("multiple command blocks", `
 ### command: first test
 
-` + "```bash" + `
+`+"```bash"+`
 --help
-` + "```" + `
+`+"```"+`
 
 Validations:
 * cel: exitCode == 0
 
 ### command: second test
 
-` + "```bash" + `
+`+"```bash"+`
 --version
-` + "```" + `
+`+"```"+`
 
 Validations:
 * contains: arch-unit
-`,
-			expectedLen: 2,
-			validate: func(t *testing.T, fixtures []FixtureNode) {
-				assert.Equal(t, "first test", fixtures[0].Test.Name)
-				assert.Equal(t, "--help", fixtures[0].Test.CLIArgs)
-				assert.Equal(t, "exitCode == 0", fixtures[0].Test.CEL)
+`, 2, func(fixtures []FixtureNode) {
+				Expect(fixtures[0].Test.Name).To(Equal("first test"))
+				Expect(fixtures[0].Test.CLIArgs).To(Equal("--help"))
+				Expect(fixtures[0].Test.CEL).To(Equal("exitCode == 0"))
 				
-				assert.Equal(t, "second test", fixtures[1].Test.Name)
-				assert.Equal(t, "--version", fixtures[1].Test.CLIArgs)
-				assert.Equal(t, "stdout.contains(\"arch-unit\")", fixtures[1].Test.CEL)
-			},
-		},
-	}
+				Expect(fixtures[1].Test.Name).To(Equal("second test"))
+				Expect(fixtures[1].Test.CLIArgs).To(Equal("--version"))
+				Expect(fixtures[1].Test.CEL).To(Equal("stdout.contains(\"arch-unit\")"))
+			}),
+		)
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fixtures, err := parseMarkdownWithGoldmark(tt.content, nil, "/tmp/test")
-			require.NoError(t, err)
-			assert.Len(t, fixtures, tt.expectedLen)
-			
-			if tt.validate != nil {
-				tt.validate(t, fixtures)
-			}
-		})
-	}
-}
-
-func TestParseMarkdownWithGoldmark_MixedFormat(t *testing.T) {
-	content := `
+	Context("when parsing mixed format markdown", func() {
+		It("should handle both table and command block formats", func() {
+			content := `
 # Mixed Format Test
 
 ## Table Format
@@ -175,193 +150,152 @@ Validations:
 * cel: stdout.contains("json")
 `
 
-	fixtures, err := parseMarkdownWithGoldmark(content, nil, "/tmp/test")
-	require.NoError(t, err)
-	assert.Len(t, fixtures, 2)
+			fixtures, err := parseMarkdownWithGoldmark(content, nil, "/tmp/test")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fixtures).To(HaveLen(2))
 
-	// Check table fixture
-	tableFixture := fixtures[0]
-	assert.Equal(t, "Table Test", tableFixture.Test.Name)
-	assert.Equal(t, "--help", tableFixture.Test.CLIArgs)
-	assert.Equal(t, "stdout.contains(\"Usage\")", tableFixture.Test.CEL)
+			// Check table fixture
+			tableFixture := fixtures[0]
+			Expect(tableFixture.Test.Name).To(Equal("Table Test"))
+			Expect(tableFixture.Test.CLIArgs).To(Equal("--help"))
+			Expect(tableFixture.Test.CEL).To(Equal("stdout.contains(\"Usage\")"))
 
-	// Check command block fixture
-	commandFixture := fixtures[1]
-	assert.Equal(t, "block test", commandFixture.Test.Name)
-	assert.Equal(t, "ast * --format json", commandFixture.Test.CLIArgs)
-	assert.Equal(t, "stdout.contains(\"json\")", commandFixture.Test.CEL)
-}
-
-func TestExtractValidationsFromList(t *testing.T) {
-	tests := []struct {
-		name         string
-		listContent  string
-		expectedCEL  []string
-	}{
-		{
-			name: "cel validations",
-			listContent: "* cel: stdout.contains(\"test\")\n* cel: exitCode == 0",
-			expectedCEL: []string{
-				"stdout.contains(\"test\")",
-				"exitCode == 0",
-			},
-		},
-		{
-			name: "contains validations", 
-			listContent: "* contains: expected text\n* contains: another text",
-			expectedCEL: []string{
-				"stdout.contains(\"expected text\")",
-				"stdout.contains(\"another text\")",
-			},
-		},
-		{
-			name: "regex validations",
-			listContent: "* regex: .*pattern.*\n* regex: ^start.*end$",
-			expectedCEL: []string{
-				"stdout.matches(\".pattern.\")",  // Asterisks are stripped by markdown list parsing
-				"stdout.matches(\"^start.*end$\")",
-			},
-		},
-		{
-			name: "not validations", 
-			listContent: "* not: contains: error\n* not: (stdout.contains(\"fail\"))",
-			expectedCEL: []string{
-				"!stdout.contains(\"error\")",
-				"!((stdout.contains(\"fail\")))", // Extra parentheses preserved
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Parse the list content as markdown and extract validations
-			content := "Validations:\n" + tt.listContent
-			fixtures, err := parseMarkdownWithGoldmark("### command: test\n```bash\necho\n```\n\n"+content, nil, "/tmp")
-			require.NoError(t, err)
-			require.Len(t, fixtures, 1)
-			
-			// Check that the validations were parsed correctly
-			cel := fixtures[0].Test.CEL
-			for _, expected := range tt.expectedCEL {
-				assert.Contains(t, cel, expected)
-			}
+			// Check command block fixture
+			commandFixture := fixtures[1]
+			Expect(commandFixture.Test.Name).To(Equal("block test"))
+			Expect(commandFixture.Test.CLIArgs).To(Equal("ast * --format json"))
+			Expect(commandFixture.Test.CEL).To(Equal("stdout.contains(\"json\")"))
 		})
-	}
-}
+	})
 
-func TestBuildFixtureFromCommand(t *testing.T) {
-	tests := []struct {
-		name     string
-		cmd      *commandBlockBuilder
-		expected FixtureTest
-	}{
-		{
-			name: "basic command",
-			cmd: &commandBlockBuilder{
-				name:        "test command",
-				bashContent: "--help",
-				validations: []string{"exitCode == 0"},
+	Context("when extracting validations from list", func() {
+		DescribeTable("should convert different validation types to CEL",
+			func(listContent string, expectedCEL []string) {
+				// Parse the list content as markdown and extract validations
+				content := "Validations:\n" + listContent
+				fixtures, err := parseMarkdownWithGoldmark("### command: test\n```bash\necho\n```\n\n"+content, nil, "/tmp")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(fixtures).To(HaveLen(1))
+				
+				// Check that the validations were parsed correctly
+				cel := fixtures[0].Test.CEL
+				for _, expected := range expectedCEL {
+					Expect(cel).To(ContainSubstring(expected))
+				}
 			},
-			expected: FixtureTest{
-				Name:    "test command",
-				CLIArgs: "--help",
-				CEL:     "exitCode == 0",
-				Expected: ExpectedResult{
-					Properties: make(map[string]interface{}),
+			Entry("cel validations", 
+				"* cel: stdout.contains(\"test\")\n* cel: exitCode == 0",
+				[]string{"stdout.contains(\"test\")", "exitCode == 0"}),
+
+			Entry("contains validations", 
+				"* contains: expected text\n* contains: another text",
+				[]string{"stdout.contains(\"expected text\")", "stdout.contains(\"another text\")"}),
+
+			Entry("regex validations",
+				"* regex: .*pattern.*\n* regex: ^start.*end$",
+				[]string{"stdout.matches(\".pattern.\")", "stdout.matches(\"^start.*end$\")"}),
+
+			Entry("not validations", 
+				"* not: contains: error\n* not: (stdout.contains(\"fail\"))",
+				[]string{"!stdout.contains(\"error\")", "!((stdout.contains(\"fail\")))"}),
+		)
+	})
+
+	Context("when building fixture from command", func() {
+		DescribeTable("should build correct fixture structure",
+			func(cmd *commandBlockBuilder, expectedTest FixtureTest) {
+				fixtureNode := buildFixtureFromCommand(cmd, nil, "/tmp/test")
+				Expect(fixtureNode).NotTo(BeNil())
+				
+				fixture := *fixtureNode.Test
+				Expect(fixture.Name).To(Equal(expectedTest.Name))
+				Expect(fixture.CLIArgs).To(Equal(expectedTest.CLIArgs))
+				Expect(fixture.CWD).To(Equal(expectedTest.CWD))
+				Expect(fixture.CEL).To(Equal(expectedTest.CEL))
+				
+				if expectedTest.Env != nil {
+					Expect(fixture.Env).To(Equal(expectedTest.Env))
+				}
+				
+				if expectedExitCode, ok := expectedTest.Expected.Properties["exitCode"]; ok {
+					Expect(fixture.Expected.Properties["exitCode"]).To(Equal(expectedExitCode))
+				}
+			},
+			Entry("basic command",
+				&commandBlockBuilder{
+					name:        "test command",
+					bashContent: "--help",
+					validations: []string{"exitCode == 0"},
 				},
-			},
-		},
-		{
-			name: "command with frontmatter",
-			cmd: &commandBlockBuilder{
-				name:        "complex test",
-				bashContent: "ast * --format json",
-				frontmatter: "cwd: ./test\nexitCode: 0\nenv:\n  DEBUG: true",
-				validations: []string{"stdout.contains(\"json\")", "exitCode == 0"},
-			},
-			expected: FixtureTest{
-				Name:    "complex test",
-				CLIArgs: "ast * --format json",
-				CWD:     "./test",
-				CEL:     "stdout.contains(\"json\") && exitCode == 0",
-				Env:     map[string]string{"DEBUG": "true"},
-				Expected: ExpectedResult{
-					Properties: map[string]interface{}{
-						"exitCode": 0,
+				FixtureTest{
+					Name:    "test command",
+					CLIArgs: "--help",
+					CEL:     "exitCode == 0",
+					Expected: ExpectedResult{
+						Properties: make(map[string]interface{}),
 					},
+				}),
+
+			Entry("command with frontmatter",
+				&commandBlockBuilder{
+					name:        "complex test",
+					bashContent: "ast * --format json",
+					frontmatter: "cwd: ./test\nexitCode: 0\nenv:\n  DEBUG: true",
+					validations: []string{"stdout.contains(\"json\")", "exitCode == 0"},
 				},
+				FixtureTest{
+					Name:    "complex test",
+					CLIArgs: "ast * --format json",
+					CWD:     "./test",
+					CEL:     "stdout.contains(\"json\") && exitCode == 0",
+					Env:     map[string]string{"DEBUG": "true"},
+					Expected: ExpectedResult{
+						Properties: map[string]interface{}{
+							"exitCode": 0,
+						},
+					},
+				}),
+		)
+	})
+
+	Context("when parsing error cases", func() {
+		DescribeTable("should handle incomplete command structures gracefully",
+			func(content string) {
+				fixtures, err := parseMarkdownWithGoldmark(content, nil, "/tmp")
+				// Should not error, but should produce no fixtures for incomplete cases
+				Expect(err).NotTo(HaveOccurred())
+				Expect(fixtures).To(HaveLen(0))
 			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fixtureNode := buildFixtureFromCommand(tt.cmd, nil, "/tmp/test")
-			require.NotNil(t, fixtureNode)
-			
-			fixture := *fixtureNode.Test
-			assert.Equal(t, tt.expected.Name, fixture.Name)
-			assert.Equal(t, tt.expected.CLIArgs, fixture.CLIArgs)
-			assert.Equal(t, tt.expected.CWD, fixture.CWD)
-			assert.Equal(t, tt.expected.CEL, fixture.CEL)
-			
-			if tt.expected.Env != nil {
-				assert.Equal(t, tt.expected.Env, fixture.Env)
-			}
-			
-			if expectedExitCode, ok := tt.expected.Expected.Properties["exitCode"]; ok {
-				assert.Equal(t, expectedExitCode, fixture.Expected.Properties["exitCode"])
-			}
-		})
-	}
-}
-
-func TestParseMarkdownWithGoldmark_ErrorCases(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-	}{
-		{
-			name: "command without bash block",
-			content: `### command: incomplete test
+			Entry("command without bash block", `### command: incomplete test
 Validations:
-* cel: exitCode == 0`,
-		},
-		{
-			name: "command without name",
-			content: `### command:
+* cel: exitCode == 0`),
 
-` + "```bash" + `
+			Entry("command without name", `### command:
+
+`+"```bash"+`
 --help
-` + "```",
-		},
-	}
+`+"```"),
+		)
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fixtures, err := parseMarkdownWithGoldmark(tt.content, nil, "/tmp")
-			// Should not error, but should produce no fixtures for incomplete cases
-			require.NoError(t, err)
-			assert.Len(t, fixtures, 0)
-		})
-	}
-}
-
-func TestFallbackToLegacyParser(t *testing.T) {
-	// Test that legacy table parsing still works
-	content := `
+	Context("when falling back to legacy parser", func() {
+		It("should handle legacy table parsing", func() {
+			// Test that legacy table parsing still works
+			content := `
 | Test Name | CLI Args | CEL Validation |
 |-----------|----------|----------------|
 | Legacy Test | --help | stdout.contains("Usage") |
 `
 
-	fixtures, err := parseMarkdownContentWithSourceDir(content, nil, "/tmp")
-	require.NoError(t, err)
-	assert.Len(t, fixtures, 1)
+			fixtures, err := parseMarkdownContentWithSourceDir(content, nil, "/tmp")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fixtures).To(HaveLen(1))
 
-	fixture := fixtures[0]
-	assert.Equal(t, "Legacy Test", fixture.Test.Name)
-	assert.Equal(t, "--help", fixture.Test.CLIArgs)
-	assert.Equal(t, "stdout.contains(\"Usage\")", fixture.Test.CEL)
-	assert.Equal(t, "/tmp", fixture.Test.SourceDir)
-}
+			fixture := fixtures[0]
+			Expect(fixture.Test.Name).To(Equal("Legacy Test"))
+			Expect(fixture.Test.CLIArgs).To(Equal("--help"))
+			Expect(fixture.Test.CEL).To(Equal("stdout.contains(\"Usage\")"))
+			Expect(fixture.Test.SourceDir).To(Equal("/tmp"))
+		})
+	})
+})

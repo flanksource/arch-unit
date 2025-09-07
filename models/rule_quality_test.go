@@ -1,368 +1,239 @@
-package models
+package models_test
 
 import (
-	"testing"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/flanksource/arch-unit/models"
 )
 
-func TestNewQualityRule(t *testing.T) {
-	testCases := []struct {
-		name           string
-		ruleType       RuleType
-		expectDefaults bool
-	}{
-		{
-			name:           "max file length rule",
-			ruleType:       RuleTypeMaxFileLength,
-			expectDefaults: true,
-		},
-		{
-			name:           "max name length rule",
-			ruleType:       RuleTypeMaxNameLength,
-			expectDefaults: true,
-		},
-		{
-			name:           "comment quality rule",
-			ruleType:       RuleTypeCommentQuality,
-			expectDefaults: true,
-		},
-		{
-			name:           "disallowed name rule",
-			ruleType:       RuleTypeDisallowedName,
-			expectDefaults: false,
-		},
-	}
+var _ = Describe("NewQualityRule", func() {
+	DescribeTable("creating quality rules with defaults",
+		func(ruleType models.RuleType, expectDefaults bool) {
+			rule := models.NewQualityRule(ruleType)
+			Expect(rule.Type).To(Equal(ruleType))
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			rule := NewQualityRule(tc.ruleType)
-
-			if rule.Type != tc.ruleType {
-				t.Errorf("Expected rule type %s, got %s", tc.ruleType, rule.Type)
+			switch ruleType {
+			case models.RuleTypeMaxFileLength:
+				Expect(rule.MaxFileLines).To(Equal(400))
+			case models.RuleTypeMaxNameLength:
+				Expect(rule.MaxNameLength).To(Equal(50))
+			case models.RuleTypeCommentQuality:
+				Expect(rule.CommentWordLimit).To(Equal(10))
+				Expect(rule.CommentAIModel).To(Equal("claude-3-haiku-20240307"))
+				Expect(rule.MinDescriptiveScore).To(BeNumerically("==", 0.7))
 			}
+		},
+		Entry("max file length rule", models.RuleTypeMaxFileLength, true),
+		Entry("max name length rule", models.RuleTypeMaxNameLength, true),
+		Entry("comment quality rule", models.RuleTypeCommentQuality, true),
+		Entry("disallowed name rule", models.RuleTypeDisallowedName, false),
+	)
+})
 
-			switch tc.ruleType {
-			case RuleTypeMaxFileLength:
-				if rule.MaxFileLines != 400 {
-					t.Errorf("Expected default max file lines 400, got %d", rule.MaxFileLines)
-				}
-			case RuleTypeMaxNameLength:
-				if rule.MaxNameLength != 50 {
-					t.Errorf("Expected default max name length 50, got %d", rule.MaxNameLength)
-				}
-			case RuleTypeCommentQuality:
-				if rule.CommentWordLimit != 10 {
-					t.Errorf("Expected default comment word limit 10, got %d", rule.CommentWordLimit)
-				}
-				if rule.CommentAIModel != "claude-3-haiku-20240307" {
-					t.Errorf("Expected default AI model 'claude-3-haiku-20240307', got %q", rule.CommentAIModel)
-				}
-				if rule.MinDescriptiveScore != 0.7 {
-					t.Errorf("Expected default min descriptive score 0.7, got %f", rule.MinDescriptiveScore)
-				}
-			}
+var _ = Describe("QualityRule.ValidateFileLength", func() {
+	var rule *models.QualityRule
+
+	BeforeEach(func() {
+		rule = models.NewQualityRule(models.RuleTypeMaxFileLength)
+		rule.MaxFileLines = 100
+	})
+
+	DescribeTable("validating file lengths",
+		func(lineCount int, expected bool) {
+			result := rule.ValidateFileLength(lineCount)
+			Expect(result).To(Equal(expected))
+		},
+		Entry("file within limit", 50, true),
+		Entry("file at limit", 100, true),
+		Entry("file exceeds limit", 150, false),
+	)
+})
+
+var _ = Describe("QualityRule.ValidateNameLength", func() {
+	var rule *models.QualityRule
+
+	BeforeEach(func() {
+		rule = models.NewQualityRule(models.RuleTypeMaxNameLength)
+		rule.MaxNameLength = 20
+	})
+
+	DescribeTable("validating name lengths",
+		func(input string, expected bool) {
+			result := rule.ValidateNameLength(input)
+			Expect(result).To(Equal(expected))
+		},
+		Entry("name within limit", "shortName", true),
+		Entry("name at limit", "exactlyTwentyCharact", true),
+		Entry("name exceeds limit", "thisNameIsDefinitelyTooLongForTheLimit", false),
+	)
+})
+
+var _ = Describe("QualityRule.ValidateDisallowedName", func() {
+	var rule *models.QualityRule
+
+	BeforeEach(func() {
+		rule = models.NewQualityRule(models.RuleTypeDisallowedName)
+		rule.DisallowedPatterns = []string{"temp*", "*Manager", "test*"}
+	})
+
+	DescribeTable("validating disallowed names",
+		func(input string, expected bool) {
+			result := rule.ValidateDisallowedName(input)
+			Expect(result).To(Equal(expected))
+		},
+		Entry("allowed name", "goodName", true),
+		Entry("temp prefix disallowed", "tempVariable", false),
+		Entry("Manager suffix disallowed", "UserManager", false),
+		Entry("test prefix disallowed", "testFunc", false),
+		Entry("case sensitive match", "TempVariable", true),
+	)
+})
+
+var _ = Describe("QualityRule getter methods", func() {
+	Context("with comment quality rule", func() {
+		var rule *models.QualityRule
+
+		BeforeEach(func() {
+			rule = models.NewQualityRule(models.RuleTypeCommentQuality)
 		})
-	}
-}
 
-func TestQualityRuleValidateFileLength(t *testing.T) {
-	rule := NewQualityRule(RuleTypeMaxFileLength)
-	rule.MaxFileLines = 100
-
-	testCases := []struct {
-		name      string
-		lineCount int
-		expected  bool
-	}{
-		{
-			name:      "file within limit",
-			lineCount: 50,
-			expected:  true,
-		},
-		{
-			name:      "file at limit",
-			lineCount: 100,
-			expected:  true,
-		},
-		{
-			name:      "file exceeds limit",
-			lineCount: 150,
-			expected:  false,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			result := rule.ValidateFileLength(tc.lineCount)
-			if result != tc.expected {
-				t.Errorf("ValidateFileLength(%d) = %v, expected %v", tc.lineCount, result, tc.expected)
-			}
+		It("should return default values initially", func() {
+			Expect(rule.GetCommentWordLimit()).To(Equal(10))
+			Expect(rule.GetCommentAIModel()).To(Equal("claude-3-haiku-20240307"))
+			Expect(rule.GetMinDescriptiveScore()).To(BeNumerically("==", 0.7))
 		})
-	}
-}
 
-func TestQualityRuleValidateNameLength(t *testing.T) {
-	rule := NewQualityRule(RuleTypeMaxNameLength)
-	rule.MaxNameLength = 20
+		It("should return custom values when set", func() {
+			rule.CommentWordLimit = 15
+			rule.CommentAIModel = "custom-model"
+			rule.MinDescriptiveScore = 0.8
 
-	testCases := []struct {
-		name     string
-		input    string
-		expected bool
-	}{
-		{
-			name:     "name within limit",
-			input:    "shortName",
-			expected: true,
-		},
-		{
-			name:     "name at limit",
-			input:    "exactlyTwentyCharact", // 20 chars
-			expected: true,
-		},
-		{
-			name:     "name exceeds limit",
-			input:    "thisNameIsDefinitelyTooLongForTheLimit", // >20 chars
-			expected: false,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			result := rule.ValidateNameLength(tc.input)
-			if result != tc.expected {
-				t.Errorf("ValidateNameLength(%q) = %v, expected %v", tc.input, result, tc.expected)
-			}
+			Expect(rule.GetCommentWordLimit()).To(Equal(15))
+			Expect(rule.GetCommentAIModel()).To(Equal("custom-model"))
+			Expect(rule.GetMinDescriptiveScore()).To(BeNumerically("==", 0.8))
 		})
-	}
-}
+	})
 
-func TestQualityRuleValidateDisallowedName(t *testing.T) {
-	rule := NewQualityRule(RuleTypeDisallowedName)
-	rule.DisallowedPatterns = []string{"temp*", "*Manager", "test*"}
+	Context("with zero-value rule", func() {
+		It("should return defaults for zero/empty values", func() {
+			rule := &models.QualityRule{}
 
-	testCases := []struct {
-		name     string
-		input    string
-		expected bool
-	}{
-		{
-			name:     "allowed name",
-			input:    "goodName",
-			expected: true,
-		},
-		{
-			name:     "temp prefix disallowed",
-			input:    "tempVariable",
-			expected: false,
-		},
-		{
-			name:     "Manager suffix disallowed",
-			input:    "UserManager",
-			expected: false,
-		},
-		{
-			name:     "test prefix disallowed",
-			input:    "testFunc",
-			expected: false,
-		},
-		{
-			name:     "case sensitive match",
-			input:    "TempVariable", // Capital T
-			expected: true,           // Should not match "temp*"
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			result := rule.ValidateDisallowedName(tc.input)
-			if result != tc.expected {
-				t.Errorf("ValidateDisallowedName(%q) = %v, expected %v", tc.input, result, tc.expected)
-			}
+			Expect(rule.GetCommentWordLimit()).To(Equal(10))
+			Expect(rule.GetCommentAIModel()).To(Equal("claude-3-haiku-20240307"))
+			Expect(rule.GetMinDescriptiveScore()).To(BeNumerically("==", 0.7))
 		})
-	}
-}
+	})
+})
 
-func TestQualityRuleGetMethods(t *testing.T) {
-	rule := NewQualityRule(RuleTypeCommentQuality)
+var _ = Describe("NewQualityRuleSet", func() {
+	It("should create a new rule set with given path", func() {
+		path := "/test/path"
+		ruleSet := models.NewQualityRuleSet(path)
 
-	// Test default values
-	if rule.GetCommentWordLimit() != 10 {
-		t.Errorf("Expected default word limit 10, got %d", rule.GetCommentWordLimit())
-	}
+		Expect(ruleSet.Path).To(Equal(path))
+		Expect(ruleSet.QualityRules).To(BeEmpty())
+		Expect(ruleSet.Rules).To(BeEmpty())
+	})
+})
 
-	if rule.GetCommentAIModel() != "claude-3-haiku-20240307" {
-		t.Errorf("Expected default AI model 'claude-3-haiku-20240307', got %q", rule.GetCommentAIModel())
-	}
+var _ = Describe("QualityRuleSet", func() {
+	Describe("AddQualityRule and GetQualityRules", func() {
+		var ruleSet *models.QualityRuleSet
 
-	if rule.GetMinDescriptiveScore() != 0.7 {
-		t.Errorf("Expected default min descriptive score 0.7, got %f", rule.GetMinDescriptiveScore())
-	}
+		BeforeEach(func() {
+			ruleSet = models.NewQualityRuleSet("/test")
+		})
 
-	// Test custom values
-	rule.CommentWordLimit = 15
-	rule.CommentAIModel = "custom-model"
-	rule.MinDescriptiveScore = 0.8
+		It("should add and retrieve rules correctly", func() {
+			fileRule := models.NewQualityRule(models.RuleTypeMaxFileLength)
+			nameRule := models.NewQualityRule(models.RuleTypeMaxNameLength)
+			commentRule := models.NewQualityRule(models.RuleTypeCommentQuality)
 
-	if rule.GetCommentWordLimit() != 15 {
-		t.Errorf("Expected custom word limit 15, got %d", rule.GetCommentWordLimit())
-	}
+			ruleSet.AddQualityRule(fileRule)
+			ruleSet.AddQualityRule(nameRule)
+			ruleSet.AddQualityRule(commentRule)
 
-	if rule.GetCommentAIModel() != "custom-model" {
-		t.Errorf("Expected custom AI model 'custom-model', got %q", rule.GetCommentAIModel())
-	}
+			Expect(ruleSet.QualityRules).To(HaveLen(3))
+			Expect(ruleSet.Rules).To(HaveLen(3))
 
-	if rule.GetMinDescriptiveScore() != 0.8 {
-		t.Errorf("Expected custom min descriptive score 0.8, got %f", rule.GetMinDescriptiveScore())
-	}
-}
+			fileRules := ruleSet.GetQualityRules(models.RuleTypeMaxFileLength)
+			Expect(fileRules).To(HaveLen(1))
 
-func TestQualityRuleZeroValues(t *testing.T) {
-	rule := &QualityRule{}
+			nameRules := ruleSet.GetQualityRules(models.RuleTypeMaxNameLength)
+			Expect(nameRules).To(HaveLen(1))
 
-	// Test that zero/empty values return defaults
-	if rule.GetCommentWordLimit() != 10 {
-		t.Errorf("Expected default word limit for zero value, got %d", rule.GetCommentWordLimit())
-	}
+			disallowedRules := ruleSet.GetQualityRules(models.RuleTypeDisallowedName)
+			Expect(disallowedRules).To(BeEmpty())
+		})
+	})
 
-	if rule.GetCommentAIModel() != "claude-3-haiku-20240307" {
-		t.Errorf("Expected default AI model for empty value, got %q", rule.GetCommentAIModel())
-	}
+	Describe("GetMaxValues", func() {
+		var ruleSet *models.QualityRuleSet
 
-	if rule.GetMinDescriptiveScore() != 0.7 {
-		t.Errorf("Expected default min descriptive score for zero value, got %f", rule.GetMinDescriptiveScore())
-	}
-}
+		BeforeEach(func() {
+			ruleSet = models.NewQualityRuleSet("/test")
+		})
 
-func TestNewQualityRuleSet(t *testing.T) {
-	path := "/test/path"
-	ruleSet := NewQualityRuleSet(path)
+		It("should return 0 when no rules exist", func() {
+			Expect(ruleSet.GetMaxFileLength()).To(Equal(0))
+			Expect(ruleSet.GetMaxNameLength()).To(Equal(0))
+		})
 
-	if ruleSet.Path != path {
-		t.Errorf("Expected path %q, got %q", path, ruleSet.Path)
-	}
+		It("should return max values when rules exist", func() {
+			fileRule := models.NewQualityRule(models.RuleTypeMaxFileLength)
+			fileRule.MaxFileLines = 200
 
-	if len(ruleSet.QualityRules) != 0 {
-		t.Errorf("Expected empty quality rules, got %d", len(ruleSet.QualityRules))
-	}
+			nameRule := models.NewQualityRule(models.RuleTypeMaxNameLength)
+			nameRule.MaxNameLength = 30
 
-	if len(ruleSet.Rules) != 0 {
-		t.Errorf("Expected empty base rules, got %d", len(ruleSet.Rules))
-	}
-}
+			ruleSet.AddQualityRule(fileRule)
+			ruleSet.AddQualityRule(nameRule)
 
-func TestQualityRuleSetAddAndGet(t *testing.T) {
-	ruleSet := NewQualityRuleSet("/test")
+			Expect(ruleSet.GetMaxFileLength()).To(Equal(200))
+			Expect(ruleSet.GetMaxNameLength()).To(Equal(30))
+		})
+	})
 
-	// Add different types of rules
-	fileRule := NewQualityRule(RuleTypeMaxFileLength)
-	nameRule := NewQualityRule(RuleTypeMaxNameLength)
-	commentRule := NewQualityRule(RuleTypeCommentQuality)
+	Describe("GetCommentQualityRule", func() {
+		var ruleSet *models.QualityRuleSet
 
-	ruleSet.AddQualityRule(fileRule)
-	ruleSet.AddQualityRule(nameRule)
-	ruleSet.AddQualityRule(commentRule)
+		BeforeEach(func() {
+			ruleSet = models.NewQualityRuleSet("/test")
+		})
 
-	// Test total count
-	if len(ruleSet.QualityRules) != 3 {
-		t.Errorf("Expected 3 quality rules, got %d", len(ruleSet.QualityRules))
-	}
+		It("should return nil when no comment quality rule exists", func() {
+			Expect(ruleSet.GetCommentQualityRule()).To(BeNil())
+		})
 
-	if len(ruleSet.Rules) != 3 {
-		t.Errorf("Expected 3 base rules, got %d", len(ruleSet.Rules))
-	}
+		It("should return the comment quality rule when it exists", func() {
+			commentRule := models.NewQualityRule(models.RuleTypeCommentQuality)
+			commentRule.CommentWordLimit = 15
 
-	// Test getting specific types
-	fileRules := ruleSet.GetQualityRules(RuleTypeMaxFileLength)
-	if len(fileRules) != 1 {
-		t.Errorf("Expected 1 file length rule, got %d", len(fileRules))
-	}
+			ruleSet.AddQualityRule(commentRule)
 
-	nameRules := ruleSet.GetQualityRules(RuleTypeMaxNameLength)
-	if len(nameRules) != 1 {
-		t.Errorf("Expected 1 name length rule, got %d", len(nameRules))
-	}
+			retrievedRule := ruleSet.GetCommentQualityRule()
+			Expect(retrievedRule).NotTo(BeNil())
+			Expect(retrievedRule.CommentWordLimit).To(Equal(15))
+		})
+	})
+})
 
-	// Test getting non-existent type
-	disallowedRules := ruleSet.GetQualityRules(RuleTypeDisallowedName)
-	if len(disallowedRules) != 0 {
-		t.Errorf("Expected 0 disallowed name rules, got %d", len(disallowedRules))
-	}
-}
+var _ = Describe("Performance tests", func() {
+	It("should validate name length efficiently", func() {
+		rule := models.NewQualityRule(models.RuleTypeMaxNameLength)
+		name := "averageLengthFunctionName"
 
-func TestQualityRuleSetGetMaxValues(t *testing.T) {
-	ruleSet := NewQualityRuleSet("/test")
+		result := rule.ValidateNameLength(name)
+		Expect(result).To(BeTrue())
+	})
 
-	// Test with no rules
-	if ruleSet.GetMaxFileLength() != 0 {
-		t.Errorf("Expected 0 for no file length rules, got %d", ruleSet.GetMaxFileLength())
-	}
+	It("should validate disallowed names efficiently", func() {
+		rule := models.NewQualityRule(models.RuleTypeDisallowedName)
+		rule.DisallowedPatterns = []string{"temp*", "*Manager", "test*", "data*", "*Util"}
+		name := "averageFunctionName"
 
-	if ruleSet.GetMaxNameLength() != 0 {
-		t.Errorf("Expected 0 for no name length rules, got %d", ruleSet.GetMaxNameLength())
-	}
-
-	// Add rules with custom values
-	fileRule := NewQualityRule(RuleTypeMaxFileLength)
-	fileRule.MaxFileLines = 200
-
-	nameRule := NewQualityRule(RuleTypeMaxNameLength)
-	nameRule.MaxNameLength = 30
-
-	ruleSet.AddQualityRule(fileRule)
-	ruleSet.AddQualityRule(nameRule)
-
-	// Test with rules
-	if ruleSet.GetMaxFileLength() != 200 {
-		t.Errorf("Expected max file length 200, got %d", ruleSet.GetMaxFileLength())
-	}
-
-	if ruleSet.GetMaxNameLength() != 30 {
-		t.Errorf("Expected max name length 30, got %d", ruleSet.GetMaxNameLength())
-	}
-}
-
-func TestQualityRuleSetGetCommentQualityRule(t *testing.T) {
-	ruleSet := NewQualityRuleSet("/test")
-
-	// Test with no comment quality rule
-	if ruleSet.GetCommentQualityRule() != nil {
-		t.Errorf("Expected nil for no comment quality rules")
-	}
-
-	// Add comment quality rule
-	commentRule := NewQualityRule(RuleTypeCommentQuality)
-	commentRule.CommentWordLimit = 15
-
-	ruleSet.AddQualityRule(commentRule)
-
-	// Test with rule
-	retrievedRule := ruleSet.GetCommentQualityRule()
-	if retrievedRule == nil {
-		t.Fatalf("Expected comment quality rule, got nil")
-	}
-
-	if retrievedRule.CommentWordLimit != 15 {
-		t.Errorf("Expected word limit 15, got %d", retrievedRule.CommentWordLimit)
-	}
-}
-
-func BenchmarkValidateNameLength(b *testing.B) {
-	rule := NewQualityRule(RuleTypeMaxNameLength)
-	name := "averageLengthFunctionName"
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		rule.ValidateNameLength(name)
-	}
-}
-
-func BenchmarkValidateDisallowedName(b *testing.B) {
-	rule := NewQualityRule(RuleTypeDisallowedName)
-	rule.DisallowedPatterns = []string{"temp*", "*Manager", "test*", "data*", "*Util"}
-	name := "averageFunctionName"
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		rule.ValidateDisallowedName(name)
-	}
-}
+		result := rule.ValidateDisallowedName(name)
+		Expect(result).To(BeTrue())
+	})
+})

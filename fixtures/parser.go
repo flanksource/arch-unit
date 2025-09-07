@@ -405,32 +405,24 @@ func GetFixtureByName(fixtures []FixtureTest, name string) *FixtureTest {
 
 // ParseMarkdownFixturesWithTree parses markdown files into a hierarchical tree structure
 func ParseMarkdownFixturesWithTree(filePath string) (*FixtureNode, error) {
-	tree := &FixtureNode{
+	fileTree := &FixtureNode{
 		Name:     filepath.Base(filePath),
 		Type:     FileNode,
 		Children: make([]*FixtureNode, 0),
 	}
 
-	// Parse the markdown content
-	fixtures, err := ParseMarkdownFixtures(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse markdown fixtures: %w", err)
-	}
+	// Get the directory containing the fixture file
+	sourceDir := filepath.Dir(filePath)
 
-	// If no fixtures found, return empty tree
-	if len(fixtures) == 0 {
-		return tree, nil
-	}
-
-	// Parse the file again to extract sections
+	// Parse the file
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file for section parsing: %w", err)
+		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
 	// Parse front-matter and get content
-	_, content, err := parseFrontMatter(file)
+	frontMatter, content, err := parseFrontMatter(file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse front-matter: %w", err)
 	}
@@ -446,13 +438,29 @@ func ParseMarkdownFixturesWithTree(filePath string) (*FixtureNode, error) {
 		content = strings.Join(lines, "\n")
 	}
 
-	// Build tree structure with sections
-	err = parseMarkdownContentWithSections(content, tree, fixtures)
+	// Use the new AST-based parser to build the tree directly
+	contentTree, err := parseMarkdownWithGoldmarkTree(content, frontMatter, sourceDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse sections: %w", err)
+		// Fall back to legacy parsing if AST parsing fails
+		fixtures, parseErr := parseMarkdownContentLegacy(content, frontMatter, sourceDir)
+		if parseErr != nil {
+			return nil, fmt.Errorf("both AST and legacy parsing failed. AST error: %w, Legacy error: %v", err, parseErr)
+		}
+		
+		// Build tree using legacy method
+		legacyErr := parseMarkdownContentWithSections(content, fileTree, fixtures)
+		if legacyErr != nil {
+			return nil, fmt.Errorf("failed to build tree from legacy parsing: %w", legacyErr)
+		}
+		return fileTree, nil
 	}
 
-	return tree, nil
+	// Move children from content tree to file tree
+	for _, child := range contentTree.Children {
+		fileTree.AddChild(child)
+	}
+
+	return fileTree, nil
 }
 
 // parseMarkdownContentWithSections parses markdown content and builds section hierarchy

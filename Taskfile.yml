@@ -58,10 +58,7 @@ tasks:
   test:
     desc: Run tests
     cmds:
-      # Use centralized exclusion patterns aligned with linter exclusions
-      - go test -v -race -coverprofile=coverage.out $(go list ./... | grep -v '/examples/' | grep -v '/hack/' | grep -v '/vendor/' | grep -v '/build/' | grep -v '/dist/' | grep -v '/__pycache__/' | grep -v '/.git/' | grep -v '/node_modules/')
-    env:
-      CGO_ENABLED: 1
+      - ginkgo run --poll-progress-after=10s --json-report test-results.json --skip-package=examples ./...
 
   test:unit:
     desc: Run unit tests only

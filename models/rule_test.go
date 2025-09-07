@@ -1,154 +1,64 @@
-package models
+package models_test
 
 import (
-	"testing"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/flanksource/arch-unit/models"
 )
 
-func TestRuleMatches(t *testing.T) {
-	tests := []struct {
-		name     string
-		rule     Rule
-		pkg      string
-		method   string
-		expected bool
-	}{
-		{
-			name:     "exact package match",
-			rule:     Rule{Pattern: "internal"},
-			pkg:      "internal",
-			method:   "",
-			expected: true,
+var _ = Describe("Rule.Matches", func() {
+	DescribeTable("matching rules against packages and methods",
+		func(rule models.Rule, pkg string, method string, expected bool) {
+			result := rule.Matches(pkg, method)
+			Expect(result).To(Equal(expected))
 		},
-		{
-			name:     "package with slash match",
-			rule:     Rule{Pattern: "internal/"},
-			pkg:      "internal/utils",
-			method:   "",
-			expected: true,
-		},
-		{
-			name:     "wildcard suffix match",
-			rule:     Rule{Pattern: "*_test"},
-			pkg:      "utils_test",
-			method:   "",
-			expected: true,
-		},
-		{
-			name:     "wildcard prefix match",
-			rule:     Rule{Pattern: "test*"},
-			pkg:      "testing",
-			method:   "",
-			expected: true,
-		},
-		{
-			name:     "method specific match",
-			rule:     Rule{Package: "fmt", Method: "Println"},
-			pkg:      "fmt",
-			method:   "Println",
-			expected: true,
-		},
-		{
-			name:     "method wildcard match",
-			rule:     Rule{Package: "*", Method: "Test*"},
-			pkg:      "anything",
-			method:   "TestSomething",
-			expected: true,
-		},
-		{
-			name:     "no match different package",
-			rule:     Rule{Pattern: "internal"},
-			pkg:      "external",
-			method:   "",
-			expected: false,
-		},
-		{
-			name:     "no match different method",
-			rule:     Rule{Package: "fmt", Method: "Println"},
-			pkg:      "fmt",
-			method:   "Printf",
-			expected: false,
-		},
-	}
+		Entry("exact package match", models.Rule{Pattern: "internal"}, "internal", "", true),
+		Entry("package with slash match", models.Rule{Pattern: "internal/"}, "internal/utils", "", true),
+		Entry("wildcard suffix match", models.Rule{Pattern: "*_test"}, "utils_test", "", true),
+		Entry("wildcard prefix match", models.Rule{Pattern: "test*"}, "testing", "", true),
+		Entry("method specific match", models.Rule{Package: "fmt", Method: "Println"}, "fmt", "Println", true),
+		Entry("method wildcard match", models.Rule{Package: "*", Method: "Test*"}, "anything", "TestSomething", true),
+		Entry("no match different package", models.Rule{Pattern: "internal"}, "external", "", false),
+		Entry("no match different method", models.Rule{Package: "fmt", Method: "Println"}, "fmt", "Printf", false),
+	)
+})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.rule.Matches(tt.pkg, tt.method)
-			if result != tt.expected {
-				t.Errorf("Matches() = %v, want %v", result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestRuleSetIsAllowed(t *testing.T) {
-	tests := []struct {
-		name         string
-		ruleSet      RuleSet
-		pkg          string
-		method       string
-		allowed      bool
-		hasViolation bool
-	}{
-		{
-			name: "deny rule blocks access",
-			ruleSet: RuleSet{
-				Rules: []Rule{
-					{Type: RuleTypeDeny, Pattern: "internal"},
+var _ = Describe("RuleSet.IsAllowed", func() {
+	DescribeTable("checking access permissions with different rule sets",
+		func(ruleSet models.RuleSet, pkg string, method string, allowed bool, hasViolation bool) {
+			allowedResult, rule := ruleSet.IsAllowed(pkg, method)
+			Expect(allowedResult).To(Equal(allowed))
+			Expect(rule != nil).To(Equal(hasViolation))
+		},
+		Entry("deny rule blocks access",
+			models.RuleSet{
+				Rules: []models.Rule{
+					{Type: models.RuleTypeDeny, Pattern: "internal"},
 				},
 			},
-			pkg:          "internal",
-			method:       "",
-			allowed:      false,
-			hasViolation: true,
-		},
-		{
-			name: "override rule allows previously denied",
-			ruleSet: RuleSet{
-				Rules: []Rule{
-					{Type: RuleTypeDeny, Pattern: "internal"},
-					{Type: RuleTypeOverride, Pattern: "internal/api"},
+			"internal", "", false, true),
+		Entry("override rule allows previously denied",
+			models.RuleSet{
+				Rules: []models.Rule{
+					{Type: models.RuleTypeDeny, Pattern: "internal"},
+					{Type: models.RuleTypeOverride, Pattern: "internal/api"},
 				},
 			},
-			pkg:          "internal/api",
-			method:       "",
-			allowed:      true,
-			hasViolation: false,
-		},
-		{
-			name: "no matching rules allows access",
-			ruleSet: RuleSet{
-				Rules: []Rule{
-					{Type: RuleTypeDeny, Pattern: "internal"},
+			"internal/api", "", true, false),
+		Entry("no matching rules allows access",
+			models.RuleSet{
+				Rules: []models.Rule{
+					{Type: models.RuleTypeDeny, Pattern: "internal"},
 				},
 			},
-			pkg:          "external",
-			method:       "",
-			allowed:      true,
-			hasViolation: false,
-		},
-		{
-			name: "method specific deny",
-			ruleSet: RuleSet{
-				Rules: []Rule{
-					{Type: RuleTypeDeny, Package: "fmt", Method: "Println"},
+			"external", "", true, false),
+		Entry("method specific deny",
+			models.RuleSet{
+				Rules: []models.Rule{
+					{Type: models.RuleTypeDeny, Package: "fmt", Method: "Println"},
 				},
 			},
-			pkg:          "fmt",
-			method:       "Println",
-			allowed:      false,
-			hasViolation: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			allowed, rule := tt.ruleSet.IsAllowed(tt.pkg, tt.method)
-			if allowed != tt.allowed {
-				t.Errorf("IsAllowed() allowed = %v, want %v", allowed, tt.allowed)
-			}
-			if (rule != nil) != tt.hasViolation {
-				t.Errorf("IsAllowed() rule = %v, want violation = %v", rule, tt.hasViolation)
-			}
-		})
-	}
-}
+			"fmt", "Println", false, true),
+	)
+})

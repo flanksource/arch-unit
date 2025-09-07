@@ -148,29 +148,18 @@ func (e *CELEvaluator) EvaluateResult(expression string, result map[string]inter
 		return true, nil
 	}
 
-	// Prepare template data with both result map and individual fields
-	templateData := map[string]interface{}{
-		"result": result,
-	}
-
-	// Also expose individual fields directly for convenience
+	// Prepare template data - expose individual fields directly without the result wrapper
+	// This matches what gomplate expects and avoids overlapping identifier errors
+	templateData := make(map[string]interface{})
 	for key, value := range result {
 		templateData[key] = value
 	}
 
-	// Use gomplate's CEL evaluation with proper type information
-	// Build CelEnvs dynamically based on available data
-	var celEnvs []cel.EnvOption
-	celEnvs = append(celEnvs, cel.Variable("result", cel.MapType(cel.StringType, cel.DynType)))
-	
-	// Add individual field variables with dynamic types
-	for key := range result {
-		celEnvs = append(celEnvs, cel.Variable(key, cel.DynType))
-	}
-
+	// Use RunExpression without explicit CelEnvs - let gomplate auto-detect variables
+	// This avoids the overlapping identifier issue since gomplate handles variable declarations internally
 	tmpl := gomplate.Template{
 		Expression: expression,
-		CelEnvs:    celEnvs,
+		// Don't specify CelEnvs - let gomplate infer variables from templateData
 	}
 
 	// Use RunExpression for CEL expressions, not RunTemplate

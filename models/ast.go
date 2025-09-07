@@ -223,7 +223,7 @@ type ASTExporter interface {
 // ASTNode represents a node in the AST stored in database
 type ASTNode struct {
 	ID                   int64         `json:"id" gorm:"primaryKey;autoIncrement"`
-	ParentID             int64         `json:"parent_id,omitempty" gorm:"column:parent_id;index"`     // Nullable for root nodes, For a field, parent is the struct/class, for a struct/class parent is package,
+	ParentID             int64         `json:"parent_id,omitempty" gorm:"column:parent_id;index"`         // Nullable for root nodes, For a field, parent is the struct/class, for a struct/class parent is package,
 	DependencyID         *int64        `json:"dependency_id,omitempty" gorm:"column:dependency_id;index"` // Id of the dependency that contains this node
 	FilePath             string        `json:"file_path" gorm:"column:file_path;not null;index"`
 	PackageName          string        `json:"package_name,omitempty" gorm:"column:package_name;index"`
@@ -237,7 +237,7 @@ type ASTNode struct {
 	ParameterCount       int           `json:"parameter_count" gorm:"column:parameter_count;default:0"`
 	ReturnCount          int           `json:"return_count" gorm:"column:return_count;default:0"`
 	LineCount            int           `json:"line_count" gorm:"column:line_count;default:0"`
-	Imports              []string      `json:"imports,omitempty" gorm:"-"`       // List of import paths - not stored in DB
+	Imports              []string      `json:"imports,omitempty" gorm:"-"`                     // List of import paths - not stored in DB
 	Parameters           []Parameter   `json:"parameters,omitempty" gorm:"serializer:json"`    // Detailed parameter information
 	ReturnValues         []ReturnValue `json:"return_values,omitempty" gorm:"serializer:json"` // Return value information
 	LastModified         time.Time     `json:"last_modified" gorm:"column:last_modified;index"`
@@ -260,7 +260,7 @@ type ASTRelationship struct {
 	LineNo           int              `json:"line_no,omitempty" gorm:"column:line_no;index"`
 	RelationshipType RelationshipType `json:"relationship_type" gorm:"column:relationship_type;not null;index"`
 	Comments         string           `json:"comments,omitempty" gorm:"column:comments"` // Additional comments or context found in the code
-	Text             string           `json:"text" gorm:"column:text"`               // Text of the relationship, could be the line(s) with the function call, the line in a go.mod or Chart.yaml=
+	Text             string           `json:"text" gorm:"column:text"`                   // Text of the relationship, could be the line(s) with the function call, the line in a go.mod or Chart.yaml=
 }
 
 // TableName specifies the table name for ASTRelationship
@@ -294,8 +294,8 @@ type LibraryNode struct {
 	Class     string `json:"class,omitempty" gorm:"column:class;index"`
 	Method    string `json:"method,omitempty" gorm:"column:method;index"`
 	Field     string `json:"field,omitempty" gorm:"column:field"`
-	NodeType  string `json:"node_type" gorm:"column:node_type;not null;index"`           // 'package', 'class', 'method', 'field'
-	Language  string `json:"language,omitempty" gorm:"column:language"`  // 'go', 'python', 'javascript', etc.
+	NodeType  string `json:"node_type" gorm:"column:node_type;not null;index"`  // 'package', 'class', 'method', 'field'
+	Language  string `json:"language,omitempty" gorm:"column:language"`         // 'go', 'python', 'javascript', etc.
 	Framework string `json:"framework,omitempty" gorm:"column:framework;index"` // 'stdlib', 'gin', 'django', 'react', etc.
 }
 
@@ -334,7 +334,7 @@ type LibraryRelationship struct {
 	LibraryID        int64        `json:"library_id" gorm:"column:library_id;not null;index"`
 	LineNo           int          `json:"line_no" gorm:"column:line_no;index"`
 	RelationshipType string       `json:"relationship_type" gorm:"column:relationship_type;not null;index"` // 'import', 'call', 'reference', 'extends'
-	Text             string       `json:"text,omitempty" gorm:"column:text"`    // The actual usage text
+	Text             string       `json:"text,omitempty" gorm:"column:text"`                                // The actual usage text
 	LibraryNode      *LibraryNode `json:"library_node,omitempty" gorm:"foreignKey:LibraryID;references:ID"`
 }
 
@@ -464,24 +464,24 @@ func (n *ASTNode) AsMap() map[string]interface{} {
 		return nil
 	}
 	return map[string]interface{}{
-		"id":                    n.ID,
-		"file_path":             n.FilePath,
-		"package_name":          n.PackageName,
-		"type_name":             n.TypeName,
-		"method_name":           n.MethodName,
-		"field_name":            n.FieldName,
-		"node_type":             string(n.NodeType),
-		"start_line":            n.StartLine,
-		"end_line":              n.EndLine,
-		"cyclomatic_complexity": n.CyclomaticComplexity,
-		"parameter_count":       len(n.Parameters),
-		"return_count":          len(n.ReturnValues),
-		"line_count":            n.LineCount,
-		"import_count":          len(n.Imports),
 		"call_count":            0, // This would need to be calculated from relationships
+		"cyclomatic_complexity": n.CyclomaticComplexity,
+		"end_line":              n.EndLine,
+		"field_name":            n.FieldName,
+		"file_path":             n.FilePath,
+		"id":                    n.ID,
+		"import_count":          len(n.Imports),
 		"imports":               n.Imports,
+		"line_count":            n.LineCount,
+		"method_name":           n.MethodName,
+		"node_type":             string(n.NodeType),
+		"package_name":          n.PackageName,
+		"parameter_count":       len(n.Parameters),
 		"parameters":            n.Parameters,
+		"return_count":          len(n.ReturnValues),
 		"return_values":         n.ReturnValues,
+		"start_line":            n.StartLine,
+		"type_name":             n.TypeName,
 	}
 }
 

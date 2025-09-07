@@ -1,184 +1,98 @@
-package models
+package models_test
 
 import (
-	"testing"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/flanksource/arch-unit/models"
 )
 
-func TestRule_AppliesToFile(t *testing.T) {
-	tests := []struct {
-		name        string
-		filePattern string
-		filePath    string
-		shouldMatch bool
-	}{
-		{
-			name:        "empty pattern matches all files",
-			filePattern: "",
-			filePath:    "any/file.go",
-			shouldMatch: true,
-		},
-		{
-			name:        "exact filename match",
-			filePattern: "main.go",
-			filePath:    "cmd/app/main.go",
-			shouldMatch: true,
-		},
-		{
-			name:        "glob pattern with asterisk",
-			filePattern: "*_test.go",
-			filePath:    "service/user_test.go",
-			shouldMatch: true,
-		},
-		{
-			name:        "glob pattern doesn't match",
-			filePattern: "*_test.go",
-			filePath:    "service/user.go",
-			shouldMatch: false,
-		},
-		{
-			name:        "path pattern with directory",
-			filePattern: "cmd/*/main.go",
-			filePath:    "cmd/app/main.go",
-			shouldMatch: true,
-		},
-		{
-			name:        "path pattern with multiple directories",
-			filePattern: "internal/*/service/*.go",
-			filePath:    "internal/user/service/handler.go",
-			shouldMatch: true,
-		},
-		{
-			name:        "path pattern doesn't match different structure",
-			filePattern: "cmd/*/main.go",
-			filePath:    "pkg/app/main.go",
-			shouldMatch: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rule := Rule{
-				FilePattern: tt.filePattern,
+var _ = Describe("Rule.AppliesToFile", func() {
+	DescribeTable("checking file pattern matching",
+		func(filePattern string, filePath string, shouldMatch bool) {
+			rule := models.Rule{
+				FilePattern: filePattern,
 			}
-			if got := rule.AppliesToFile(tt.filePath); got != tt.shouldMatch {
-				t.Errorf("AppliesToFile() = %v, want %v", got, tt.shouldMatch)
-			}
-		})
-	}
-}
+			result := rule.AppliesToFile(filePath)
+			Expect(result).To(Equal(shouldMatch))
+		},
+		Entry("empty pattern matches all files", "", "any/file.go", true),
+		Entry("exact filename match", "main.go", "cmd/app/main.go", true),
+		Entry("glob pattern with asterisk", "*_test.go", "service/user_test.go", true),
+		Entry("glob pattern doesn't match", "*_test.go", "service/user.go", false),
+		Entry("path pattern with directory", "cmd/*/main.go", "cmd/app/main.go", true),
+		Entry("path pattern with multiple directories", "internal/*/service/*.go", "internal/user/service/handler.go", true),
+		Entry("path pattern doesn't match different structure", "cmd/*/main.go", "pkg/app/main.go", false),
+	)
+})
 
-func TestRuleSet_IsAllowedForFile(t *testing.T) {
-	tests := []struct {
-		name        string
-		rules       []Rule
-		pkg         string
-		method      string
-		filePath    string
-		wantAllowed bool
-		wantRule    bool
-	}{
-		{
-			name: "file-specific deny rule blocks in matching files",
-			rules: []Rule{
+var _ = Describe("RuleSet.IsAllowedForFile", func() {
+	DescribeTable("checking file-specific rule enforcement",
+		func(rules []models.Rule, pkg string, method string, filePath string, wantAllowed bool, wantRule bool) {
+			rs := &models.RuleSet{
+				Rules: rules,
+			}
+			gotAllowed, gotRule := rs.IsAllowedForFile(pkg, method, filePath)
+			Expect(gotAllowed).To(Equal(wantAllowed))
+			Expect(gotRule != nil).To(Equal(wantRule))
+		},
+		Entry("file-specific deny rule blocks in matching files",
+			[]models.Rule{
 				{
-					Type:        RuleTypeDeny,
+					Type:        models.RuleTypeDeny,
 					Package:     "testing",
 					FilePattern: "*_service.go",
 				},
 			},
-			pkg:         "testing",
-			method:      "T",
-			filePath:    "user_service.go",
-			wantAllowed: false,
-			wantRule:    true,
-		},
-		{
-			name: "file-specific deny rule allows in non-matching files",
-			rules: []Rule{
+			"testing", "T", "user_service.go", false, true),
+		Entry("file-specific deny rule allows in non-matching files",
+			[]models.Rule{
 				{
-					Type:        RuleTypeDeny,
+					Type:        models.RuleTypeDeny,
 					Package:     "testing",
 					FilePattern: "*_service.go",
 				},
 			},
-			pkg:         "testing",
-			method:      "T",
-			filePath:    "user_test.go",
-			wantAllowed: true,
-			wantRule:    false,
-		},
-		{
-			name: "file-specific override allows previously denied",
-			rules: []Rule{
+			"testing", "T", "user_test.go", true, false),
+		Entry("file-specific override allows previously denied",
+			[]models.Rule{
 				{
-					Type:    RuleTypeDeny,
+					Type:    models.RuleTypeDeny,
 					Package: "fmt",
 				},
 				{
-					Type:        RuleTypeOverride,
+					Type:        models.RuleTypeOverride,
 					Package:     "fmt",
 					FilePattern: "*_test.go",
 				},
 			},
-			pkg:         "fmt",
-			method:      "Println",
-			filePath:    "user_test.go",
-			wantAllowed: true,
-			wantRule:    false,
-		},
-		{
-			name: "file-specific override doesn't affect other files",
-			rules: []Rule{
+			"fmt", "Println", "user_test.go", true, false),
+		Entry("file-specific override doesn't affect other files",
+			[]models.Rule{
 				{
-					Type:    RuleTypeDeny,
+					Type:    models.RuleTypeDeny,
 					Package: "fmt",
 				},
 				{
-					Type:        RuleTypeOverride,
+					Type:        models.RuleTypeOverride,
 					Package:     "fmt",
 					FilePattern: "*_test.go",
 				},
 			},
-			pkg:         "fmt",
-			method:      "Println",
-			filePath:    "user_service.go",
-			wantAllowed: false,
-			wantRule:    true,
-		},
-		{
-			name: "multiple file patterns with different rules",
-			rules: []Rule{
+			"fmt", "Println", "user_service.go", false, true),
+		Entry("multiple file patterns with different rules",
+			[]models.Rule{
 				{
-					Type:        RuleTypeDeny,
+					Type:        models.RuleTypeDeny,
 					Package:     "os",
 					FilePattern: "cmd/*/main.go",
 				},
 				{
-					Type:        RuleTypeAllow,
+					Type:        models.RuleTypeAllow,
 					Package:     "os",
 					FilePattern: "cmd/admin/main.go",
 				},
 			},
-			pkg:         "os",
-			method:      "Exit",
-			filePath:    "cmd/admin/main.go",
-			wantAllowed: true,
-			wantRule:    false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rs := &RuleSet{
-				Rules: tt.rules,
-			}
-			gotAllowed, gotRule := rs.IsAllowedForFile(tt.pkg, tt.method, tt.filePath)
-			if gotAllowed != tt.wantAllowed {
-				t.Errorf("IsAllowedForFile() allowed = %v, want %v", gotAllowed, tt.wantAllowed)
-			}
-			if (gotRule != nil) != tt.wantRule {
-				t.Errorf("IsAllowedForFile() returned rule = %v, want rule = %v", gotRule != nil, tt.wantRule)
-			}
-		})
-	}
-}
+			"os", "Exit", "cmd/admin/main.go", true, false),
+	)
+})
