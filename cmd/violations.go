@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
+	"github.com/flanksource/clicky"
 	"github.com/flanksource/commons/logger"
 	"github.com/spf13/cobra"
 )
@@ -220,148 +220,34 @@ func filterViolations(violations []models.Violation, since string, pathPattern s
 }
 
 func displayViolationsList(violations []models.Violation) {
-	// Group violations by file
-	fileMap := make(map[string][]models.Violation)
-	for _, v := range violations {
-		fileMap[v.File] = append(fileMap[v.File], v)
-	}
+	// Build violations tree
+	tree := models.BuildViolationTree(violations)
 
-	// Sort files for consistent output
-	var files []string
-	for file := range fileMap {
-		files = append(files, file)
-	}
-	sort.Strings(files)
-
-	fmt.Printf("📋 %s\n", color.New(color.Bold).Sprint("Cached Violations"))
-	fmt.Println(strings.Repeat("─", 80))
-
-	totalCount := 0
-	for i, file := range files {
-		violations := fileMap[file]
-		totalCount += len(violations)
-
-		// Get relative path for display
-		relPath := file
-		if cwd, err := GetWorkingDir(); err == nil {
-			if rel, err := filepath.Rel(cwd, file); err == nil && !strings.HasPrefix(rel, "../") {
-				relPath = rel
-			}
-		}
-
-		// File header with violation count
-		isLast := i == len(files)-1
-		if isLast {
-			fmt.Printf("└── %s (%d violations)\n",
-				color.New(color.FgCyan, color.Bold).Sprint(relPath),
-				len(violations))
-		} else {
-			fmt.Printf("├── %s (%d violations)\n",
-				color.New(color.FgCyan, color.Bold).Sprint(relPath),
-				len(violations))
-		}
-
-		// Group violations by source
-		sourceMap := make(map[string][]models.Violation)
+	// Format using clicky with tree format
+	output, err := clicky.Format(tree, clicky.FormatOptions{Format: "tree"})
+	if err != nil {
+		logger.Errorf("Failed to format violations tree: %v", err)
+		// Fallback to simple display
+		fmt.Printf("Found %d violations\n", len(violations))
 		for _, v := range violations {
-			source := v.Source
-			if source == "" {
-				source = "arch-unit"
-			}
-			sourceMap[source] = append(sourceMap[source], v)
+			fmt.Printf("- %s\n", v.String())
 		}
-
-		// Sort sources for consistent output
-		var sources []string
-		for source := range sourceMap {
-			sources = append(sources, source)
-		}
-		sort.Strings(sources)
-
-		prefix := "│   "
-		if isLast {
-			prefix = "    "
-		}
-
-		for j, source := range sources {
-			sourceViolations := sourceMap[source]
-			isLastSource := j == len(sources)-1
-
-			// Source header
-			sourceColor := color.FgYellow
-			if source == "arch-unit" {
-				sourceColor = color.FgMagenta
-			}
-
-			if isLastSource {
-				fmt.Printf("%s└── %s\n", prefix, color.New(sourceColor).Sprint(source))
-			} else {
-				fmt.Printf("%s├── %s\n", prefix, color.New(sourceColor).Sprint(source))
-			}
-
-			sourcePrefix := prefix + "│   "
-			if isLastSource {
-				sourcePrefix = prefix + "    "
-			}
-
-			// Display violations for this source
-			for k, v := range sourceViolations {
-				isLastViolation := k == len(sourceViolations)-1
-
-				// Format violation message
-				var violationMsg string
-				if v.Message != "" {
-					violationMsg = v.Message
-				} else if v.Rule != nil {
-					violationMsg = v.Rule.String()
-				} else {
-					violationMsg = fmt.Sprintf("%s.%s", v.CalledPackage, v.CalledMethod)
-				}
-
-				// Truncate long messages
-				if len(violationMsg) > 60 {
-					violationMsg = violationMsg[:57] + "..."
-				}
-
-				lineInfo := fmt.Sprintf("line %d", v.Line)
-				if v.Column > 0 {
-					lineInfo = fmt.Sprintf("line %d:%d", v.Line, v.Column)
-				}
-
-				// Add timestamp if available
-				timeInfo := ""
-				if !v.CreatedAt.IsZero() {
-					timeInfo = fmt.Sprintf(" [%s]", formatTimeAgo(v.CreatedAt))
-				}
-
-				if isLastViolation {
-					fmt.Printf("%s└── %s %s%s\n",
-						sourcePrefix,
-						color.RedString(violationMsg),
-						color.New(color.FgHiBlack).Sprint("("+lineInfo+")"),
-						color.New(color.FgHiBlack).Sprint(timeInfo))
-				} else {
-					fmt.Printf("%s├── %s %s%s\n",
-						sourcePrefix,
-						color.RedString(violationMsg),
-						color.New(color.FgHiBlack).Sprint("("+lineInfo+")"),
-						color.New(color.FgHiBlack).Sprint(timeInfo))
-				}
-			}
-		}
-
-		if !isLast {
-			fmt.Println("│")
-		}
+		return
 	}
 
-	fmt.Println(strings.Repeat("─", 80))
+	fmt.Println(output)
 
+	// Calculate summary info
+	fileMap := make(map[string]bool)
+	for _, v := range violations {
+		fileMap[v.File] = true
+	}
+	
 	// Print summary
 	fmt.Printf("\n%s Found %d total violation(s) in %d file(s)\n",
 		color.YellowString("⚠"),
-		totalCount,
-		len(files))
+		len(violations),
+		len(fileMap))
 
 	if violationsSince != "" {
 		fmt.Printf("  Since: %s ago\n", violationsSince)

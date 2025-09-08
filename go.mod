@@ -10,6 +10,7 @@ require (
 	github.com/flanksource/commons v1.41.1
 	github.com/flanksource/gomplate/v3 v3.24.58
 	github.com/go-git/go-git/v5 v5.16.2
+	github.com/google/cel-go v0.26.0
 	github.com/google/gops v0.3.28
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.38.0
@@ -17,7 +18,6 @@ require (
 	github.com/samber/lo v1.51.0
 	github.com/spf13/cobra v1.9.2-0.20250831231508-51d675196729
 	github.com/spf13/viper v1.19.0
-	github.com/stretchr/testify v1.10.0
 	github.com/yuin/goldmark v1.7.8
 	golang.org/x/mod v0.26.0
 	golang.org/x/time v0.6.0
@@ -31,7 +31,7 @@ require (
 	cel.dev/expr v0.24.0 // indirect
 	dario.cat/mergo v1.0.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
-	github.com/Masterminds/semver/v3 v3.3.1 // indirect
+	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
@@ -42,7 +42,6 @@ require (
 	github.com/charmbracelet/x/ansi v0.3.2 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/deckarep/golang-set/v2 v2.6.0 // indirect
 	github.com/distribution/reference v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -63,7 +62,6 @@ require (
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
-	github.com/google/cel-go v0.26.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/pprof v0.0.0-20250403155104-27863c87afa6 // indirect
@@ -108,7 +106,6 @@ require (
 	github.com/pjbgf/sha1cd v0.3.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/playwright-community/playwright-go v0.4702.0 // indirect
-	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.23.0 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.65.0 // indirect

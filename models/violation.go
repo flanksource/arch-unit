@@ -3,6 +3,8 @@ package models
 import (
 	"fmt"
 	"time"
+
+	"github.com/flanksource/clicky/api"
 )
 
 type Violation struct {
@@ -40,6 +42,58 @@ func (v Violation) String() string {
 	}
 
 	return fmt.Sprintf("%s: %s calls forbidden %s%s", location, v.CallerMethod, call, ruleInfo)
+}
+
+// Pretty returns a formatted text representation of the violation with styling
+func (v Violation) Pretty() api.Text {
+	location := fmt.Sprintf("%s:%d:%d", v.File, v.Line, v.Column)
+
+	call := fmt.Sprintf("%s.%s", v.CalledPackage, v.CalledMethod)
+	if v.CalledMethod == "" {
+		call = v.CalledPackage
+	}
+
+	content := fmt.Sprintf("❌ %s: %s calls forbidden %s", location, v.CallerMethod, call)
+
+	if v.Rule != nil && v.Rule.OriginalLine != "" {
+		content += fmt.Sprintf(" (rule: %s)", v.Rule.OriginalLine)
+	}
+
+	if v.Message != "" {
+		content += fmt.Sprintf(" - %s", v.Message)
+	}
+
+	return api.Text{
+		Content: content,
+		Style:   "text-red-600",
+	}
+}
+
+// ViolationNode represents an individual violation as a tree node
+type ViolationNode struct {
+	violation Violation
+}
+
+// Tree returns a tree node representation of the violation
+func (v Violation) Tree() api.TreeNode {
+	return &ViolationTreeNode{violation: v}
+}
+
+func (vn *ViolationNode) Tree() api.TreeNode {
+	return &ViolationTreeNode{violation: vn.violation}
+}
+
+// ViolationTreeNode is a TreeNode wrapper for individual violations
+type ViolationTreeNode struct {
+	violation Violation
+}
+
+func (vt *ViolationTreeNode) Pretty() api.Text {
+	return vt.violation.Pretty()
+}
+
+func (vt *ViolationTreeNode) GetChildren() []api.TreeNode {
+	return nil // Leaf node
 }
 
 type AnalysisResult struct {

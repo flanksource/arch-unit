@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	stdjson "encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,7 +8,6 @@ import (
 	"github.com/flanksource/arch-unit/client"
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
-	"github.com/flanksource/arch-unit/output"
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/commons/logger"
 )
@@ -254,37 +252,31 @@ func analyzePythonFilesWithCache(rootDir string, files []string, config *models.
 func outputConsolidatedResults(result *models.ConsolidatedResult) error {
 	outputFormat := getOutputFormat()
 
-	if outputFormat == "json" {
-		data, err := stdjson.MarshalIndent(result, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %w", err)
-		}
-
-		if outputFile != "" {
-			return os.WriteFile(outputFile, data, 0644)
-		}
-		fmt.Println(string(data))
-		return nil
+	// Use clicky.Format consistently for all formats
+	var dataToFormat interface{}
+	
+	// For structured formats (JSON, YAML), use the full ConsolidatedResult
+	if outputFormat == "json" || outputFormat == "yaml" || outputFormat == "yml" {
+		dataToFormat = result
+	} else if outputFormat == "csv" || outputFormat == "html" || outputFormat == "markdown" || outputFormat == "md" {
+		// For tabular formats, use just the violations array
+		dataToFormat = result.Violations
+	} else {
+		// For tree/pretty formats, build the violation tree
+		dataToFormat = models.BuildViolationTree(result.Violations)
 	}
 
-	// For non-JSON output, use the standard output manager with just violations
-	archResult := &models.AnalysisResult{
-		Violations: result.Violations,
-		FileCount:  result.Summary.FilesAnalyzed,
-		RuleCount:  result.Summary.RulesApplied,
+	// Format using clicky
+	formattedOutput, err := clicky.Format(dataToFormat, clicky.FormatOptions{Format: outputFormat})
+	if err != nil {
+		return fmt.Errorf("failed to format output as %s: %w", outputFormat, err)
 	}
 
-	outputManager := output.NewOutputManager(outputFormat)
-	outputManager.SetOutputFile(outputFile)
-	outputManager.SetCompact(compact)
-	if err := outputManager.Output(archResult); err != nil {
-		return fmt.Errorf("failed to output results: %w", err)
+	// Write to file or stdout
+	if outputFile != "" {
+		return os.WriteFile(outputFile, []byte(formattedOutput), 0644)
 	}
-
-	// Print consolidated summary for table/pretty format
-	if outputFormat == "table" || outputFormat == "pretty" {
-		printConsolidatedSummary(result)
-	}
+	fmt.Print(formattedOutput)
 
 	return nil
 }

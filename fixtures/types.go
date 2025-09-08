@@ -1,6 +1,7 @@
 package fixtures
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/task"
 	"github.com/flanksource/commons/logger"
+	"github.com/flanksource/commons/text"
 )
 
 // TODO: Register custom renderer for status icons when clicky supports it
@@ -327,6 +329,125 @@ func (fn *FixtureNode) GetSectionPath() string {
 		return fn.Name
 	}
 	return fn.Parent.GetSectionPath() + " > " + fn.Name
+}
+
+// getFixturePath returns the relative path to the markdown file containing this test
+func (fn *FixtureNode) getFixturePath() string {
+	current := fn
+	for current != nil {
+		if current.Type == FileNode {
+			return current.Name
+		}
+		current = current.Parent
+	}
+	return ""
+}
+
+// getSectionOnlyPath returns the section hierarchy without the file name
+func (fn *FixtureNode) getSectionOnlyPath() string {
+	if fn.Parent == nil || fn.Parent.Type == FileNode {
+		return fn.Name
+	}
+	return fn.Parent.getSectionOnlyPath() + " > " + fn.Name
+}
+
+// collectTestNodes recursively collects all test nodes from the tree
+func (fn *FixtureNode) collectTestNodes() []map[string]interface{} {
+	var testNodes []map[string]interface{}
+
+	// If this is a test node with results, add it
+	if fn.Type == TestNode && fn.Results != nil {
+		result := make(map[string]interface{})
+
+		// Add basic fields
+		result["name"] = fn.Name
+		result["fixturePath"] = fn.getFixturePath()
+		result["path"] = fn.getSectionOnlyPath()
+
+		// Add all FixtureResult fields
+		result["status"] = fn.Results.Status
+		result["duration"] = text.HumanizeDuration(fn.Results.Duration)
+		if fn.Results.Error != "" {
+			result["error"] = fn.Results.Error
+		}
+		if fn.Results.Expected != nil {
+			result["expected"] = fn.Results.Expected
+		}
+		if fn.Results.Actual != nil {
+			result["actual"] = fn.Results.Actual
+		}
+		result["celResult"] = fn.Results.CELResult
+		if fn.Results.Command != "" {
+			result["command"] = fn.Results.Command
+		}
+		if fn.Results.CWD != "" {
+			result["cwd"] = fn.Results.CWD
+		}
+		if fn.Results.Stdout != "" {
+			result["stdout"] = fn.Results.Stdout
+		}
+		if fn.Results.Stderr != "" {
+			result["stderr"] = fn.Results.Stderr
+		}
+		result["exitCode"] = fn.Results.ExitCode
+		if fn.Results.Metadata != nil && len(fn.Results.Metadata) > 0 {
+			result["metadata"] = fn.Results.Metadata
+		}
+
+		// Add FixtureTest fields that aren't already included
+		if fn.Test != nil {
+			if fn.Test.Query != "" {
+				result["query"] = fn.Test.Query
+			}
+			if fn.Test.SourceDir != "" {
+				result["sourceDir"] = fn.Test.SourceDir
+			}
+			if fn.Test.Env != nil && len(fn.Test.Env) > 0 {
+				result["env"] = fn.Test.Env
+			}
+			if fn.Test.Build != "" {
+				result["build"] = fn.Test.Build
+			}
+			if fn.Test.Exec != "" {
+				result["exec"] = fn.Test.Exec
+			}
+			if fn.Test.CEL != "" {
+				result["cel"] = fn.Test.CEL
+			}
+			if fn.Test.CLI != "" {
+				result["cli"] = fn.Test.CLI
+			}
+			if fn.Test.CLIArgs != "" {
+				result["cliArgs"] = fn.Test.CLIArgs
+			}
+			if fn.Test.TemplateVars != nil && len(fn.Test.TemplateVars) > 0 {
+				result["templateVars"] = fn.Test.TemplateVars
+			}
+		}
+
+		testNodes = append(testNodes, result)
+	}
+
+	// Recursively collect from children
+	for _, child := range fn.Children {
+		testNodes = append(testNodes, child.collectTestNodes()...)
+	}
+
+	return testNodes
+}
+
+// MarshalJSON implements custom JSON marshalling for FixtureNode
+// Collects all test nodes and returns them as a flat array
+func (fn *FixtureNode) MarshalJSON() ([]byte, error) {
+	// If this is a root node, collect all test nodes and return as array
+	if fn.Parent == nil || fn.Type == FileNode {
+		testNodes := fn.collectTestNodes()
+		return json.Marshal(testNodes)
+	}
+
+	// For non-root nodes, use the standard marshalling
+	type Alias FixtureNode
+	return json.Marshal((*Alias)(fn))
 }
 
 // TreeMixin interface implementation

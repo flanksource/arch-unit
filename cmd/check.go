@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -300,10 +299,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	}
 
 	// Determine output format for progress display
-	currentFormat := "pretty"
-	if outputFile != "" && strings.HasSuffix(outputFile, ".json") {
-		currentFormat = "json"
-	}
+	currentFormat := getOutputFormat()
 
 	var archResult *models.AnalysisResult
 	var linterResults []models.LinterResult
@@ -599,139 +595,22 @@ func displayCombinedViolations(result *models.ConsolidatedResult) {
 		return
 	}
 
-	// Group violations by file
-	fileMap := make(map[string][]models.Violation)
-	for _, v := range result.Violations {
-		fileMap[v.File] = append(fileMap[v.File], v)
+	// Build violations tree
+	tree := models.BuildViolationTree(result.Violations)
+
+	// Format using clicky with tree format
+	output, err := clicky.Format(tree, clicky.FormatOptions{Format: "tree"})
+	if err != nil {
+		logger.Errorf("Failed to format violations tree: %v", err)
+		// Fallback to simple display
+		fmt.Printf("\n📋 Combined Violations (%d total)\n", len(result.Violations))
+		for _, v := range result.Violations {
+			fmt.Printf("- %s\n", v.String())
+		}
+		return
 	}
 
-	// Sort files for consistent output
-	var files []string
-	for file := range fileMap {
-		files = append(files, file)
-	}
-	sort.Strings(files)
-
-	fmt.Println("\n📋 Combined Violations")
-	fmt.Println(strings.Repeat("─", 80))
-
-	for i, file := range files {
-		violations := fileMap[file]
-
-		// Get relative path for display
-		relPath := file
-		if cwd, err := GetWorkingDir(); err == nil {
-			if rel, err := filepath.Rel(cwd, file); err == nil && !strings.HasPrefix(rel, "../") {
-				relPath = rel
-			}
-		}
-
-		// File header with violation count
-		isLast := i == len(files)-1
-		if isLast {
-			fmt.Printf("└── %s (%d violations)\n",
-				color.New(color.FgCyan, color.Bold).Sprint(relPath),
-				len(violations))
-		} else {
-			fmt.Printf("├── %s (%d violations)\n",
-				color.New(color.FgCyan, color.Bold).Sprint(relPath),
-				len(violations))
-		}
-
-		// Group violations by source (arch-unit vs linters)
-		sourceMap := make(map[string][]models.Violation)
-		for _, v := range violations {
-			source := "arch-unit"
-			if v.Source != "" {
-				source = v.Source
-			}
-			sourceMap[source] = append(sourceMap[source], v)
-		}
-
-		// Sort sources for consistent output
-		var sources []string
-		for source := range sourceMap {
-			sources = append(sources, source)
-		}
-		sort.Strings(sources)
-
-		prefix := "│   "
-		if isLast {
-			prefix = "    "
-		}
-
-		for j, source := range sources {
-			sourceViolations := sourceMap[source]
-			isLastSource := j == len(sources)-1
-
-			// Source header
-			sourceColor := color.FgYellow
-			if source == "arch-unit" {
-				sourceColor = color.FgMagenta
-			}
-
-			if isLastSource {
-				fmt.Printf("%s└── %s\n", prefix, color.New(sourceColor).Sprint(source))
-			} else {
-				fmt.Printf("%s├── %s\n", prefix, color.New(sourceColor).Sprint(source))
-			}
-
-			sourcePrefix := prefix + "│   "
-			if isLastSource {
-				sourcePrefix = prefix + "    "
-			}
-
-			// Display violations for this source
-			for k, v := range sourceViolations {
-				isLastViolation := k == len(sourceViolations)-1
-
-				// Format violation message
-				var violationMsg string
-				if v.Rule != nil {
-					violationMsg = v.Rule.String()
-				} else if v.Message != "" {
-					violationMsg = v.Message
-				} else {
-					violationMsg = fmt.Sprintf("%s.%s", v.CalledPackage, v.CalledMethod)
-				}
-
-				// Add fixable indicator if applicable
-				fixableIndicator := ""
-				if v.Fixable {
-					if v.FixApplicability == "unsafe" {
-						fixableIndicator = color.New(color.FgYellow).Sprint(" 🔧⚠")
-					} else {
-						fixableIndicator = color.New(color.FgGreen).Sprint(" 🔧")
-					}
-				}
-
-				lineInfo := fmt.Sprintf("line %d", v.Line)
-				if v.Column > 0 {
-					lineInfo = fmt.Sprintf("line %d:%d", v.Line, v.Column)
-				}
-
-				if isLastViolation {
-					fmt.Printf("%s└── %s%s %s\n",
-						sourcePrefix,
-						color.RedString(violationMsg),
-						fixableIndicator,
-						color.New(color.FgHiBlack).Sprint("("+lineInfo+")"))
-				} else {
-					fmt.Printf("%s├── %s%s %s\n",
-						sourcePrefix,
-						color.RedString(violationMsg),
-						fixableIndicator,
-						color.New(color.FgHiBlack).Sprint("("+lineInfo+")"))
-				}
-			}
-		}
-
-		if !isLast {
-			fmt.Println("│")
-		}
-	}
-
-	fmt.Println(strings.Repeat("─", 80))
+	fmt.Printf("\n%s\n", output)
 
 	// Print summary
 	fmt.Printf("\n%s Found %d total violation(s)\n",
@@ -798,7 +677,13 @@ func filterFiles(files []string, include, exclude string) []string {
 }
 
 func getOutputFormat() string {
-	// For now, determine format from command flags
+	// First check if a format flag was provided via clicky
+	format := clicky.Flags.FormatOptions.ResolveFormat()
+	if format != "" && format != "pretty" {
+		return format
+	}
+	
+	// Fall back to detecting format from output file extension if no format flag
 	if outputFile != "" {
 		if strings.HasSuffix(outputFile, ".json") {
 			return "json"
@@ -810,5 +695,7 @@ func getOutputFormat() string {
 			return "markdown"
 		}
 	}
-	return "table"
+	
+	// Default to pretty format (tree display)
+	return "pretty"
 }
