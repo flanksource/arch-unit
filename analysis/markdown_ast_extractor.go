@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,21 +12,17 @@ import (
 
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
-	flanksourceContext "github.com/flanksource/commons/context"
 )
 
 // MarkdownASTExtractor extracts structure and code blocks from Markdown files
 type MarkdownASTExtractor struct {
-	cache       *cache.ASTCache
 	filePath    string
 	packageName string
 }
 
 // NewMarkdownASTExtractor creates a new Markdown AST extractor
-func NewMarkdownASTExtractor(astCache *cache.ASTCache) *MarkdownASTExtractor {
-	return &MarkdownASTExtractor{
-		cache: astCache,
-	}
+func NewMarkdownASTExtractor() *MarkdownASTExtractor {
+	return &MarkdownASTExtractor{}
 }
 
 // MarkdownSection represents a section in a Markdown document
@@ -55,52 +52,41 @@ type MarkdownLink struct {
 }
 
 // ExtractFile extracts structure information from a Markdown file
-func (e *MarkdownASTExtractor) ExtractFile(ctx flanksourceContext.Context, filePath string) error {
-	// Check if file needs re-analysis
-	needsAnalysis, err := e.cache.NeedsReanalysis(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to check if file needs analysis: %w", err)
-	}
-
-	if !needsAnalysis {
-		return nil // File is up to date
-	}
-
+func (e *MarkdownASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath string, content []byte) (*ASTResult, error) {
 	e.filePath = filePath
 	e.packageName = e.extractPackageName(filePath)
 
-	// Clear existing AST data for the file
-	if err := e.cache.DeleteASTForFile(filePath); err != nil {
-		return fmt.Errorf("failed to clear existing AST data: %w", err)
+	result := &ASTResult{
+		Nodes:         []*models.ASTNode{},
+		Relationships: []*models.ASTRelationship{},
 	}
 
-	// Parse Markdown file
-	sections, codeBlocks, links, err := e.parseMarkdownFile(filePath)
+	// Parse Markdown content
+	sections, codeBlocks, _, err := e.parseMarkdownContent(content)
 	if err != nil {
-		return fmt.Errorf("failed to parse Markdown file: %w", err)
+		return nil, fmt.Errorf("failed to parse Markdown file: %w", err)
 	}
 
-	// Store document structure as nodes
-	nodeMap := make(map[string]int64)
+	// Build document structure as nodes
+	nodeMap := make(map[string]string) // name -> key
 
-	// Store the document itself as a package node
+	// Create the document itself as a package node
 	docNode := &models.ASTNode{
 		FilePath:     filePath,
 		PackageName:  e.packageName,
 		NodeType:     models.NodeTypePackage,
 		StartLine:    1,
-		EndLine:      e.countLines(filePath),
-		LineCount:    e.countLines(filePath),
+		EndLine:      e.countLinesFromContent(content),
+		LineCount:    e.countLinesFromContent(content),
 		LastModified: time.Now(),
 	}
 
-	docID, err := e.cache.StoreASTNode(docNode)
-	if err != nil {
-		return fmt.Errorf("failed to store document node: %w", err)
-	}
-	nodeMap[e.packageName] = docID
+	// Add document node to result
+	docKey := docNode.Key()
+	nodeMap[e.packageName] = docKey
+	result.Nodes = append(result.Nodes, docNode)
 
-	// Store sections as type nodes
+	// Build sections as type nodes
 	for _, section := range sections {
 		sectionNode := &models.ASTNode{
 			FilePath:     filePath,
@@ -113,28 +99,51 @@ func (e *MarkdownASTExtractor) ExtractFile(ctx flanksourceContext.Context, fileP
 			LastModified: time.Now(),
 		}
 
-		sectionID, err := e.cache.StoreASTNode(sectionNode)
-		if err != nil {
-			continue
-		}
-
+		sectionKey := sectionNode.Key()
 		fullName := fmt.Sprintf("%s.%s", e.packageName, section.Title)
-		nodeMap[fullName] = sectionID
+		nodeMap[fullName] = sectionKey
+		result.Nodes = append(result.Nodes, sectionNode)
 
 		// Create relationship to parent section or document
+		var fromID, toID int64
+		if sectionCacheID, exists := cache.GetASTId(sectionKey); exists {
+			fromID = sectionCacheID
+		}
+
+		var relationship *models.ASTRelationship
 		if section.Parent != "" {
 			parentFullName := fmt.Sprintf("%s.%s", e.packageName, section.Parent)
-			if parentID, exists := nodeMap[parentFullName]; exists {
-				e.cache.StoreASTRelationship(sectionID, &parentID, section.StartLine,
-					models.RelationshipReference, fmt.Sprintf("subsection of %s", section.Parent))
+			if parentKey, exists := nodeMap[parentFullName]; exists {
+				if parentCacheID, exists := cache.GetASTId(parentKey); exists {
+					toID = parentCacheID
+				}
+				relationship = &models.ASTRelationship{
+					FromASTID:        fromID,
+					ToASTID:          &toID,
+					LineNo:           section.StartLine,
+					RelationshipType: models.RelationshipReference,
+					Text:             fmt.Sprintf("subsection of %s", section.Parent),
+				}
 			}
 		} else {
-			e.cache.StoreASTRelationship(sectionID, &docID, section.StartLine,
-				models.RelationshipReference, "top-level section")
+			if docCacheID, exists := cache.GetASTId(docKey); exists {
+				toID = docCacheID
+			}
+			relationship = &models.ASTRelationship{
+				FromASTID:        fromID,
+				ToASTID:          &toID,
+				LineNo:           section.StartLine,
+				RelationshipType: models.RelationshipReference,
+				Text:             "top-level section",
+			}
+		}
+
+		if relationship != nil {
+			result.Relationships = append(result.Relationships, relationship)
 		}
 	}
 
-	// Store code blocks as method nodes with language as metadata
+	// Build code blocks as method nodes with language as metadata
 	for _, block := range codeBlocks {
 		// Calculate complexity based on code block content
 		complexity := e.calculateCodeBlockComplexity(block.Content, block.Language)
@@ -152,50 +161,34 @@ func (e *MarkdownASTExtractor) ExtractFile(ctx flanksourceContext.Context, fileP
 			LastModified:         time.Now(),
 		}
 
-		blockID, err := e.cache.StoreASTNode(blockNode)
-		if err != nil {
-			continue
-		}
+		blockKey := blockNode.Key()
+		result.Nodes = append(result.Nodes, blockNode)
 
 		// If code block is in a section, create relationship
 		if block.InSection != "" {
 			sectionFullName := fmt.Sprintf("%s.%s", e.packageName, block.InSection)
-			if sectionID, exists := nodeMap[sectionFullName]; exists {
-				e.cache.StoreASTRelationship(blockID, &sectionID, block.StartLine,
-					models.RelationshipReference, fmt.Sprintf("%s code block", block.Language))
+			if sectionKey, exists := nodeMap[sectionFullName]; exists {
+				var fromID, toID int64
+				if blockCacheID, exists := cache.GetASTId(blockKey); exists {
+					fromID = blockCacheID
+				}
+				if sectionCacheID, exists := cache.GetASTId(sectionKey); exists {
+					toID = sectionCacheID
+				}
+				
+				relationship := &models.ASTRelationship{
+					FromASTID:        fromID,
+					ToASTID:          &toID,
+					LineNo:           block.StartLine,
+					RelationshipType: models.RelationshipReference,
+					Text:             fmt.Sprintf("%s code block", block.Language),
+				}
+				result.Relationships = append(result.Relationships, relationship)
 			}
 		}
-
-		// Analyze code block for embedded AST if language is supported
-		e.analyzeEmbeddedCode(block, blockID)
 	}
 
-	// Store links as relationships
-	for _, link := range links {
-		// Determine the source node for the link
-		var sourceID int64
-		if link.InSection != "" {
-			sectionFullName := fmt.Sprintf("%s.%s", e.packageName, link.InSection)
-			if sectionID, exists := nodeMap[sectionFullName]; exists {
-				sourceID = sectionID
-			} else {
-				sourceID = docID
-			}
-		} else {
-			sourceID = docID
-		}
-
-		// Store as external reference
-		e.cache.StoreASTRelationship(sourceID, nil, link.Line,
-			models.RelationshipReference, fmt.Sprintf("link to %s: %s", link.Text, link.URL))
-	}
-
-	// Update file metadata
-	if err := e.cache.UpdateFileMetadata(filePath); err != nil {
-		return fmt.Errorf("failed to update file metadata: %w", err)
-	}
-
-	return nil
+	return result, nil
 }
 
 // parseMarkdownFile parses a Markdown file and extracts structure
@@ -336,6 +329,115 @@ func (e *MarkdownASTExtractor) parseMarkdownFile(filePath string) ([]MarkdownSec
 	return sections, codeBlocks, links, scanner.Err()
 }
 
+// parseMarkdownContent parses Markdown content from bytes and extracts structure
+func (e *MarkdownASTExtractor) parseMarkdownContent(content []byte) ([]MarkdownSection, []MarkdownCodeBlock, []MarkdownLink, error) {
+	var sections []MarkdownSection
+	var codeBlocks []MarkdownCodeBlock
+	var links []MarkdownLink
+
+	scanner := bufio.NewScanner(bytes.NewReader(content))
+	lineNum := 0
+	inCodeBlock := false
+	currentSection := ""
+	sectionStack := []string{}
+	var currentBlock *MarkdownCodeBlock
+
+	// Regular expressions for Markdown elements
+	headerRegex := regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
+	codeBlockStartRegex := regexp.MustCompile("^```([a-zA-Z]*)")
+	codeBlockEndRegex := regexp.MustCompile("^```$")
+	linkRegex := regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		lineNum++
+
+		// Handle code blocks
+		if matches := codeBlockStartRegex.FindStringSubmatch(line); matches != nil && !inCodeBlock {
+			inCodeBlock = true
+			language := "text"
+			if len(matches) > 1 && matches[1] != "" {
+				language = matches[1]
+			}
+			currentBlock = &MarkdownCodeBlock{
+				Language:  language,
+				StartLine: lineNum,
+				InSection: currentSection,
+			}
+		} else if codeBlockEndRegex.MatchString(line) && inCodeBlock {
+			inCodeBlock = false
+			if currentBlock != nil {
+				currentBlock.EndLine = lineNum
+				codeBlocks = append(codeBlocks, *currentBlock)
+				currentBlock = nil
+			}
+		} else if inCodeBlock && currentBlock != nil {
+			currentBlock.Content += line + "\n"
+		}
+
+		// Handle headers
+		if matches := headerRegex.FindStringSubmatch(line); matches != nil && !inCodeBlock {
+			level := len(matches[1])
+			title := matches[2]
+
+			// Adjust section stack based on header level
+			for len(sectionStack) >= level {
+				sectionStack = sectionStack[:len(sectionStack)-1]
+			}
+
+			parent := ""
+			if len(sectionStack) > 0 {
+				parent = sectionStack[len(sectionStack)-1]
+			}
+
+			section := MarkdownSection{
+				Level:     level,
+				Title:     title,
+				StartLine: lineNum,
+				EndLine:   lineNum, // Will be updated when next section is found
+				Parent:    parent,
+			}
+
+			// Update end line for previous sections
+			for i := len(sections) - 1; i >= 0; i-- {
+				if sections[i].EndLine == sections[i].StartLine {
+					sections[i].EndLine = lineNum - 1
+					break
+				}
+			}
+
+			sections = append(sections, section)
+			sectionStack = append(sectionStack, title)
+			currentSection = title
+		}
+
+		// Handle links
+		if matches := linkRegex.FindAllStringSubmatch(line, -1); matches != nil {
+			for _, match := range matches {
+				link := MarkdownLink{
+					Text:      match[1],
+					URL:       match[2],
+					Line:      lineNum,
+					InSection: currentSection,
+				}
+				links = append(links, link)
+			}
+		}
+	}
+
+	// Update end line for the last section
+	if len(sections) > 0 {
+		sections[len(sections)-1].EndLine = lineNum
+	}
+
+	return sections, codeBlocks, links, scanner.Err()
+}
+
+// countLinesFromContent counts the number of lines in the given content
+func (e *MarkdownASTExtractor) countLinesFromContent(content []byte) int {
+	return bytes.Count(content, []byte{'\n'}) + 1
+}
+
 // analyzeEmbeddedCode analyzes code blocks for supported languages
 func (e *MarkdownASTExtractor) analyzeEmbeddedCode(block MarkdownCodeBlock, parentNodeID int64) {
 	// Skip analysis for very small code blocks
@@ -372,11 +474,11 @@ func (e *MarkdownASTExtractor) analyzeEmbeddedCode(block MarkdownCodeBlock, pare
 	// Use appropriate extractor based on language
 	switch strings.ToLower(block.Language) {
 	case "python", "py":
-		_ = NewPythonASTExtractor(e.cache)
+		_ = NewPythonASTExtractor()
 		// Note: This would extract to cache, but we want to link it to the parent
 		// For now, we skip full extraction of embedded code
 	case "go", "golang":
-		_ = NewGoASTExtractor(e.cache)
+		_ = NewGoASTExtractor()
 		// Similar consideration
 	}
 

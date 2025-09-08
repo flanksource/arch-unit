@@ -1,7 +1,6 @@
 package analysis_test
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,22 +10,18 @@ import (
 
 	"github.com/flanksource/arch-unit/analysis"
 	"github.com/flanksource/arch-unit/internal/cache"
-	flanksourceContext "github.com/flanksource/commons/context"
 )
 
 var _ = Describe("AST Extractors", func() {
 	var (
 		tmpDir   string
 		astCache *cache.ASTCache
-		ctx      flanksourceContext.Context
 	)
 
 	BeforeEach(func() {
 		tmpDir = GinkgoT().TempDir()
 
 		astCache = cache.MustGetASTCache()
-
-		ctx = flanksourceContext.NewContext(context.Background())
 	})
 
 	AfterEach(func() {
@@ -37,7 +32,7 @@ var _ = Describe("AST Extractors", func() {
 		var extractor *analysis.PythonASTExtractor
 
 		BeforeEach(func() {
-			extractor = analysis.NewPythonASTExtractor(astCache)
+			extractor = analysis.NewPythonASTExtractor()
 		})
 
 		Context("when extracting from a Python file with classes and methods", func() {
@@ -77,17 +72,25 @@ if __name__ == "__main__":
 			})
 
 			It("should successfully extract AST nodes", func() {
-				err := extractor.ExtractFile(ctx, testFile)
+				content, err := os.ReadFile(testFile)
 				Expect(err).NotTo(HaveOccurred())
+				
+				result, err := extractor.ExtractFile(astCache, testFile, content)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).NotTo(BeNil())
+				Expect(result.Nodes).NotTo(BeEmpty())
 			})
 
 			It("should find expected classes, methods, and functions", func() {
-				err := extractor.ExtractFile(ctx, testFile)
+				content, err := os.ReadFile(testFile)
 				Expect(err).NotTo(HaveOccurred())
+				
+				result, err := extractor.ExtractFile(astCache, testFile, content)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).NotTo(BeNil())
+				Expect(result.Nodes).NotTo(BeEmpty())
 
-				nodes, err := astCache.GetASTNodesByFile(testFile)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(nodes).NotTo(BeEmpty())
+				nodes := result.Nodes
 
 				var foundClass, foundInit, foundAdd, foundMultiply, foundMain bool
 				for _, node := range nodes {
@@ -120,7 +123,7 @@ if __name__ == "__main__":
 		var extractor *analysis.JavaScriptASTExtractor
 
 		BeforeEach(func() {
-			extractor = analysis.NewJavaScriptASTExtractor(astCache)
+			extractor = analysis.NewJavaScriptASTExtractor()
 		})
 
 		Context("when node is available", func() {
@@ -186,7 +189,10 @@ export default service;
 				})
 
 				It("should successfully extract JavaScript nodes or skip gracefully", func() {
-					err := extractor.ExtractFile(ctx, testFile)
+					content, err := os.ReadFile(testFile)
+					Expect(err).NotTo(HaveOccurred())
+					
+					result, err := extractor.ExtractFile(astCache, testFile, content)
 					if err != nil {
 						// If acorn is not installed globally, skip
 						if strings.Contains(err.Error(), "acorn") {
@@ -195,9 +201,8 @@ export default service;
 						Fail("Unexpected error: " + err.Error())
 					}
 
-					nodes, err := astCache.GetASTNodesByFile(testFile)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(nodes).NotTo(BeEmpty(), "Should extract JavaScript nodes")
+					Expect(result).NotTo(BeNil())
+					Expect(result.Nodes).NotTo(BeEmpty(), "Should extract JavaScript nodes")
 				})
 			})
 		})
@@ -207,7 +212,7 @@ export default service;
 		var extractor *analysis.TypeScriptASTExtractor
 
 		BeforeEach(func() {
-			extractor = analysis.NewTypeScriptASTExtractor(astCache)
+			extractor = analysis.NewTypeScriptASTExtractor()
 		})
 
 		Context("when node and typescript are available", func() {
@@ -281,7 +286,10 @@ export { UserRepository, UserRole, UserWithTimestamp };
 				})
 
 				It("should successfully extract TypeScript nodes or skip gracefully", func() {
-					err := extractor.ExtractFile(ctx, testFile)
+					content, err := os.ReadFile(testFile)
+					Expect(err).NotTo(HaveOccurred())
+					
+					result, err := extractor.ExtractFile(astCache, testFile, content)
 					if err != nil {
 						// If typescript is not installed globally, skip
 						if strings.Contains(err.Error(), "typescript") {
@@ -290,9 +298,8 @@ export { UserRepository, UserRole, UserWithTimestamp };
 						Fail("Unexpected error: " + err.Error())
 					}
 
-					nodes, err := astCache.GetASTNodesByFile(testFile)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(nodes).NotTo(BeEmpty(), "Should extract TypeScript nodes")
+					Expect(result).NotTo(BeNil())
+					Expect(result.Nodes).NotTo(BeEmpty(), "Should extract TypeScript nodes")
 				})
 			})
 		})
@@ -302,7 +309,7 @@ export { UserRepository, UserRole, UserWithTimestamp };
 		var extractor *analysis.MarkdownASTExtractor
 
 		BeforeEach(func() {
-			extractor = analysis.NewMarkdownASTExtractor(astCache)
+			extractor = analysis.NewMarkdownASTExtractor()
 		})
 
 		Context("when extracting from a Markdown file", func() {
@@ -367,17 +374,25 @@ Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 			})
 
 			It("should successfully extract AST nodes", func() {
-				err := extractor.ExtractFile(ctx, testFile)
+				content, err := os.ReadFile(testFile)
 				Expect(err).NotTo(HaveOccurred())
+				
+				result, err := extractor.ExtractFile(astCache, testFile, content)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).NotTo(BeNil())
+				Expect(result.Nodes).NotTo(BeEmpty())
 			})
 
 			It("should find expected document structure and code blocks", func() {
-				err := extractor.ExtractFile(ctx, testFile)
+				content, err := os.ReadFile(testFile)
 				Expect(err).NotTo(HaveOccurred())
+				
+				result, err := extractor.ExtractFile(astCache, testFile, content)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).NotTo(BeNil())
+				Expect(result.Nodes).NotTo(BeEmpty())
 
-				nodes, err := astCache.GetASTNodesByFile(testFile)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(nodes).NotTo(BeEmpty())
+				nodes := result.Nodes
 
 				var foundPackage, foundInstallation, foundUsage, foundAPI bool
 				var codeBlockCount int
@@ -413,7 +428,7 @@ Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 		var extractor *analysis.GoASTExtractor
 
 		BeforeEach(func() {
-			extractor = analysis.NewGoASTExtractor(astCache)
+			extractor = analysis.NewGoASTExtractor()
 		})
 
 		Context("when extracting from a Go file", func() {
@@ -467,17 +482,25 @@ func main() {
 			})
 
 			It("should successfully extract AST nodes", func() {
-				err := extractor.ExtractFile(ctx, testFile)
+				content, err := os.ReadFile(testFile)
 				Expect(err).NotTo(HaveOccurred())
+				
+				result, err := extractor.ExtractFile(astCache, testFile, content)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).NotTo(BeNil())
+				Expect(result.Nodes).NotTo(BeEmpty())
 			})
 
 			It("should find expected structs, methods, and functions", func() {
-				err := extractor.ExtractFile(ctx, testFile)
+				content, err := os.ReadFile(testFile)
 				Expect(err).NotTo(HaveOccurred())
+				
+				result, err := extractor.ExtractFile(astCache, testFile, content)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).NotTo(BeNil())
+				Expect(result.Nodes).NotTo(BeEmpty())
 
-				nodes, err := astCache.GetASTNodesByFile(testFile)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(nodes).NotTo(BeEmpty())
+				nodes := result.Nodes
 
 				var foundStruct, foundAdd, foundMultiply, foundMain bool
 				for _, node := range nodes {

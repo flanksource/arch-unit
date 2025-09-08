@@ -2,15 +2,16 @@ package languages
 
 import (
 	"github.com/flanksource/arch-unit/analysis"
+	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/clicky"
 )
 
-// goAnalyzerAdapter adapts the analysis.GoAnalyzer to the languages.Analyzer interface
-type goAnalyzerAdapter struct {
-	analyzer *analysis.GoAnalyzer
+// genericAnalyzerAdapter adapts the analysis.GenericAnalyzer to the languages.Analyzer interface
+type genericAnalyzerAdapter struct {
+	analyzer *analysis.GenericAnalyzer
 }
 
-func (a *goAnalyzerAdapter) AnalyzeFile(task interface{}, filepath string, content []byte) (interface{}, error) {
+func (a *genericAnalyzerAdapter) AnalyzeFile(task interface{}, filepath string, content []byte) (interface{}, error) {
 	// Type assert task to *clicky.Task
 	clickyTask, ok := task.(*clicky.Task)
 	if !ok {
@@ -26,9 +27,10 @@ var DefaultRegistry *Registry
 func init() {
 	DefaultRegistry = NewRegistry()
 
-	// Create Go analyzer
-	goAnalyzer := &goAnalyzerAdapter{
-		analyzer: analysis.NewGoAnalyzer(),
+	// Create generic analyzer
+	astCache := cache.MustGetASTCache()
+	genericAnalyzer := &genericAnalyzerAdapter{
+		analyzer: analysis.NewGenericAnalyzer(astCache),
 	}
 
 	// Register Go language
@@ -39,7 +41,7 @@ func init() {
 			"golangci-lint",
 			"arch-unit",
 		},
-		Analyzer: goAnalyzer,
+		Analyzer: genericAnalyzer,
 	})
 
 	// Register Python language
@@ -160,9 +162,10 @@ func SetAnalyzer(langName string, analyzer ASTAnalyzer) {
 	}
 }
 
-// GetGoAnalyzerAdapter returns the Go analyzer adapter
-func GetGoAnalyzerAdapter() ASTAnalyzer {
-	return &goAnalyzerAdapter{
-		analyzer: analysis.NewGoAnalyzer(),
+// GetGenericAnalyzerAdapter returns the generic analyzer adapter
+func GetGenericAnalyzerAdapter() ASTAnalyzer {
+	astCache := cache.MustGetASTCache()
+	return &genericAnalyzerAdapter{
+		analyzer: analysis.NewGenericAnalyzer(astCache),
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"gorm.io/driver/sqlite"
@@ -11,6 +12,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/flanksource/arch-unit/models"
+	commonsLogger "github.com/flanksource/commons/logger"
 )
 
 var (
@@ -141,7 +143,41 @@ func autoMigrateModels(db *gorm.DB) error {
 
 	for _, model := range modelsToMigrate {
 		if err := db.AutoMigrate(model); err != nil {
-			return fmt.Errorf("failed to migrate model %T: %w", model, err)
+			// If we get a foreign key constraint error, try to truncate data and retry
+			if strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
+				commonsLogger.Warnf("Foreign key constraint error during migration, truncating data and retrying")
+				
+				// Truncate all tables in reverse order to avoid FK constraints
+				tablesToTruncate := []interface{}{
+					&models.Violation{},
+					&models.FileScan{},
+					&models.DependencyAlias{},
+					&models.LibraryRelationship{},
+					&models.LibraryNode{},
+					&models.ASTRelationship{},
+					&models.ASTNode{},
+					&models.FileMetadata{},
+				}
+				
+				// Disable foreign keys temporarily
+				db.Exec("PRAGMA foreign_keys = OFF")
+				
+				for _, table := range tablesToTruncate {
+					if truncErr := db.Unscoped().Where("1 = 1").Delete(table).Error; truncErr != nil {
+						commonsLogger.Warnf("Failed to truncate table %T: %v", table, truncErr)
+					}
+				}
+				
+				// Re-enable foreign keys
+				db.Exec("PRAGMA foreign_keys = ON")
+				
+				// Retry migration
+				if retryErr := db.AutoMigrate(model); retryErr != nil {
+					return fmt.Errorf("failed to migrate model %T after truncation: %w", model, retryErr)
+				}
+			} else {
+				return fmt.Errorf("failed to migrate model %T: %w", model, err)
+			}
 		}
 	}
 

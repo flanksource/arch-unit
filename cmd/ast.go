@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	jsonenc "encoding/json"
 	"fmt"
 	"os"
@@ -15,7 +14,7 @@ import (
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/arch-unit/parser"
 	"github.com/flanksource/arch-unit/query"
-	flanksourceContext "github.com/flanksource/commons/context"
+	"github.com/flanksource/clicky"
 	"github.com/flanksource/commons/logger"
 	"github.com/spf13/cobra"
 )
@@ -314,7 +313,7 @@ func executeAQLQuery(astCache *cache.ASTCache, aqlQuery string, workingDir strin
 	var err error
 	if parser.IsLegacyAQLFormat(ruleText) {
 		// Legacy AQL format
-		ruleSet, err = parser.ParseAQLFile(ruleText)
+		ruleSet, err = parser.ParseAQL(ruleText)
 	} else {
 		// YAML format
 		ruleSet, err = parser.LoadAQLFromYAML(ruleText)
@@ -442,34 +441,23 @@ func analyzeFiles(astCache *cache.ASTCache, workingDir string) error {
 		logger.Warnf("Failed to store library nodes: %v", err)
 	}
 
-	// Create extractors for each language
-	goExtractor := analysis.NewGoASTExtractor(astCache)
-	pythonExtractor := analysis.NewPythonASTExtractor(astCache)
-	jsExtractor := analysis.NewJavaScriptASTExtractor(astCache)
-	tsExtractor := analysis.NewTypeScriptASTExtractor(astCache)
-	mdExtractor := analysis.NewMarkdownASTExtractor(astCache)
+	// Create generic analyzer for all languages
+	genericAnalyzer := analysis.NewGenericAnalyzer(astCache)
 
 	logger.Infof("Analyzing %d source files...", len(sourceFiles))
 
-	// Create context for extraction
-	ctx := flanksourceContext.NewContext(context.Background())
-
 	// Process files
 	for _, file := range sourceFiles {
-
-		var err error
-		switch file.language {
-		case "go":
-			err = goExtractor.ExtractFile(ctx, file.path)
-		case "python":
-			err = pythonExtractor.ExtractFile(ctx, file.path)
-		case "javascript":
-			err = jsExtractor.ExtractFile(ctx, file.path)
-		case "typescript":
-			err = tsExtractor.ExtractFile(ctx, file.path)
-		case "markdown":
-			err = mdExtractor.ExtractFile(ctx, file.path)
+		// Read file content
+		content, err := os.ReadFile(file.path)
+		if err != nil {
+			logger.Warnf("Failed to read file %s: %v", file.path, err)
+			continue
 		}
+
+		// Use generic analyzer
+		task := &clicky.Task{}
+		_, err = genericAnalyzer.AnalyzeFile(task, file.path, content)
 
 		if err != nil {
 			logger.Warnf("Failed to extract AST from %s: %v", file.path, err)

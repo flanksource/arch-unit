@@ -223,7 +223,8 @@ type ASTExporter interface {
 // ASTNode represents a node in the AST stored in database
 type ASTNode struct {
 	ID                   int64         `json:"id" gorm:"primaryKey;autoIncrement"`
-	ParentID             int64         `json:"parent_id,omitempty" gorm:"column:parent_id;index"`         // Nullable for root nodes, For a field, parent is the struct/class, for a struct/class parent is package,
+	Parent               *ASTNode      `json:"-"`
+	ParentID             *int64        `json:"parent_id,omitempty" gorm:"column:parent_id;index"`         // Nullable for root nodes, For a field, parent is the struct/class, for a struct/class parent is package,
 	DependencyID         *int64        `json:"dependency_id,omitempty" gorm:"column:dependency_id;index"` // Id of the dependency that contains this node
 	FilePath             string        `json:"file_path" gorm:"column:file_path;not null;index"`
 	PackageName          string        `json:"package_name,omitempty" gorm:"column:package_name;index"`
@@ -247,6 +248,14 @@ type ASTNode struct {
 	Summary string `json:"summary,omitempty" gorm:"column:summary"`
 }
 
+func (a ASTNode) Key() string {
+	k := fmt.Sprintf("%s/%s:%s%s", a.FilePath, a.TypeName, a.MethodName, a.FieldName)
+	if a.DependencyID != nil {
+		k = fmt.Sprintf("%d#%s", *a.DependencyID, k)
+	}
+	return k
+}
+
 // TableName specifies the table name for ASTNode
 func (ASTNode) TableName() string {
 	return "ast_nodes"
@@ -255,6 +264,8 @@ func (ASTNode) TableName() string {
 // ASTRelationship represents a relationship between AST nodes
 type ASTRelationship struct {
 	ID               int64            `json:"id" gorm:"primaryKey;autoIncrement"`
+	FromAST          *ASTNode         `json:"-"`
+	ToAST            *ASTNode         `json:"-"`
 	FromASTID        int64            `json:"from_ast_id" gorm:"column:from_ast_id;not null;index"`
 	ToASTID          *int64           `json:"to_ast_id,omitempty" gorm:"column:to_ast_id;index"` // Nullable for external calls
 	LineNo           int              `json:"line_no,omitempty" gorm:"column:line_no;index"`

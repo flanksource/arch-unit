@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -16,16 +17,14 @@ import (
 
 // TypeScriptASTExtractor extracts AST information from TypeScript source files
 type TypeScriptASTExtractor struct {
-	cache       *cache.ASTCache
 	filePath    string
 	packageName string
 	depsManager *NodeDependenciesManager
 }
 
 // NewTypeScriptASTExtractor creates a new TypeScript AST extractor
-func NewTypeScriptASTExtractor(astCache *cache.ASTCache) *TypeScriptASTExtractor {
+func NewTypeScriptASTExtractor() *TypeScriptASTExtractor {
 	return &TypeScriptASTExtractor{
-		cache:       astCache,
 		depsManager: NewNodeDependenciesManager(),
 	}
 }
@@ -76,36 +75,37 @@ type TypeScriptASTResult struct {
 }
 
 // ExtractFile extracts AST information from a TypeScript file
-func (e *TypeScriptASTExtractor) ExtractFile(ctx flanksourceContext.Context, filePath string) error {
-	// Check if file needs re-analysis
-	needsAnalysis, err := e.cache.NeedsReanalysis(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to check if file needs analysis: %w", err)
-	}
-
-	if !needsAnalysis {
-		return nil // File is up to date
-	}
-
+func (e *TypeScriptASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath string, content []byte) (*ASTResult, error) {
 	e.filePath = filePath
-
-	// Clear existing AST data for the file
-	if err := e.cache.DeleteASTForFile(filePath); err != nil {
-		return fmt.Errorf("failed to clear existing AST data: %w", err)
-	}
-
+	
 	// Extract package name from file path or package.json
 	e.packageName = e.extractPackageName(filePath)
-
-	// Run TypeScript AST extraction
-	result, err := e.runTypeScriptASTExtraction(ctx, filePath)
-	if err != nil {
-		return fmt.Errorf("failed to extract TypeScript AST: %w", err)
+	
+	result := &ASTResult{
+		Nodes:         []*models.ASTNode{},
+		Relationships: []*models.ASTRelationship{},
 	}
 
-	// Store nodes in cache
-	nodeMap := make(map[string]int64)
-	for _, node := range result.Nodes {
+	// Run TypeScript AST extraction (write content to temp file for external tool)
+	tempFile, err := os.CreateTemp("", "ts_extract_*.ts")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tempFile.Name())
+	
+	if _, err := tempFile.Write(content); err != nil {
+		return nil, fmt.Errorf("failed to write content to temp file: %w", err)
+	}
+	tempFile.Close()
+
+	tsResult, err := e.runTypeScriptASTExtraction(tempFile.Name())
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract TypeScript AST: %w", err)
+	}
+
+	// Convert TypeScript nodes to AST nodes
+	nodeMap := make(map[string]string) // fullName -> node key
+	for _, node := range tsResult.Nodes {
 		astNode := &models.ASTNode{
 			FilePath:             filePath,
 			PackageName:          e.packageName,
@@ -142,62 +142,52 @@ func (e *TypeScriptASTExtractor) ExtractFile(ctx flanksourceContext.Context, fil
 			astNode.FieldName = node.Name
 		}
 
-		nodeID, err := e.cache.StoreASTNode(astNode)
-		if err != nil {
-			return fmt.Errorf("failed to store AST node: %w", err)
-		}
-
+		// Generate unique key for the node
+		nodeKey := astNode.Key()
 		fullName := e.getNodeFullName(node)
-		nodeMap[fullName] = nodeID
+		nodeMap[fullName] = nodeKey
+
+		result.Nodes = append(result.Nodes, astNode)
 	}
 
-	// Store relationships
-	for _, rel := range result.Relationships {
-		fromID, fromExists := nodeMap[rel.FromEntity]
+	// Convert relationships
+	for _, rel := range tsResult.Relationships {
+		fromKey, fromExists := nodeMap[rel.FromEntity]
 		if !fromExists {
 			continue
 		}
 
+		var toKey *string
+		if toNodeKey, toExists := nodeMap[rel.ToEntity]; toExists {
+			toKey = &toNodeKey
+		}
+
+		// Look up existing node IDs from cache if available
+		var fromID int64
 		var toID *int64
-		if toNodeID, toExists := nodeMap[rel.ToEntity]; toExists {
-			toID = &toNodeID
+		
+		if id, exists := cache.GetASTId(fromKey); exists {
+			fromID = id
 		}
-
-		relType := e.mapRelationshipType(rel.Type)
-		err := e.cache.StoreASTRelationship(fromID, toID, rel.Line, relType, rel.Text)
-		if err != nil {
-			// Log but don't fail on relationship storage errors
-			continue
-		}
-	}
-
-	// Store imports as library relationships
-	libResolver := NewLibraryResolver(e.cache)
-	for _, imp := range result.Imports {
-		// Try to resolve the import as a library
-		libID, err := libResolver.ResolveTypeScriptLibrary(imp.Source)
-		if err == nil && libID > 0 {
-			// Find the node that contains this import (usually module level)
-			for fullName, nodeID := range nodeMap {
-				if strings.HasPrefix(fullName, e.packageName) {
-					importText := "import from " + imp.Source
-					if imp.TypesOnly {
-						importText = "import type from " + imp.Source
-					}
-					e.cache.StoreLibraryRelationship(nodeID, libID, imp.Line,
-						models.RelationshipImport, importText)
-					break
-				}
+		
+		if toKey != nil {
+			if id, exists := cache.GetASTId(*toKey); exists {
+				toID = &id
 			}
 		}
+
+		astRel := &models.ASTRelationship{
+			FromASTID:        fromID,
+			ToASTID:          toID,
+			LineNo:           rel.Line,
+			RelationshipType: models.RelationshipType(e.mapRelationshipType(rel.Type)),
+			Text:             rel.Text,
+		}
+
+		result.Relationships = append(result.Relationships, astRel)
 	}
 
-	// Update file metadata
-	if err := e.cache.UpdateFileMetadata(filePath); err != nil {
-		return fmt.Errorf("failed to update file metadata: %w", err)
-	}
-
-	return nil
+	return result, nil
 }
 
 // extractPackageName extracts package name from file path or package.json
@@ -235,8 +225,9 @@ func (e *TypeScriptASTExtractor) extractPackageName(filePath string) string {
 }
 
 // runTypeScriptASTExtraction runs the TypeScript AST extraction script
-func (e *TypeScriptASTExtractor) runTypeScriptASTExtraction(ctx flanksourceContext.Context, filePath string) (*TypeScriptASTResult, error) {
+func (e *TypeScriptASTExtractor) runTypeScriptASTExtraction(filePath string) (*TypeScriptASTResult, error) {
 	// Create parser script with proper module resolution
+	ctx := flanksourceContext.NewContext(context.Background())
 	scriptPath, err := e.depsManager.CreateParserScript(ctx, typescriptASTExtractorScript, "typescript")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create parser script: %w", err)

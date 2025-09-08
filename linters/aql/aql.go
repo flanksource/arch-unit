@@ -19,10 +19,10 @@ import (
 // AQL represents the AQL linter
 type AQL struct {
 	linters.RunOptions
-	astCache  *cache.ASTCache
-	extractor *analysis.GoASTExtractor
-	resolver  *analysis.LibraryResolver
-	config    *models.Config // Store the main config to access AQL rules
+	astCache *cache.ASTCache
+	analyzer *analysis.GenericAnalyzer
+	resolver *analysis.LibraryResolver
+	config   *models.Config // Store the main config to access AQL rules
 }
 
 // NewAQL creates a new AQL linter
@@ -102,8 +102,8 @@ func (a *AQL) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Viola
 	}
 
 	// Initialize components
-	if a.extractor == nil {
-		a.extractor = analysis.NewGoASTExtractor(a.astCache)
+	if a.analyzer == nil {
+		a.analyzer = analysis.NewGenericAnalyzer(a.astCache)
 	}
 	if a.resolver == nil {
 		a.resolver = analysis.NewLibraryResolver(a.astCache)
@@ -113,12 +113,20 @@ func (a *AQL) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Viola
 		}
 	}
 
-	// Analyze Go files if any are provided
-	goFiles := filterGoFiles(a.Files)
-	if len(goFiles) > 0 {
-		for _, file := range goFiles {
-			if err := a.extractor.ExtractFile(ctx, file); err != nil {
-				logger.Warnf("Failed to extract AST from %s: %v", file, err)
+	// Analyze files if any are provided
+	if len(a.Files) > 0 {
+		for _, file := range a.Files {
+			// Read file content
+			content, err := os.ReadFile(file)
+			if err != nil {
+				logger.Warnf("Failed to read file %s: %v", file, err)
+				continue
+			}
+
+			// Use generic analyzer
+			task := &clicky.Task{}
+			if _, err := a.analyzer.AnalyzeFile(task, file, content); err != nil {
+				logger.Warnf("Failed to analyze AST from %s: %v", file, err)
 			}
 		}
 	}
@@ -177,12 +185,12 @@ func (a *AQL) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Viola
 		var err error
 		if parser.IsLegacyAQLFormat(ruleText) {
 			// Legacy AQL format
-			ruleSet, err = parser.ParseAQLFile(ruleText)
+			ruleSet, err = parser.ParseAQL(ruleText)
 		} else {
 			// YAML format
 			ruleSet, err = parser.LoadAQLFromYAML(ruleText)
 		}
-		
+
 		if err != nil {
 			violation := models.Violation{
 				File:    sourceFile,

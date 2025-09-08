@@ -13,6 +13,7 @@ import (
 	"github.com/flanksource/arch-unit/analysis"
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
+	"github.com/flanksource/clicky"
 	flanksourceContext "github.com/flanksource/commons/context"
 )
 
@@ -118,12 +119,8 @@ func (a *Analyzer) AnalyzeFiles() error {
 		ctx.Warnf("Failed to store library nodes: %v", err)
 	}
 
-	// Create extractors for each language
-	goExtractor := analysis.NewGoASTExtractor(a.cache)
-	pythonExtractor := analysis.NewPythonASTExtractor(a.cache)
-	jsExtractor := analysis.NewJavaScriptASTExtractor(a.cache)
-	tsExtractor := analysis.NewTypeScriptASTExtractor(a.cache)
-	mdExtractor := analysis.NewMarkdownASTExtractor(a.cache)
+	// Create generic analyzer for all languages
+	genericAnalyzer := analysis.NewGenericAnalyzer(a.cache)
 
 	ctx.Infof("📊 Analyzing %d source files...", len(sourceFiles))
 
@@ -134,36 +131,35 @@ func (a *Analyzer) AnalyzeFiles() error {
 
 	// Process files
 	for _, file := range sourceFiles {
-
-		// Check if already cached
 		relPath, _ := filepath.Rel(a.workDir, file.path)
-		needsAnalysis, err := a.cache.NeedsReanalysis(file.path)
-		if err == nil && !needsAnalysis {
-			cachedCount++
-			ctx.Tracef("✓ Using cached AST for %s", relPath)
-			continue
-		}
-
-		ctx.Debugf("🔨 Extracting AST from %s (%s)", relPath, file.language)
-		switch file.language {
-		case "go":
-			err = goExtractor.ExtractFile(ctx, file.path)
-		case "python":
-			err = pythonExtractor.ExtractFile(ctx, file.path)
-		case "javascript":
-			err = jsExtractor.ExtractFile(ctx, file.path)
-		case "typescript":
-			err = tsExtractor.ExtractFile(ctx, file.path)
-		case "markdown":
-			err = mdExtractor.ExtractFile(ctx, file.path)
-		}
-
+		ctx.Debugf("🔨 Analyzing %s (%s)", relPath, file.language)
+		
+		// Read file content
+		content, err := os.ReadFile(file.path)
 		if err != nil {
 			errorCount++
-			ctx.Warnf("❌ Failed to extract AST from %s: %v", relPath, err)
+			ctx.Warnf("❌ Failed to read file %s: %v", relPath, err)
 			continue
 		}
-		processedCount++
+		
+		// Use generic analyzer (it handles caching internally) 
+		// Create a simple task for the analyzer
+		task := &clicky.Task{}
+		result, err := genericAnalyzer.AnalyzeFile(task, file.path, content)
+		
+		if err != nil {
+			errorCount++
+			ctx.Warnf("❌ Failed to analyze %s: %v", relPath, err)
+			continue
+		}
+		
+		if result == nil {
+			cachedCount++
+			ctx.Tracef("✓ Using cached AST for %s", relPath)
+		} else {
+			processedCount++
+			ctx.Debugf("✓ Analyzed %s: %d nodes", relPath, len(result.Nodes))
+		}
 	}
 
 	elapsed := time.Since(startTime)
@@ -312,6 +308,9 @@ func shouldIncludeFile(filePath, workDir string, includePatterns, excludePattern
 func (a *Analyzer) processSourceFiles(ctx flanksourceContext.Context, sourceFiles []fileInfo) error {
 	ctx.Infof("Analyzing %d source files...", len(sourceFiles))
 
+	// Create generic analyzer
+	genericAnalyzer := analysis.NewGenericAnalyzer(a.cache)
+
 	// Progress tracking
 	totalFiles := len(sourceFiles)
 	processedFiles := 0
@@ -320,40 +319,17 @@ func (a *Analyzer) processSourceFiles(ctx flanksourceContext.Context, sourceFile
 	for _, file := range sourceFiles {
 		ctx.Debugf("Processing %s (%s)", file.path, file.language)
 
-		// Check if file needs reanalysis
-		needsAnalysis, err := a.cache.NeedsReanalysis(file.path)
+		// Read file content
+		content, err := os.ReadFile(file.path)
 		if err != nil {
-			ctx.Warnf("Failed to check if %s needs reanalysis: %v", file.path, err)
-			needsAnalysis = true // Default to analyzing if unsure
-		}
-
-		if !needsAnalysis {
-			ctx.Debugf("Skipping %s (cached)", file.path)
-			processedFiles++
+			ctx.Warnf("Failed to read file %s: %v", file.path, err)
 			continue
 		}
 
-		// Extract AST based on file language
-		switch file.language {
-		case "go":
-			goExtractor := analysis.NewGoASTExtractor(a.cache)
-			err = goExtractor.ExtractFile(ctx, file.path)
-		case "python":
-			pythonExtractor := analysis.NewPythonASTExtractor(a.cache)
-			err = pythonExtractor.ExtractFile(ctx, file.path)
-		case "javascript":
-			jsExtractor := analysis.NewJavaScriptASTExtractor(a.cache)
-			err = jsExtractor.ExtractFile(ctx, file.path)
-		case "typescript":
-			tsExtractor := analysis.NewTypeScriptASTExtractor(a.cache)
-			err = tsExtractor.ExtractFile(ctx, file.path)
-		case "markdown":
-			mdExtractor := analysis.NewMarkdownASTExtractor(a.cache)
-			err = mdExtractor.ExtractFile(ctx, file.path)
-		default:
-			ctx.Warnf("Unsupported language for %s: %s", file.path, file.language)
-			continue
-		}
+		// Use generic analyzer (it handles caching internally)
+		task := &clicky.Task{}
+		_, err = genericAnalyzer.AnalyzeFile(task, file.path, content)
+
 		processedFiles++
 
 		if processedFiles%10 == 0 || processedFiles == totalFiles {
@@ -361,7 +337,7 @@ func (a *Analyzer) processSourceFiles(ctx flanksourceContext.Context, sourceFile
 		}
 
 		if err != nil {
-			ctx.Warnf("Failed to extract AST from %s: %v", file.path, err)
+			ctx.Warnf("Failed to analyze AST from %s: %v", file.path, err)
 			continue
 		}
 	}

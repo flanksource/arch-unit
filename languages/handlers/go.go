@@ -106,8 +106,8 @@ func (h *GoHandler) GetDefaultLinters() []string {
 
 // GetAnalyzer returns the AST analyzer
 func (h *GoHandler) GetAnalyzer() languages.ASTAnalyzer {
-	// Return the Go analyzer adapter
-	return languages.GetGoAnalyzerAdapter()
+	// Return the generic analyzer adapter
+	return languages.GetGenericAnalyzerAdapter()
 }
 
 // GetDependencyScanner returns the dependency scanner for Go

@@ -13,7 +13,7 @@ import (
 // LoadAQLFromYAML loads AQL rules from YAML content
 func LoadAQLFromYAML(content string) (*models.AQLRuleSet, error) {
 	var ruleSet models.AQLRuleSet
-	
+
 	if err := yaml.Unmarshal([]byte(content), &ruleSet); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML: %w", err)
 	}
@@ -134,7 +134,7 @@ func validateCondition(condition *models.AQLCondition) error {
 		models.AQLOperatorGTE, models.AQLOperatorLTE,
 		models.AQLOperatorEQ, models.AQLOperatorNE,
 	}
-	
+
 	valid := false
 	for _, op := range validOperators {
 		if condition.Operator == op {
@@ -161,8 +161,8 @@ func validatePattern(pattern *models.AQLPattern) error {
 	}
 
 	// At least one field should be specified (even if it's a wildcard)
-	if pattern.Package == "" && pattern.Type == "" && pattern.Method == "" && 
-	   pattern.Field == "" && pattern.Metric == "" {
+	if pattern.Package == "" && pattern.Type == "" && pattern.Method == "" &&
+		pattern.Field == "" && pattern.Metric == "" {
 		return fmt.Errorf("pattern must specify at least one field")
 	}
 
@@ -188,8 +188,8 @@ func validatePattern(pattern *models.AQLPattern) error {
 func ConvertLegacyAQL(aqlContent string) (string, error) {
 	// This is a basic converter for backward compatibility
 	// It handles simple cases and can be extended as needed
-	
-	ruleSet, err := ParseAQLFile(aqlContent)
+
+	ruleSet, err := ParseAQL(aqlContent)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse legacy AQL: %w", err)
 	}

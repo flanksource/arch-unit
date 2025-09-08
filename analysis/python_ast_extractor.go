@@ -11,21 +11,17 @@ import (
 
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
-	flanksourceContext "github.com/flanksource/commons/context"
 )
 
 // PythonASTExtractor extracts AST information from Python source files
 type PythonASTExtractor struct {
-	cache       *cache.ASTCache
 	filePath    string
 	packageName string
 }
 
 // NewPythonASTExtractor creates a new Python AST extractor
-func NewPythonASTExtractor(astCache *cache.ASTCache) *PythonASTExtractor {
-	return &PythonASTExtractor{
-		cache: astCache,
-	}
+func NewPythonASTExtractor() *PythonASTExtractor {
+	return &PythonASTExtractor{}
 }
 
 // PythonASTNode represents a node in Python AST
@@ -70,36 +66,24 @@ type PythonASTResult struct {
 }
 
 // ExtractFile extracts AST information from a Python file
-func (e *PythonASTExtractor) ExtractFile(ctx flanksourceContext.Context, filePath string) error {
-	// Check if file needs re-analysis
-	needsAnalysis, err := e.cache.NeedsReanalysis(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to check if file needs analysis: %w", err)
-	}
-
-	if !needsAnalysis {
-		return nil // File is up to date
-	}
+func (e *PythonASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath string, content []byte) (*ASTResult, error) {
+	// Create result container
+	result := NewASTResult(filePath, "python")
 
 	e.filePath = filePath
 
-	// Clear existing AST data for the file
-	if err := e.cache.DeleteASTForFile(filePath); err != nil {
-		return fmt.Errorf("failed to clear existing AST data: %w", err)
-	}
-
 	// Extract package name from file path
 	e.packageName = e.extractPackageName(filePath)
+	result.PackageName = e.packageName
 
 	// Run Python AST extraction
-	result, err := e.runPythonASTExtraction(filePath)
+	pythonResult, err := e.runPythonASTExtraction(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to extract Python AST: %w", err)
+		return nil, fmt.Errorf("failed to extract Python AST: %w", err)
 	}
 
-	// Store nodes in cache
-	nodeMap := make(map[string]int64)
-	for _, node := range result.Nodes {
+	// Convert Python AST results to generic AST nodes
+	for _, node := range pythonResult.Nodes {
 		astNode := &models.ASTNode{
 			FilePath:             filePath,
 			PackageName:          e.packageName,
@@ -111,6 +95,8 @@ func (e *PythonASTExtractor) ExtractFile(ctx flanksourceContext.Context, filePat
 			EndLine:              node.EndLine,
 			LineCount:            node.EndLine - node.StartLine + 1,
 			CyclomaticComplexity: node.CyclomaticComplexity,
+			ParameterCount:       node.ParameterCount,
+			ReturnCount:          node.ReturnCount,
 			Parameters:           node.Parameters,
 			ReturnValues:         node.ReturnValues,
 			LastModified:         time.Now(),
@@ -136,58 +122,34 @@ func (e *PythonASTExtractor) ExtractFile(ctx flanksourceContext.Context, filePat
 			astNode.FieldName = node.Name
 		}
 
-		nodeID, err := e.cache.StoreASTNode(astNode)
-		if err != nil {
-			return fmt.Errorf("failed to store AST node: %w", err)
-		}
-
-		fullName := e.getNodeFullName(node)
-		nodeMap[fullName] = nodeID
+		result.AddNode(astNode)
 	}
 
-	// Store relationships
-	for _, rel := range result.Relationships {
-		fromID, fromExists := nodeMap[rel.FromEntity]
-		if !fromExists {
-			continue
+	// Convert relationships
+	for _, rel := range pythonResult.Relationships {
+		astRel := &models.ASTRelationship{
+			FromASTID:        0, // Will be filled by analyzer
+			ToASTID:          nil, // Will be resolved by analyzer if possible
+			LineNo:           rel.Line,
+			RelationshipType: models.RelationshipType(e.mapRelationshipType(rel.Type)),
+			Text:             rel.Text,
 		}
-
-		var toID *int64
-		if toNodeID, toExists := nodeMap[rel.ToEntity]; toExists {
-			toID = &toNodeID
-		}
-
-		relType := e.mapRelationshipType(rel.Type)
-		err := e.cache.StoreASTRelationship(fromID, toID, rel.Line, relType, rel.Text)
-		if err != nil {
-			// Log but don't fail on relationship storage errors
-			continue
-		}
+		result.AddRelationship(astRel)
 	}
 
-	// Store imports as library relationships
-	libResolver := NewLibraryResolver(e.cache)
-	for _, imp := range result.Imports {
-		// Try to resolve the import as a library
-		libID, err := libResolver.ResolvePythonLibrary(imp.Module)
-		if err == nil && libID > 0 {
-			// Find the node that contains this import (usually module level)
-			for fullName, nodeID := range nodeMap {
-				if strings.HasPrefix(fullName, e.packageName) {
-					e.cache.StoreLibraryRelationship(nodeID, libID, imp.Line,
-						models.RelationshipImport, fmt.Sprintf("import %s", imp.Module))
-					break
-				}
-			}
+	// Convert imports to library relationships
+	for _, imp := range pythonResult.Imports {
+		libRel := &models.LibraryRelationship{
+			ASTID:            0, // Will be filled by analyzer
+			LibraryID:        0, // Will be resolved by analyzer
+			LineNo:           imp.Line,
+			RelationshipType: string(models.RelationshipImport),
+			Text:             fmt.Sprintf("import %s (module=%s;alias=%s;framework=python)", imp.Module, imp.Module, imp.Alias),
 		}
+		result.Libraries = append(result.Libraries, libRel)
 	}
 
-	// Update file metadata
-	if err := e.cache.UpdateFileMetadata(filePath); err != nil {
-		return fmt.Errorf("failed to update file metadata: %w", err)
-	}
-
-	return nil
+	return result, nil
 }
 
 // extractPackageName extracts package name from file path

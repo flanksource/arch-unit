@@ -1,15 +1,24 @@
 package analysis
 
 import (
+	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/clicky"
 )
 
-// Analyzer is the interface for language-specific AST analyzers
-// Analyzers should be cache-unaware and focus only on analysis
+// Analyzer is the interface for high-level AST analysis orchestration
+// Analyzers handle cache management, DB operations, and coordinate extraction
 type Analyzer interface {
 	// AnalyzeFile analyzes a single file and returns AST results
 	AnalyzeFile(task *clicky.Task, filepath string, content []byte) (*ASTResult, error)
+}
+
+// Extractor is the interface for language-specific AST extraction
+// Extractors should be pure functions that only extract AST data
+// They can use ReadOnlyCache to lookup existing node IDs for relationship building
+type Extractor interface {
+	// ExtractFile extracts AST information from a file using read-only cache for ID lookups
+	ExtractFile(cache cache.ReadOnlyCache, filepath string, content []byte) (*ASTResult, error)
 }
 
 // ASTResult contains the complete analysis results for a file

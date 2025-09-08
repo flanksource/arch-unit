@@ -506,8 +506,8 @@ func (p *Parser) parseValue() (interface{}, error) {
 	}
 }
 
-// ParseAQLFile parses an AQL file
-func ParseAQLFile(content string) (*models.AQLRuleSet, error) {
+// ParseAQL parses an AQL file
+func ParseAQL(content string) (*models.AQLRuleSet, error) {
 	parser := NewParser(content)
 	return parser.ParseRuleSet()
 }

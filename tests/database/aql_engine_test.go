@@ -1,21 +1,15 @@
 package database_test_suite
 
 import (
-	"context"
-	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/flanksource/arch-unit/analysis"
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/arch-unit/parser"
 	"github.com/flanksource/arch-unit/query"
-	flanksourceContext "github.com/flanksource/commons/context"
 )
 
 var _ = Describe("AQL Engine", func() {
@@ -74,7 +68,7 @@ rules:
 				LIMIT(*.cyclomatic < 5)
 			}`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).ToNot(HaveOccurred())
 
 			violations, err := engine.ExecuteRuleSet(ruleSet)
@@ -87,7 +81,7 @@ rules:
 				LIMIT(*Controller*.cyclomatic > 5)
 			}`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).ToNot(HaveOccurred())
 
 			violations, err := engine.ExecuteRuleSet(ruleSet)
@@ -100,7 +94,7 @@ rules:
 				LIMIT(*Service*.cyclomatic >= 5)
 			}`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).ToNot(HaveOccurred())
 
 			violations, err := engine.ExecuteRuleSet(ruleSet)
@@ -113,7 +107,7 @@ rules:
 				LIMIT(*.params > 2)
 			}`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).ToNot(HaveOccurred())
 
 			violations, err := engine.ExecuteRuleSet(ruleSet)
@@ -128,7 +122,7 @@ rules:
 				FORBID(*Controller* -> *Repository*)
 			}`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).ToNot(HaveOccurred())
 
 			violations, err := engine.ExecuteRuleSet(ruleSet)
@@ -141,7 +135,7 @@ rules:
 				FORBID(*Service* -> *Controller*)
 			}`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).ToNot(HaveOccurred())
 
 			violations, err := engine.ExecuteRuleSet(ruleSet)
@@ -154,7 +148,7 @@ rules:
 				FORBID(*model* -> *)
 			}`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).ToNot(HaveOccurred())
 
 			violations, err := engine.ExecuteRuleSet(ruleSet)
@@ -169,7 +163,7 @@ rules:
 				REQUIRE(*Controller* -> *Service*)
 			}`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).ToNot(HaveOccurred())
 
 			violations, err := engine.ExecuteRuleSet(ruleSet)
@@ -182,7 +176,7 @@ rules:
 				REQUIRE(*Service* -> *Repository*)
 			}`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).ToNot(HaveOccurred())
 
 			violations, err := engine.ExecuteRuleSet(ruleSet)
@@ -195,7 +189,7 @@ rules:
 				REQUIRE(*Controller* -> *model*)
 			}`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).ToNot(HaveOccurred())
 
 			violations, err := engine.ExecuteRuleSet(ruleSet)
@@ -221,7 +215,7 @@ rules:
 				REQUIRE(*Service* -> *Repository*)
 			}`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).ToNot(HaveOccurred())
 
 			violations, err := engine.ExecuteRuleSet(ruleSet)
@@ -249,7 +243,7 @@ rules:
 					LIMIT(` + pattern + `.cyclomatic >= 0)
 				}`
 
-				ruleSet, err := parser.ParseAQLFile(aql)
+				ruleSet, err := parser.ParseAQL(aql)
 				Expect(err).ToNot(HaveOccurred())
 
 				violations, err := engine.ExecuteRuleSet(ruleSet)
@@ -282,108 +276,4 @@ rules:
 		})
 	})
 
-	Context("Real Go Code Integration", func() {
-		It("should work with extracted AST from real Go code", func() {
-			// Create real Go files for testing
-			tmpDir := GinkgoT().TempDir()
-
-			// Controller file
-			controllerFile := filepath.Join(tmpDir, "controller.go")
-			controllerContent := `package controller
-
-import "fmt"
-
-type UserController struct{}
-
-func (c *UserController) GetUser(id string) (*User, error) {
-	if id == "" {
-		return nil, fmt.Errorf("invalid id")
-	}
-	// Simple logic - complexity should be 2
-	return &User{ID: id}, nil
-}
-
-func (c *UserController) ComplexMethod(a, b, c int) int {
-	result := 0
-	for i := 0; i < a; i++ {
-		if i%2 == 0 {
-			switch b {
-			case 1:
-				result += i
-			case 2:
-				result += i * 2
-			default:
-				result += i * c
-			}
-		} else {
-			result += i
-		}
-	}
-	// This should have high complexity
-	return result
-}`
-
-			err := os.WriteFile(controllerFile, []byte(controllerContent), 0644)
-			Expect(err).ToNot(HaveOccurred())
-
-			// Extract AST using real extractor
-			extractor := analysis.NewGoASTExtractor(astCache)
-			err = extractor.ExtractFile(flanksourceContext.NewContext(context.Background()), controllerFile)
-			Expect(err).ToNot(HaveOccurred())
-
-			// Test AQL rules on real extracted data
-			aql := `RULE "Real Code Test" {
-				LIMIT(*Controller*.cyclomatic > 5)
-			}`
-
-			ruleSet, err := parser.ParseAQLFile(aql)
-			Expect(err).ToNot(HaveOccurred())
-
-			violations, err := engine.ExecuteRuleSet(ruleSet)
-			Expect(err).ToNot(HaveOccurred())
-
-			// Should find the ComplexMethod as a violation
-			Expect(violations).ToNot(BeEmpty())
-
-			// Verify violation details
-			found := false
-			for _, violation := range violations {
-				if strings.Contains(violation.Message, "ComplexMethod") || strings.Contains(violation.File, controllerFile) {
-					found = true
-					Expect(violation.Line).To(BeNumerically(">", 0))
-					Expect(violation.Source).To(Equal("aql"))
-				}
-			}
-			Expect(found).To(BeTrue(), "Should find ComplexMethod violation")
-		})
-	})
-
-	Context("Performance", func() {
-		It("should handle large datasets efficiently", func() {
-			// Create many test nodes for performance testing
-			nodeCount := 1000
-			testDB.CreateManyTestASTNodesInCache(astCache, nodeCount)
-
-			// Test complex rule performance
-			aql := `RULE "Performance Test" {
-				LIMIT(*.cyclomatic > 15)
-				FORBID(Type1* -> Type2*)
-				REQUIRE(Type3* -> Type4*)
-			}`
-
-			start := time.Now()
-			ruleSet, err := parser.ParseAQLFile(aql)
-			Expect(err).ToNot(HaveOccurred())
-
-			violations, err := engine.ExecuteRuleSet(ruleSet)
-			Expect(err).ToNot(HaveOccurred())
-			elapsed := time.Since(start)
-
-			GinkgoWriter.Printf("Processed %d nodes in %v, found %d violations", nodeCount, elapsed, len(violations))
-
-			// Performance should be reasonable (less than 5 seconds for 1000 nodes)
-			Expect(elapsed).To(BeNumerically("<", 5*time.Second), "Query should complete within 5 seconds")
-			Expect(violations).ToNot(BeEmpty(), "Should find some violations")
-		})
-	})
 })

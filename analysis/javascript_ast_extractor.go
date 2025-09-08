@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -16,16 +17,14 @@ import (
 
 // JavaScriptASTExtractor extracts AST information from JavaScript source files
 type JavaScriptASTExtractor struct {
-	cache       *cache.ASTCache
 	filePath    string
 	packageName string
 	depsManager *NodeDependenciesManager
 }
 
 // NewJavaScriptASTExtractor creates a new JavaScript AST extractor
-func NewJavaScriptASTExtractor(astCache *cache.ASTCache) *JavaScriptASTExtractor {
+func NewJavaScriptASTExtractor() *JavaScriptASTExtractor {
 	return &JavaScriptASTExtractor{
-		cache:       astCache,
 		depsManager: NewNodeDependenciesManager(),
 	}
 }
@@ -74,36 +73,37 @@ type JavaScriptASTResult struct {
 }
 
 // ExtractFile extracts AST information from a JavaScript file
-func (e *JavaScriptASTExtractor) ExtractFile(ctx flanksourceContext.Context, filePath string) error {
-	// Check if file needs re-analysis
-	needsAnalysis, err := e.cache.NeedsReanalysis(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to check if file needs analysis: %w", err)
-	}
-
-	if !needsAnalysis {
-		return nil // File is up to date
-	}
-
+func (e *JavaScriptASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath string, content []byte) (*ASTResult, error) {
 	e.filePath = filePath
-
-	// Clear existing AST data for the file
-	if err := e.cache.DeleteASTForFile(filePath); err != nil {
-		return fmt.Errorf("failed to clear existing AST data: %w", err)
-	}
-
+	
 	// Extract package name from file path or package.json
 	e.packageName = e.extractPackageName(filePath)
-
-	// Run JavaScript AST extraction
-	result, err := e.runJavaScriptASTExtraction(ctx, filePath)
-	if err != nil {
-		return fmt.Errorf("failed to extract JavaScript AST: %w", err)
+	
+	result := &ASTResult{
+		Nodes:         []*models.ASTNode{},
+		Relationships: []*models.ASTRelationship{},
 	}
 
-	// Store nodes in cache
-	nodeMap := make(map[string]int64)
-	for _, node := range result.Nodes {
+	// Run JavaScript AST extraction (write content to temp file for external tool)
+	tempFile, err := os.CreateTemp("", "js_extract_*.js")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tempFile.Name())
+	
+	if _, err := tempFile.Write(content); err != nil {
+		return nil, fmt.Errorf("failed to write content to temp file: %w", err)
+	}
+	tempFile.Close()
+
+	jsResult, err := e.runJavaScriptASTExtraction(tempFile.Name())
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract JavaScript AST: %w", err)
+	}
+
+	// Convert JavaScript nodes to AST nodes
+	nodeMap := make(map[string]string) // fullName -> node key
+	for _, node := range jsResult.Nodes {
 		astNode := &models.ASTNode{
 			FilePath:             filePath,
 			PackageName:          e.packageName,
@@ -140,58 +140,52 @@ func (e *JavaScriptASTExtractor) ExtractFile(ctx flanksourceContext.Context, fil
 			astNode.FieldName = node.Name
 		}
 
-		nodeID, err := e.cache.StoreASTNode(astNode)
-		if err != nil {
-			return fmt.Errorf("failed to store AST node: %w", err)
-		}
-
+		// Generate unique key for the node
+		nodeKey := astNode.Key()
 		fullName := e.getNodeFullName(node)
-		nodeMap[fullName] = nodeID
+		nodeMap[fullName] = nodeKey
+
+		result.Nodes = append(result.Nodes, astNode)
 	}
 
-	// Store relationships
-	for _, rel := range result.Relationships {
-		fromID, fromExists := nodeMap[rel.FromEntity]
+	// Convert relationships
+	for _, rel := range jsResult.Relationships {
+		fromKey, fromExists := nodeMap[rel.FromEntity]
 		if !fromExists {
 			continue
 		}
 
+		var toKey *string
+		if toNodeKey, toExists := nodeMap[rel.ToEntity]; toExists {
+			toKey = &toNodeKey
+		}
+
+		// Look up existing node IDs from cache if available
+		var fromID int64
 		var toID *int64
-		if toNodeID, toExists := nodeMap[rel.ToEntity]; toExists {
-			toID = &toNodeID
+		
+		if id, exists := cache.GetASTId(fromKey); exists {
+			fromID = id
 		}
-
-		relType := e.mapRelationshipType(rel.Type)
-		err := e.cache.StoreASTRelationship(fromID, toID, rel.Line, relType, rel.Text)
-		if err != nil {
-			// Log but don't fail on relationship storage errors
-			continue
-		}
-	}
-
-	// Store imports as library relationships
-	libResolver := NewLibraryResolver(e.cache)
-	for _, imp := range result.Imports {
-		// Try to resolve the import as a library
-		libID, err := libResolver.ResolveJavaScriptLibrary(imp.Source)
-		if err == nil && libID > 0 {
-			// Find the node that contains this import (usually module level)
-			for fullName, nodeID := range nodeMap {
-				if strings.HasPrefix(fullName, e.packageName) {
-					e.cache.StoreLibraryRelationship(nodeID, libID, imp.Line,
-						models.RelationshipImport, fmt.Sprintf("import from %s", imp.Source))
-					break
-				}
+		
+		if toKey != nil {
+			if id, exists := cache.GetASTId(*toKey); exists {
+				toID = &id
 			}
 		}
+
+		astRel := &models.ASTRelationship{
+			FromASTID:        fromID,
+			ToASTID:          toID,
+			LineNo:           rel.Line,
+			RelationshipType: models.RelationshipType(e.mapRelationshipType(rel.Type)),
+			Text:             rel.Text,
+		}
+
+		result.Relationships = append(result.Relationships, astRel)
 	}
 
-	// Update file metadata
-	if err := e.cache.UpdateFileMetadata(filePath); err != nil {
-		return fmt.Errorf("failed to update file metadata: %w", err)
-	}
-
-	return nil
+	return result, nil
 }
 
 // extractPackageName extracts package name from file path or package.json
@@ -229,8 +223,9 @@ func (e *JavaScriptASTExtractor) extractPackageName(filePath string) string {
 }
 
 // runJavaScriptASTExtraction runs the JavaScript AST extraction script
-func (e *JavaScriptASTExtractor) runJavaScriptASTExtraction(ctx flanksourceContext.Context, filePath string) (*JavaScriptASTResult, error) {
+func (e *JavaScriptASTExtractor) runJavaScriptASTExtraction(filePath string) (*JavaScriptASTResult, error) {
 	// Create parser script with proper module resolution
+	ctx := flanksourceContext.NewContext(context.Background())
 	scriptPath, err := e.depsManager.CreateParserScript(ctx, javascriptASTExtractorScript, "javascript")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create parser script: %w", err)

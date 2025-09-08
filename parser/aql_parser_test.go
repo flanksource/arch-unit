@@ -18,7 +18,7 @@ var _ = Describe("AQL Parser", func() {
 				LIMIT(*.cyclomatic > 10)
 			}`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ruleSet.Rules).To(HaveLen(1))
 
@@ -45,7 +45,7 @@ var _ = Describe("AQL Parser", func() {
 				ALLOW(Service* -> Repository*)
 			}`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ruleSet.Rules).To(HaveLen(1))
 
@@ -93,7 +93,7 @@ var _ = Describe("AQL Parser", func() {
 				REQUIRE(Controller* -> Service*)
 			}`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ruleSet.Rules).To(HaveLen(2))
 
@@ -112,7 +112,7 @@ var _ = Describe("AQL Parser", func() {
 					LIMIT(` + patternStr + `.cyclomatic > 5)
 				}`
 
-				ruleSet, err := parser.ParseAQLFile(aql)
+				ruleSet, err := parser.ParseAQL(aql)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ruleSet.Rules).To(HaveLen(1))
 				Expect(ruleSet.Rules[0].Statements).To(HaveLen(1))
@@ -140,7 +140,7 @@ var _ = Describe("AQL Parser", func() {
 					LIMIT(` + conditionStr + `)
 				}`
 
-				ruleSet, err := parser.ParseAQLFile(aql)
+				ruleSet, err := parser.ParseAQL(aql)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ruleSet.Rules).To(HaveLen(1))
 				Expect(ruleSet.Rules[0].Statements).To(HaveLen(1))
@@ -166,7 +166,7 @@ var _ = Describe("AQL Parser", func() {
 	Describe("error handling", func() {
 		DescribeTable("handling various syntax errors",
 			func(aql string, expectedError string) {
-				_, err := parser.ParseAQLFile(aql)
+				_, err := parser.ParseAQL(aql)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring(expectedError))
 			},
@@ -212,7 +212,7 @@ var _ = Describe("AQL Parser", func() {
 
 			`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ruleSet.Rules).To(HaveLen(1))
 
@@ -236,7 +236,7 @@ var _ = Describe("AQL Parser", func() {
 			}
 			// End of rules`
 
-			ruleSet, err := parser.ParseAQLFile(aql)
+			ruleSet, err := parser.ParseAQL(aql)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ruleSet.Rules).To(HaveLen(1))
 
@@ -261,7 +261,7 @@ var _ = Describe("AQL Parser", func() {
 				`, i, i%20+1, i, i, i, i))
 			}
 
-			ruleSet, err := parser.ParseAQLFile(aqlBuilder.String())
+			ruleSet, err := parser.ParseAQL(aqlBuilder.String())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ruleSet.Rules).To(HaveLen(100))
 

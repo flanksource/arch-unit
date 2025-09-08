@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -211,6 +213,9 @@ func calculateFileHash(filePath string) (string, error) {
 
 // NeedsReanalysis checks if a file needs re-analysis based on hash and modification time
 func (c *ASTCache) NeedsReanalysis(filePath string) (bool, error) {
+	if c.db == nil {
+		return false, fmt.Errorf("db is nil")
+	}
 	// Check if file exists
 	_, err := os.Stat(filePath)
 	if err != nil {
@@ -455,6 +460,66 @@ func (c *ASTCache) QueryRaw(query string, args ...interface{}) (*sql.Rows, error
 // GetDB returns the underlying GORM database instance
 func (c *ASTCache) GetDB() *gorm.DB {
 	return c.db
+}
+
+// GetASTId looks up the database ID for a node by its key
+func (c *ASTCache) GetASTId(key string) (int64, bool) {
+	var node models.ASTNode
+
+	// Parse the key to extract components
+	// Key format: "filepath/TypeName:MethodNameFieldName" or "depId#filepath/TypeName:MethodNameFieldName"
+	parts := strings.Split(key, "#")
+	var depID *int64
+	keyPart := key
+
+	if len(parts) == 2 {
+		if id, err := strconv.ParseInt(parts[0], 10, 64); err == nil {
+			depID = &id
+			keyPart = parts[1]
+		}
+	}
+
+	// Parse filepath/TypeName:MethodNameFieldName
+	slashIdx := strings.LastIndex(keyPart, "/")
+	if slashIdx == -1 {
+		return 0, false
+	}
+
+	filepath := keyPart[:slashIdx]
+	remaining := keyPart[slashIdx+1:]
+
+	colonIdx := strings.Index(remaining, ":")
+	if colonIdx == -1 {
+		return 0, false
+	}
+
+	typeName := remaining[:colonIdx]
+	methodField := remaining[colonIdx+1:]
+
+	// Build query based on components
+	query := c.db.Where("file_path = ? AND type_name = ?", filepath, typeName)
+
+	if depID != nil {
+		query = query.Where("dependency_id = ?", *depID)
+	}
+
+	// Determine if it's a method or field
+	if methodField != "" {
+		// Check if it looks like a method (typically starts with uppercase or has common method patterns)
+		// This is a heuristic - in practice, the key format should be more explicit
+		if strings.Contains(methodField, "(") || len(methodField) > 0 && (methodField[0] >= 'A' && methodField[0] <= 'Z') {
+			query = query.Where("method_name = ?", methodField)
+		} else {
+			query = query.Where("field_name = ?", methodField)
+		}
+	}
+
+	err := query.First(&node).Error
+	if err != nil {
+		return 0, false
+	}
+
+	return node.ID, true
 }
 
 // CountImports counts the number of import relationships for a node
