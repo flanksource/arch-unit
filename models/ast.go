@@ -7,8 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flanksource/arch-unit/internal/source"
+	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
 )
+
+// Global source reader for on-demand source code retrieval
+var globalSourceReader = source.NewReader()
 
 // CommentType represents the type of comment
 type CommentType string
@@ -394,8 +399,7 @@ const (
 	RelationshipExtends     = "extends"
 )
 
-// GetFullName returns the full qualified name of an AST node
-func (n *ASTNode) GetFullName() string {
+func (n ASTNode) String() string {
 	parts := []string{}
 
 	if n.PackageName != "" {
@@ -417,57 +421,85 @@ func (n *ASTNode) GetFullName() string {
 	return strings.Join(parts, ".")
 }
 
+// GetFullName returns the full qualified name of an AST node
+// Deprecated: Use String()
+func (n *ASTNode) GetFullName() string {
+	return n.String()
+}
+
 // GetSignature returns the .ARCHUNIT format signature for the node
 // Format: package:method or package:Type.method
+// Deprecated: Use String()
 func (n *ASTNode) GetSignature() string {
-	if n.PackageName == "" {
-		return ""
-	}
-
-	var signature strings.Builder
-	signature.WriteString(n.PackageName)
-
-	if n.MethodName != "" {
-		signature.WriteString(":")
-		if n.TypeName != "" {
-			signature.WriteString(n.TypeName)
-			signature.WriteString(".")
-		}
-		signature.WriteString(n.MethodName)
-	} else if n.TypeName != "" {
-		signature.WriteString(":")
-		signature.WriteString(n.TypeName)
-		if n.FieldName != "" {
-			signature.WriteString(".")
-			signature.WriteString(n.FieldName)
-		}
-	} else if n.FieldName != "" {
-		signature.WriteString(":")
-		signature.WriteString(n.FieldName)
-	}
-
-	return signature.String()
+	return n.String()
 }
 
 func (n *ASTNode) Pretty() api.Text {
-	// implement pretty for the current node, adding an apropriate icon by node type
-	icon := "📄" // default icon
+	icon := ""
 	switch n.NodeType {
 	case NodeTypePackage:
 		icon = "📦"
 	case NodeTypeType:
-		icon = "🔤"
+		icon = "●"
 	case NodeTypeMethod:
-		icon = "🔧"
+		icon = "λ"
 	case NodeTypeField:
-		icon = "🔑"
+		icon = "🏷️"
 	}
 
-	return api.Text{
-		Content:  fmt.Sprintf("%s %s", icon, n.GetFullName()),
-		Children: nil, // No children for AST nodes
-		Style:    "ast-node",
+	content := clicky.Text(icon)
+	if n.PackageName != "" {
+		content = content.Append(n.PackageName)
 	}
+	if n.TypeName != "" {
+		if !content.IsEmpty() {
+			content = content.Append(".", "text-gray-500")
+		}
+		content = content.Append(n.TypeName)
+	}
+	if n.FieldName != "" {
+		if !content.IsEmpty() {
+			content = content.Append(".", "text-gray-500")
+		}
+
+		content = content.Append(n.FieldName, "font-bold")
+	}
+	if n.MethodName != "" {
+		if !content.IsEmpty() {
+			content = content.Append(".", "text-gray-500")
+		}
+
+		content = content.Append(n.MethodName, "font-bold")
+	}
+
+	return content
+}
+
+func (n *ASTNode) PrettyShort() api.Text {
+
+	content := clicky.Text("")
+	if n.TypeName != "" {
+		if !content.IsEmpty() {
+			content = content.Append(".", "text-gray-500")
+		}
+		content = content.Append(n.TypeName)
+	}
+	if n.FieldName != "" {
+		if !content.IsEmpty() {
+			content = content.Append(".", "text-gray-500")
+		}
+
+		content = content.Append(n.FieldName, "font-bold")
+	}
+	if n.MethodName != "" {
+		if !content.IsEmpty() {
+			content = content.Append(".", "text-gray-500")
+		}
+
+		content = content.Append(n.MethodName, "font-bold")
+	}
+
+	return content
 }
 
 func (n *ASTNode) AsMap() map[string]interface{} {
@@ -501,4 +533,27 @@ func (n *ASTNode) IsComplex(cyclomaticThreshold, parameterThreshold, lineThresho
 	return n.CyclomaticComplexity > cyclomaticThreshold ||
 		len(n.Parameters) > parameterThreshold ||
 		n.LineCount > lineThreshold
+}
+
+// GetSourceCode retrieves the source code line for this node
+func (n *ASTNode) GetSourceCode() (string, error) {
+	return globalSourceReader.GetLine(n.FilePath, n.StartLine)
+}
+
+// GetSourceCodeLines retrieves a range of source code lines for this node
+func (n *ASTNode) GetSourceCodeLines(start, end int) ([]string, error) {
+	return globalSourceReader.GetLines(n.FilePath, start, end)
+}
+
+// GetFullSourceCode retrieves all source lines for this node (from StartLine to EndLine)
+func (n *ASTNode) GetFullSourceCode() ([]string, error) {
+	if n.EndLine == 0 {
+		// If EndLine is not set, just get the start line
+		line, err := n.GetSourceCode()
+		if err != nil {
+			return nil, err
+		}
+		return []string{line}, nil
+	}
+	return n.GetSourceCodeLines(n.StartLine, n.EndLine)
 }

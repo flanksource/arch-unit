@@ -34,6 +34,8 @@ type LinterResult struct {
 	Violations []Violation   `json:"violations"`
 	RawOutput  string        `json:"raw_output,omitempty"`
 	Error      string        `json:"error,omitempty"`
+	FileCount  int           `json:"file_count,omitempty"`
+	RuleCount  int           `json:"rule_count,omitempty"`
 }
 
 // NewConsolidatedResult creates a new consolidated result from arch-unit and linter results
@@ -112,6 +114,16 @@ func (cr *ConsolidatedResult) calculateSummary(start time.Time) {
 	if cr.ArchUnit != nil {
 		summary.FilesAnalyzed = cr.ArchUnit.FileCount
 		summary.RulesApplied = cr.ArchUnit.RuleCount
+	} else {
+		// When archResult is nil, aggregate counts from linter results
+		for _, linterResult := range cr.Linters {
+			if linterResult.FileCount > 0 {
+				summary.FilesAnalyzed += linterResult.FileCount
+			}
+			if linterResult.RuleCount > 0 {
+				summary.RulesApplied += linterResult.RuleCount
+			}
+		}
 	}
 
 	// Linter statistics
@@ -154,10 +166,9 @@ func (cr *ConsolidatedResult) GetViolationsByType() map[string][]Violation {
 
 	for _, violation := range cr.Violations {
 		source := "arch-unit"
-		if violation.CalledPackage == "golangci-lint" ||
-			violation.CalledPackage == "ruff" ||
-			violation.CalledPackage == "eslint" {
-			source = violation.CalledPackage
+		// Use the violation's Source field instead of Called field for linter detection
+		if violation.Source != "" {
+			source = violation.Source
 		}
 
 		violationsByType[source] = append(violationsByType[source], violation)

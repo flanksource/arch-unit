@@ -312,15 +312,13 @@ func (m *ValeMessage) ToViolation(workDir, filename string) models.Violation {
 		column = m.Span[0]
 	}
 
-	return models.Violation{
-		File:          filename,
-		Line:          m.Line,
-		Column:        column,
-		CallerPackage: filepath.Dir(filename),
-		CallerMethod:  "unknown",
-		CalledPackage: "vale",
-		CalledMethod:  calledMethod,
-		Message:       message,
-		Source:        "vale",
-	}
+	return models.NewViolationBuilder().
+		WithFile(filename).
+		WithLocation(m.Line, column).
+		WithCaller(filepath.Dir(filename), "unknown").
+		WithCalled("vale", calledMethod).
+		WithMessage(message).
+		WithSource("vale").
+		WithRuleFromLinter("vale", calledMethod).
+		Build()
 }

@@ -38,8 +38,9 @@ var (
 )
 
 var checkCmd = &cobra.Command{
-	Use:   "check [path] [files...]",
-	Short: "Check architecture violations in the codebase",
+	Use:          "check [path] [files...]",
+	Short:        "Check architecture violations in the codebase",
+	SilenceUsage: true,
 	Long: `Check for architecture violations using rules defined in .ARCHUNIT or arch-unit.yaml files.
 Analyzes Go, Python, JavaScript, TypeScript, and Markdown files for architecture violations.
 
@@ -419,11 +420,17 @@ func runCheck(cmd *cobra.Command, args []string) error {
 							Violations: result.Violations,
 							RawOutput:  result.RawOutput,
 							Error:      result.Error,
+							FileCount:  result.FileCount,
+							RuleCount:  result.RuleCount,
 						})
 					}
 				}
 			}
+		} else {
+			logger.Infof("Skipping all linters as per --linters flag")
 		}
+	} else {
+		logger.Infof("ArchConfig is nil")
 	}
 
 	// Wait for all tasks to complete using global task manager
@@ -477,91 +484,84 @@ func runCheck(cmd *cobra.Command, args []string) error {
 			}
 
 			if err != nil {
-				logger.Warnf("Failed to get violations from cache: %v", err)
-				// Fall back to in-memory results
-				if len(linterResults) > 0 {
-					consolidatedResult = models.NewConsolidatedResult(archResult, linterResults)
-				} else if archResult != nil {
-					consolidatedResult = models.NewConsolidatedResult(archResult, nil)
-				} else {
-					consolidatedResult = models.NewConsolidatedResult(&models.AnalysisResult{}, nil)
-				}
-			} else {
-				// Use violations from database, but filter based on working directory
-				var violations []models.Violation
-				if len(specificFiles) > 0 {
-					// Filter violations to only requested files
-					// Create a set of requested files in both absolute and relative forms
-					requestedFiles := make(map[string]bool)
+				return err
+			}
 
-					for _, f := range specificFiles {
-						requestedFiles[f] = true
-						// Also add relative path from working directory
+			logger.Infof("Fetched %d total violations from database, files=%d", len(allViolations), len(specificFiles))
+			// Use violations from database, but filter based on working directory
+			var violations []models.Violation
+			if len(specificFiles) > 0 {
+				// Filter violations to only requested files
+				// Create a set of requested files in both absolute and relative forms
+				requestedFiles := make(map[string]bool)
+
+				for _, f := range specificFiles {
+					requestedFiles[f] = true
+					// Also add relative path from working directory
+					if cwd, err := GetWorkingDir(); err == nil {
+						if rel, err := filepath.Rel(cwd, f); err == nil && !strings.HasPrefix(rel, "../") {
+							requestedFiles[rel] = true
+						}
+					}
+				}
+
+				for _, v := range allViolations {
+					// Check if violation file matches any requested file
+					matched := false
+
+					// Direct match
+					if requestedFiles[v.File] {
+						matched = true
+					}
+
+					// If violation file is relative, try making it absolute
+					if !matched && !filepath.IsAbs(v.File) {
 						if cwd, err := GetWorkingDir(); err == nil {
-							if rel, err := filepath.Rel(cwd, f); err == nil && !strings.HasPrefix(rel, "../") {
-								requestedFiles[rel] = true
+							absPath := filepath.Join(cwd, v.File)
+							if requestedFiles[absPath] {
+								matched = true
 							}
 						}
 					}
 
-					for _, v := range allViolations {
-						// Check if violation file matches any requested file
-						matched := false
-
-						// Direct match
-						if requestedFiles[v.File] {
-							matched = true
-						}
-
-						// If violation file is relative, try making it absolute
-						if !matched && !filepath.IsAbs(v.File) {
-							if cwd, err := GetWorkingDir(); err == nil {
-								absPath := filepath.Join(cwd, v.File)
-								if requestedFiles[absPath] {
+					// If violation file is absolute, try making it relative
+					if !matched && filepath.IsAbs(v.File) {
+						if cwd, err := GetWorkingDir(); err == nil {
+							if rel, err := filepath.Rel(cwd, v.File); err == nil && !strings.HasPrefix(rel, "../") {
+								if requestedFiles[rel] {
 									matched = true
 								}
 							}
 						}
-
-						// If violation file is absolute, try making it relative
-						if !matched && filepath.IsAbs(v.File) {
-							if cwd, err := GetWorkingDir(); err == nil {
-								if rel, err := filepath.Rel(cwd, v.File); err == nil && !strings.HasPrefix(rel, "../") {
-									if requestedFiles[rel] {
-										matched = true
-									}
-								}
-							}
-						}
-
-						if matched {
-							violations = append(violations, v)
-						}
 					}
-				} else {
-					// Filter violations to only those within the working directory
-					for _, v := range allViolations {
-						if isWithinWorkingDirectory(v.File, workingDir) {
-							violations = append(violations, v)
-						}
+
+					if matched {
+						violations = append(violations, v)
 					}
 				}
-
-				// Create result with violations from database
-				// Don't include linter results as they're already in the database
-				fileCount := 0
-				ruleCount := 0
-				if archResult != nil {
-					fileCount = archResult.FileCount
-					ruleCount = archResult.RuleCount
+			} else {
+				// Filter violations to only those within the working directory
+				for _, v := range allViolations {
+					if isWithinWorkingDirectory(v.File, workingDir) {
+						violations = append(violations, v)
+					}
 				}
-				dbResult := &models.AnalysisResult{
-					Violations: violations,
-					FileCount:  fileCount,
-					RuleCount:  ruleCount,
-				}
-				consolidatedResult = models.NewConsolidatedResult(dbResult, nil)
 			}
+
+			// Create result with violations from database
+			// Don't include linter results as they're already in the database
+			fileCount := 0
+			ruleCount := 0
+			if archResult != nil {
+				fileCount = archResult.FileCount
+				ruleCount = archResult.RuleCount
+			}
+			dbResult := &models.AnalysisResult{
+				Violations: violations,
+				FileCount:  fileCount,
+				RuleCount:  ruleCount,
+			}
+			consolidatedResult = models.NewConsolidatedResult(dbResult, nil)
 		}
 	}
 
@@ -682,7 +682,7 @@ func getOutputFormat() string {
 	if format != "" && format != "pretty" {
 		return format
 	}
-	
+
 	// Fall back to detecting format from output file extension if no format flag
 	if outputFile != "" {
 		if strings.HasSuffix(outputFile, ".json") {
@@ -695,7 +695,7 @@ func getOutputFormat() string {
 			return "markdown"
 		}
 	}
-	
+
 	// Default to pretty format (tree display)
 	return "pretty"
 }

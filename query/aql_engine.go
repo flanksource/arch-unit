@@ -96,13 +96,25 @@ func (e *AQLEngine) executeLimitStatement(rule *models.AQLRule, stmt *models.AQL
 		}
 
 		if violated {
+			callerNode := &models.ASTNode{
+				FilePath:    node.FilePath,
+				PackageName: node.PackageName,
+				StartLine:   node.StartLine,
+				NodeType:    models.NodeTypePackage,
+			}
+			calledNode := &models.ASTNode{
+				FilePath:    node.FilePath,
+				PackageName: node.GetFullName(),
+				StartLine:   node.StartLine,
+				NodeType:    models.NodeTypeMethod,
+			}
 			violation := &models.Violation{
-				File:          node.FilePath,
-				Line:          node.StartLine,
-				CallerPackage: node.PackageName,
-				CallerMethod:  node.GetFullName(),
-				Message:       fmt.Sprintf("Rule '%s': %s violated limit", rule.Name, node.GetFullName()),
-				Source:        "aql",
+				File:    node.FilePath,
+				Line:    node.StartLine,
+				Caller:  callerNode,
+				Called:  calledNode,
+				Message: fmt.Sprintf("Rule '%s': %s violated limit", rule.Name, node.GetFullName()),
+				Source:  "aql",
 			}
 			violations = append(violations, violation)
 		}
@@ -154,8 +166,8 @@ func (e *AQLEngine) executeForbidRelationship(rule *models.AQLRule, fromPattern,
 				// 		violation := &models.Violation{
 				// 			File:          fromNode.FilePath,
 				// 			Line:          libRel.LineNo,
-				// 			CallerPackage: fromNode.PackageName,
-				// 			CallerMethod:  fromNode.GetFullName(),
+				// 			Caller: fromNode.PackageName,
+				// 			Called:  fromNode.GetFullName(),
 				// 			CalledPackage: libRel.LibraryNode.Package,
 				// 			CalledMethod:  libRel.LibraryNode.GetFullName(),
 				// 			Message:       fmt.Sprintf("Rule '%s': Forbidden call from %s to %s", rule.Name, fromNode.GetFullName(), libRel.LibraryNode.GetFullName()),
@@ -172,15 +184,25 @@ func (e *AQLEngine) executeForbidRelationship(rule *models.AQLRule, fromPattern,
 				}
 
 				if toPattern.Matches(toNode) {
+					callerNode := &models.ASTNode{
+						FilePath:    fromNode.FilePath,
+						PackageName: fromNode.PackageName,
+						StartLine:   rel.LineNo,
+						NodeType:    models.NodeTypeMethod,
+					}
+					calledNode := &models.ASTNode{
+						FilePath:    toNode.FilePath,
+						PackageName: toNode.PackageName,
+						StartLine:   rel.LineNo,
+						NodeType:    models.NodeTypeMethod,
+					}
 					violation := &models.Violation{
-						File:          fromNode.FilePath,
-						Line:          rel.LineNo,
-						CallerPackage: fromNode.PackageName,
-						CallerMethod:  fromNode.GetFullName(),
-						CalledPackage: toNode.PackageName,
-						CalledMethod:  toNode.GetFullName(),
-						Message:       fmt.Sprintf("Rule '%s': Forbidden call from %s to %s", rule.Name, fromNode.GetFullName(), toNode.GetFullName()),
-						Source:        "aql",
+						File:    fromNode.FilePath,
+						Line:    rel.LineNo,
+						Caller:  callerNode,
+						Called:  calledNode,
+						Message: fmt.Sprintf("Rule '%s': Forbidden call from %s to %s", rule.Name, fromNode.GetFullName(), toNode.GetFullName()),
+						Source:  "aql",
 					}
 					violations = append(violations, violation)
 				}
@@ -201,13 +223,25 @@ func (e *AQLEngine) executeForbidPattern(rule *models.AQLRule, pattern *models.A
 
 	var violations []*models.Violation
 	for _, node := range nodes {
+		callerNode := &models.ASTNode{
+			FilePath:    node.FilePath,
+			PackageName: node.PackageName,
+			StartLine:   node.StartLine,
+			NodeType:    models.NodeTypePackage,
+		}
+		calledNode := &models.ASTNode{
+			FilePath:    node.FilePath,
+			PackageName: node.GetFullName(),
+			StartLine:   node.StartLine,
+			NodeType:    models.NodeTypeMethod,
+		}
 		violation := &models.Violation{
-			File:          node.FilePath,
-			Line:          node.StartLine,
-			CallerPackage: node.PackageName,
-			CallerMethod:  node.GetFullName(),
-			Message:       fmt.Sprintf("Rule '%s': Forbidden pattern %s found in %s", rule.Name, pattern.String(), node.GetFullName()),
-			Source:        "aql",
+			File:    node.FilePath,
+			Line:    node.StartLine,
+			Caller:  callerNode,
+			Called:  calledNode,
+			Message: fmt.Sprintf("Rule '%s': Forbidden pattern %s found in %s", rule.Name, pattern.String(), node.GetFullName()),
+			Source:  "aql",
 		}
 		violations = append(violations, violation)
 	}
@@ -278,13 +312,25 @@ func (e *AQLEngine) executeRequireRelationship(rule *models.AQLRule, fromPattern
 		// }
 
 		if !hasRequiredRelationship {
+			callerNode := &models.ASTNode{
+				FilePath:    fromNode.FilePath,
+				PackageName: fromNode.PackageName,
+				StartLine:   fromNode.StartLine,
+				NodeType:    models.NodeTypePackage,
+			}
+			calledNode := &models.ASTNode{
+				FilePath:    fromNode.FilePath,
+				PackageName: fromNode.GetFullName(),
+				StartLine:   fromNode.StartLine,
+				NodeType:    models.NodeTypeMethod,
+			}
 			violation := &models.Violation{
-				File:          fromNode.FilePath,
-				Line:          fromNode.StartLine,
-				CallerPackage: fromNode.PackageName,
-				CallerMethod:  fromNode.GetFullName(),
-				Message:       fmt.Sprintf("Rule '%s': Required relationship from %s to %s not found", rule.Name, fromNode.GetFullName(), toPattern.String()),
-				Source:        "aql",
+				File:    fromNode.FilePath,
+				Line:    fromNode.StartLine,
+				Caller:  callerNode,
+				Called:  calledNode,
+				Message: fmt.Sprintf("Rule '%s': Required relationship from %s to %s not found", rule.Name, fromNode.GetFullName(), toPattern.String()),
+				Source:  "aql",
 			}
 			violations = append(violations, violation)
 		}

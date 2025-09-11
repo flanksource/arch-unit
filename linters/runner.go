@@ -111,6 +111,7 @@ func (r *Runner) RunEnabledLintersOnFiles(specificFiles []string, fix bool) ([]L
 			})
 			continue
 		}
+		logger.Infof(result.Pretty().ANSI())
 
 		results = append(results, *result)
 	}
@@ -136,6 +137,7 @@ func (r *Runner) RunWithIntelligentDebounce(ctx context.Context, linterName stri
 		if err != nil {
 			logger.Warnf("Failed to check debounce for %s: %v", linterName, err)
 		} else if shouldSkip {
+			logger.Debugf("Skipping %s due to intelligent debounce (%v)", linterName, actualDebounce)
 			// Load cached violations and return
 			return r.loadCachedResult(linterName, actualDebounce)
 		}
@@ -174,13 +176,21 @@ func (r *Runner) RunWithIntelligentDebounce(ctx context.Context, linterName stri
 
 	r.updateTaskStatus(task.Task, linterName, task.IsOk(), len(violations), task.Error())
 
-	return &LinterResult{
+	result := &LinterResult{
 		Linter:     linterName,
 		Success:    task.IsOk(),
 		Duration:   task.Duration(),
 		Violations: violations,
 		Error:      r.formatError(err),
-	}, nil
+	}
+
+	// If the linter provides metadata, include it in the result
+	if metadata, ok := linter.(MetadataProvider); ok {
+		result.FileCount = metadata.GetFileCount()
+		result.RuleCount = metadata.GetRuleCount()
+	}
+
+	return result, nil
 }
 
 // loadCachedResult loads cached violations for debounced linters
@@ -199,14 +209,19 @@ func (r *Runner) loadCachedResult(linterName string, debounce time.Duration) (*L
 			}
 		}
 
-		return &LinterResult{
+		result := &LinterResult{
 			Linter:       linterName,
 			Success:      true,
 			Duration:     t.Duration(),
 			Violations:   violations,
 			Debounced:    true,
 			DebounceUsed: debounce,
-		}, nil
+		}
+
+		// For cached results, we can't provide file/rule counts since we didn't actually analyze
+		// TODO: Consider caching metadata along with violations
+
+		return result, nil
 
 	})
 

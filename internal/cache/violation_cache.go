@@ -2,19 +2,29 @@ package cache
 
 import (
 	"crypto/sha256"
-	"database/sql"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/flanksource/arch-unit/models"
-	_ "modernc.org/sqlite"
+	"gorm.io/gorm"
 )
+
+// FileScan represents a file scan record
+type FileScan struct {
+	FilePath      string `gorm:"primaryKey;column:file_path"`
+	LastScanTime  int64  `gorm:"column:last_scan_time;not null"`
+	FileModTime   int64  `gorm:"column:file_mod_time;not null"`
+	FileHash      string `gorm:"column:file_hash;not null"`
+}
+
+// TableName specifies the table name for FileScan
+func (FileScan) TableName() string {
+	return "file_scans"
+}
 
 // ViolationCache manages cached violations using SQLite
 type ViolationCache struct {
@@ -46,12 +56,7 @@ func NewViolationCache() (*ViolationCache, error) {
 	}
 
 	cache := &ViolationCache{db: db}
-	// Migration is now handled by the unified migration manager in the PrePersistent hook
-	// Just ensure we have the basic table structure for immediate operations
-	if err := cache.ensureBasicStructure(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to ensure basic database structure: %w", err)
-	}
+	// Migrations are handled automatically by the DB class during connection
 
 	return cache, nil
 }
@@ -76,105 +81,6 @@ func ResetViolationCache() {
 	violationCacheOnce = sync.Once{}
 }
 
-// ensureBasicStructure ensures minimal database structure is present
-// Full migrations are handled by the unified migration manager
-func (c *ViolationCache) ensureBasicStructure() error {
-	// This is a minimal check to ensure the database can be used
-	// Full schema creation and migrations are handled by the migration manager
-	return nil
-}
-
-// init creates the necessary tables (DEPRECATED - use migration manager)
-func (c *ViolationCache) init() error {
-	schema := `
-	CREATE TABLE IF NOT EXISTS file_scans (
-		file_path TEXT PRIMARY KEY,
-		last_scan_time INTEGER NOT NULL,
-		file_mod_time INTEGER NOT NULL,
-		file_hash TEXT NOT NULL
-	);
-
-	CREATE TABLE IF NOT EXISTS violations (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		file_path TEXT NOT NULL,
-		line INTEGER NOT NULL,
-		column INTEGER NOT NULL,
-		source TEXT NOT NULL,
-		message TEXT,
-		rule_json TEXT,
-		caller_package TEXT,
-		caller_method TEXT,
-		called_package TEXT,
-		called_method TEXT,
-		fixable INTEGER DEFAULT 0,
-		fix_applicability TEXT DEFAULT '',
-		FOREIGN KEY (file_path) REFERENCES file_scans(file_path) ON DELETE CASCADE
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_violations_file ON violations(file_path);
-	CREATE INDEX IF NOT EXISTS idx_violations_source ON violations(source);
-	`
-
-	_, err := c.db.Exec(schema)
-	if err != nil {
-		return err
-	}
-
-	// Migrate existing violations table to add stored_at column
-	return c.migrateSchema()
-}
-
-// migrateSchema handles schema migrations
-func (c *ViolationCache) migrateSchema() error {
-	// Check if stored_at column exists
-	rows, err := c.db.Query("PRAGMA table_info(violations)")
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	hasStoredAt := false
-	for rows.Next() {
-		var cid int
-		var name, dataType string
-		var notNull, pk int
-		var defaultValue sql.NullString
-
-		err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk)
-		if err != nil {
-			continue
-		}
-
-		if name == "stored_at" {
-			hasStoredAt = true
-			break
-		}
-	}
-	rows.Close()
-
-	// Add stored_at column if it doesn't exist
-	if !hasStoredAt {
-		// First add column with default 0
-		_, err = c.db.Exec("ALTER TABLE violations ADD COLUMN stored_at INTEGER NOT NULL DEFAULT 0")
-		if err != nil {
-			return fmt.Errorf("failed to add stored_at column: %w", err)
-		}
-
-		// Update all existing records to current timestamp
-		_, err = c.db.Exec("UPDATE violations SET stored_at = strftime('%s', 'now') WHERE stored_at = 0")
-		if err != nil {
-			return fmt.Errorf("failed to update stored_at values: %w", err)
-		}
-
-		// Create index
-		_, err = c.db.Exec("CREATE INDEX IF NOT EXISTS idx_violations_stored_at ON violations(stored_at)")
-		if err != nil {
-			return fmt.Errorf("failed to create stored_at index: %w", err)
-		}
-	}
-
-	return nil
-}
 
 // GetFileHash computes SHA256 hash of file contents
 func GetFileHash(filePath string) (string, error) {
@@ -193,15 +99,11 @@ func (c *ViolationCache) NeedsRescan(filePath string) (bool, error) {
 		return true, nil // File doesn't exist, needs scan
 	}
 
-	var lastScan, fileModTime int64
-	var storedHash string
-	err = c.db.QueryRow(`
-		SELECT last_scan_time, file_mod_time, file_hash
-		FROM file_scans
-		WHERE file_path = ?
-	`, filePath).Scan(&lastScan, &fileModTime, &storedHash)
+	gormDB := c.db.GormDB()
+	var fileScan FileScan
+	err = gormDB.Where("file_path = ?", filePath).First(&fileScan).Error
 
-	if err == sql.ErrNoRows {
+	if err == gorm.ErrRecordNotFound {
 		return true, nil // Never scanned
 	}
 	if err != nil {
@@ -209,7 +111,7 @@ func (c *ViolationCache) NeedsRescan(filePath string) (bool, error) {
 	}
 
 	// Check if file was modified based on mod time
-	if info.ModTime().Unix() > fileModTime {
+	if info.ModTime().Unix() > fileScan.FileModTime {
 		return true, nil
 	}
 
@@ -219,149 +121,40 @@ func (c *ViolationCache) NeedsRescan(filePath string) (bool, error) {
 		return true, err
 	}
 
-	return currentHash != storedHash, nil
+	return currentHash != fileScan.FileHash, nil
 }
 
 // GetCachedViolations retrieves cached violations for a file
 func (c *ViolationCache) GetCachedViolations(filePath string) ([]models.Violation, error) {
-	rows, err := c.db.Query(`
-		SELECT line, column, source, message, rule_json,
-		       caller_package, caller_method, called_package, called_method
-		FROM violations
-		WHERE file_path = ?
-	`, filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
+	gormDB := c.db.GormDB()
 	var violations []models.Violation
-	for rows.Next() {
-		var v models.Violation
-		var ruleJSON sql.NullString
-		var message sql.NullString
-
-		err := rows.Scan(
-			&v.Line, &v.Column, &v.Source, &message, &ruleJSON,
-			&v.CallerPackage, &v.CallerMethod, &v.CalledPackage, &v.CalledMethod,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		v.File = filePath
-		if message.Valid {
-			v.Message = message.String
-		}
-
-		if ruleJSON.Valid && ruleJSON.String != "" {
-			var rule models.Rule
-			if err := json.Unmarshal([]byte(ruleJSON.String), &rule); err == nil {
-				v.Rule = &rule
-			}
-		}
-
-		violations = append(violations, v)
-	}
-
-	return violations, rows.Err()
+	
+	err := gormDB.Preload("Caller").Preload("Called").
+		Where("file_path = ?", filePath).Find(&violations).Error
+	
+	return violations, err
 }
 
 // GetAllViolations retrieves all violations from the cache
 func (c *ViolationCache) GetAllViolations() ([]models.Violation, error) {
-	rows, err := c.db.Query(`
-		SELECT file_path, line, column, source, message, rule_json,
-		       caller_package, caller_method, called_package, called_method,
-		       fixable, fix_applicability, stored_at
-		FROM violations
-		ORDER BY file_path, line, column
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
+	gormDB := c.db.GormDB()
 	var violations []models.Violation
-	for rows.Next() {
-		var v models.Violation
-		var ruleJSON sql.NullString
-		var message sql.NullString
-		var storedAtUnix int64
-
-		err := rows.Scan(
-			&v.File, &v.Line, &v.Column, &v.Source, &message, &ruleJSON,
-			&v.CallerPackage, &v.CallerMethod, &v.CalledPackage, &v.CalledMethod,
-			&v.Fixable, &v.FixApplicability, &storedAtUnix,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		if message.Valid {
-			v.Message = message.String
-		}
-
-		if ruleJSON.Valid && ruleJSON.String != "" {
-			var rule models.Rule
-			if err := json.Unmarshal([]byte(ruleJSON.String), &rule); err == nil {
-				v.Rule = &rule
-			}
-		}
-
-		// Convert Unix timestamp to time.Time
-		v.CreatedAt = time.Unix(storedAtUnix, 0)
-
-		violations = append(violations, v)
-	}
-
-	return violations, rows.Err()
+	
+	err := gormDB.Preload("Caller").Preload("Called").
+		Order("file_path, line, column").Find(&violations).Error
+	
+	return violations, err
 }
 
 // GetViolationsBySource retrieves violations filtered by source
 func (c *ViolationCache) GetViolationsBySource(source string) ([]models.Violation, error) {
-	rows, err := c.db.Query(`
-		SELECT file_path, line, column, source, message, rule_json,
-		       caller_package, caller_method, called_package, called_method,
-		       fixable, fix_applicability
-		FROM violations
-		WHERE source = ?
-		ORDER BY file_path, line, column
-	`, source)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
+	gormDB := c.db.GormDB()
 	var violations []models.Violation
-	for rows.Next() {
-		var v models.Violation
-		var ruleJSON sql.NullString
-		var message sql.NullString
-
-		err := rows.Scan(
-			&v.File, &v.Line, &v.Column, &v.Source, &message, &ruleJSON,
-			&v.CallerPackage, &v.CallerMethod, &v.CalledPackage, &v.CalledMethod,
-			&v.Fixable, &v.FixApplicability,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		if message.Valid {
-			v.Message = message.String
-		}
-
-		if ruleJSON.Valid && ruleJSON.String != "" {
-			var rule models.Rule
-			if err := json.Unmarshal([]byte(ruleJSON.String), &rule); err == nil {
-				v.Rule = &rule
-			}
-		}
-
-		violations = append(violations, v)
-	}
-
-	return violations, rows.Err()
+	
+	err := gormDB.Preload("Caller").Preload("Called").
+		Where("source = ?", source).Order("file_path, line, column").Find(&violations).Error
+	
+	return violations, err
 }
 
 // GetViolationsBySources retrieves violations filtered by multiple sources
@@ -370,218 +163,160 @@ func (c *ViolationCache) GetViolationsBySources(sources []string) ([]models.Viol
 		return []models.Violation{}, nil
 	}
 
-	// Build placeholders for SQL IN clause
-	placeholders := make([]string, len(sources))
-	args := make([]interface{}, len(sources))
-	for i, source := range sources {
-		placeholders[i] = "?"
-		args[i] = source
-	}
-
-	query := fmt.Sprintf(`
-		SELECT file_path, line, column, source, message, rule_json,
-		       caller_package, caller_method, called_package, called_method,
-		       fixable, fix_applicability, stored_at
-		FROM violations
-		WHERE source IN (%s)
-		ORDER BY file_path, line, column
-	`, strings.Join(placeholders, ", "))
-
-	rows, err := c.db.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
+	gormDB := c.db.GormDB()
 	var violations []models.Violation
-	for rows.Next() {
-		var v models.Violation
-		var ruleJSON sql.NullString
-		var message sql.NullString
-		var storedAt int64
-
-		err := rows.Scan(
-			&v.File, &v.Line, &v.Column, &v.Source, &message, &ruleJSON,
-			&v.CallerPackage, &v.CallerMethod, &v.CalledPackage, &v.CalledMethod,
-			&v.Fixable, &v.FixApplicability, &storedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		if message.Valid {
-			v.Message = message.String
-		}
-
-		if ruleJSON.Valid && ruleJSON.String != "" {
-			var rule models.Rule
-			if err := json.Unmarshal([]byte(ruleJSON.String), &rule); err == nil {
-				v.Rule = &rule
-			}
-		}
-
-		violations = append(violations, v)
-	}
-
-	return violations, rows.Err()
+	
+	err := gormDB.Preload("Caller").Preload("Called").
+		Where("source IN ?", sources).Order("file_path, line, column").Find(&violations).Error
+	
+	return violations, err
 }
 
 // StoreViolations stores violations for a file
 func (c *ViolationCache) StoreViolations(filePath string, violations []models.Violation) error {
-	tx, err := c.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Get file info
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return err
-	}
-
-	hash, err := GetFileHash(filePath)
-	if err != nil {
-		return err
-	}
-
-	// Delete old data
-	_, err = tx.Exec("DELETE FROM violations WHERE file_path = ?", filePath)
-	if err != nil {
-		return err
-	}
-
-	_, err = tx.Exec("DELETE FROM file_scans WHERE file_path = ?", filePath)
-	if err != nil {
-		return err
-	}
-
-	// Insert new scan record
-	_, err = tx.Exec(`
-		INSERT INTO file_scans (file_path, last_scan_time, file_mod_time, file_hash)
-		VALUES (?, ?, ?, ?)
-	`, filePath, time.Now().Unix(), info.ModTime().Unix(), hash)
-	if err != nil {
-		return err
-	}
-
-	// Insert violations
-	stmt, err := tx.Prepare(`
-		INSERT INTO violations (
-			file_path, line, column, source, message, rule_json,
-			caller_package, caller_method, called_package, called_method,
-			fixable, fix_applicability, stored_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	for _, v := range violations {
-		var ruleJSON sql.NullString
-		if v.Rule != nil {
-			data, err := json.Marshal(v.Rule)
-			if err == nil {
-				ruleJSON = sql.NullString{String: string(data), Valid: true}
-			}
-		}
-
-		message := sql.NullString{String: v.Message, Valid: v.Message != ""}
-
-		_, err = stmt.Exec(
-			filePath, v.Line, v.Column, v.Source, message, ruleJSON,
-			v.CallerPackage, v.CallerMethod, v.CalledPackage, v.CalledMethod,
-			v.Fixable, v.FixApplicability, time.Now().Unix(),
-		)
+	gormDB := c.db.GormDB()
+	
+	// Use GORM transaction
+	return gormDB.Transaction(func(tx *gorm.DB) error {
+		// Get file info
+		info, err := os.Stat(filePath)
 		if err != nil {
 			return err
 		}
-	}
 
-	return tx.Commit()
+		hash, err := GetFileHash(filePath)
+		if err != nil {
+			return err
+		}
+
+		// Delete old data
+		if err := tx.Where("file_path = ?", filePath).Delete(&models.Violation{}).Error; err != nil {
+			return err
+		}
+		
+		if err := tx.Where("file_path = ?", filePath).Delete(&FileScan{}).Error; err != nil {
+			return err
+		}
+
+		// Insert new scan record
+		fileScan := FileScan{
+			FilePath:     filePath,
+			LastScanTime: time.Now().Unix(),
+			FileModTime:  info.ModTime().Unix(),
+			FileHash:     hash,
+		}
+		if err := tx.Create(&fileScan).Error; err != nil {
+			return err
+		}
+
+		// Insert violations - first create any AST nodes if they don't exist
+		for i := range violations {
+			v := &violations[i]
+			v.File = filePath
+			
+			// Create or update AST nodes if they exist
+			if v.Caller != nil {
+				if err := tx.Save(v.Caller).Error; err != nil {
+					return err
+				}
+			}
+			if v.Called != nil {
+				if err := tx.Save(v.Called).Error; err != nil {
+					return err
+				}
+			}
+			
+			// Create the violation
+			if err := tx.Create(v).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }
 
 // GetAllCachedFiles returns all files that have cached violations
 func (c *ViolationCache) GetAllCachedFiles() ([]string, error) {
-	rows, err := c.db.Query("SELECT file_path FROM file_scans")
+	gormDB := c.db.GormDB()
+	var fileScans []FileScan
+	
+	err := gormDB.Select("file_path").Find(&fileScans).Error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var files []string
-	for rows.Next() {
-		var file string
-		if err := rows.Scan(&file); err != nil {
-			return nil, err
-		}
-		files = append(files, file)
+	
+	files := make([]string, len(fileScans))
+	for i, fs := range fileScans {
+		files[i] = fs.FilePath
 	}
-
-	return files, rows.Err()
+	
+	return files, nil
 }
 
 // ClearCache removes all cached data
 func (c *ViolationCache) ClearCache() error {
-	_, err := c.db.Exec("DELETE FROM violations; DELETE FROM file_scans")
-	return err
+	gormDB := c.db.GormDB()
+	
+	// Use GORM session for batch deletes
+	if err := gormDB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.Violation{}).Error; err != nil {
+		return err
+	}
+	
+	return gormDB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&FileScan{}).Error
 }
 
 // ClearFileCache removes cached data for specific files
 func (c *ViolationCache) ClearFileCache(filePaths []string) error {
-	tx, err := c.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare("DELETE FROM violations WHERE file_path = ?; DELETE FROM file_scans WHERE file_path = ?")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	for _, path := range filePaths {
-		if _, err := stmt.Exec(path, path); err != nil {
+	gormDB := c.db.GormDB()
+	
+	return gormDB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("file_path IN ?", filePaths).Delete(&models.Violation{}).Error; err != nil {
 			return err
 		}
-	}
-
-	return tx.Commit()
+		
+		return tx.Where("file_path IN ?", filePaths).Delete(&FileScan{}).Error
+	})
 }
 
 // Close closes the database connection
 func (c *ViolationCache) Close() error {
-	return c.db.Close()
+	gormDB := c.db.GormDB()
+	sqlDB, err := gormDB.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
 }
 
 // GetStats returns cache statistics
 func (c *ViolationCache) GetStats() (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
+	gormDB := c.db.GormDB()
 
-	var fileCount int
-	err := c.db.QueryRow("SELECT COUNT(*) FROM file_scans").Scan(&fileCount)
-	if err != nil {
+	var fileCount int64
+	if err := gormDB.Model(&FileScan{}).Count(&fileCount).Error; err != nil {
 		return nil, err
 	}
 	stats["cached_files"] = fileCount
 
-	var violationCount int
-	err = c.db.QueryRow("SELECT COUNT(*) FROM violations").Scan(&violationCount)
-	if err != nil {
+	var violationCount int64
+	if err := gormDB.Model(&models.Violation{}).Count(&violationCount).Error; err != nil {
 		return nil, err
 	}
 	stats["total_violations"] = violationCount
 
-	// Get cache size
-	var pageCount, pageSize int
-	err = c.db.QueryRow("PRAGMA page_count").Scan(&pageCount)
+	// Get cache size using raw SQL for PRAGMA
+	sqlDB, err := gormDB.DB()
 	if err != nil {
 		return nil, err
 	}
-	err = c.db.QueryRow("PRAGMA page_size").Scan(&pageSize)
-	if err != nil {
+	
+	var pageCount, pageSize int
+	if err := sqlDB.QueryRow("PRAGMA page_count").Scan(&pageCount); err != nil {
+		return nil, err
+	}
+	if err := sqlDB.QueryRow("PRAGMA page_size").Scan(&pageSize); err != nil {
 		return nil, err
 	}
 	stats["cache_size_bytes"] = pageCount * pageSize
@@ -591,105 +326,109 @@ func (c *ViolationCache) GetStats() (map[string]interface{}, error) {
 
 // ClearViolations clears violations based on filters
 func (c *ViolationCache) ClearViolations(olderThan time.Time, pathPattern string) (int64, error) {
-	var query string
-	var args []interface{}
-	conditions := []string{}
+	gormDB := c.db.GormDB()
+	var deletedCount int64
 
-	// Build conditions based on filters
-	if !olderThan.IsZero() {
-		conditions = append(conditions, "stored_at < ?")
-		args = append(args, olderThan.Unix())
-	}
+	err := gormDB.Transaction(func(tx *gorm.DB) error {
+		var filesToDelete []string
 
-	if pathPattern != "" {
-		// For glob patterns, we'll filter in Go after fetching
-		// This is simpler than implementing glob matching in SQL
-		// First, get all files that match the pattern
-		allViolations, err := c.GetAllViolations()
-		if err != nil {
-			return 0, err
-		}
-
-		fileSet := make(map[string]bool)
-		for _, v := range allViolations {
-			matched := false
-
-			// Use doublestar for proper glob matching with ** support
-			if match, err := doublestar.Match(pathPattern, v.File); err == nil && match {
-				matched = true
+		// Handle path pattern filtering
+		if pathPattern != "" {
+			// Get all violations to filter by pattern
+			allViolations, err := c.GetAllViolations()
+			if err != nil {
+				return err
 			}
 
-			// Try matching against basename if full path didn't match
-			if !matched {
-				if match, err := doublestar.Match(pathPattern, filepath.Base(v.File)); err == nil && match {
+			fileSet := make(map[string]bool)
+			for _, v := range allViolations {
+				matched := false
+
+				// Use doublestar for proper glob matching with ** support
+				if match, err := doublestar.Match(pathPattern, v.File); err == nil && match {
 					matched = true
 				}
-			}
 
-			// For relative patterns, try matching against relative path
-			if !matched && !filepath.IsAbs(pathPattern) {
-				if relPath, err := filepath.Rel(filepath.Dir(v.File), v.File); err == nil {
-					if match, err := doublestar.Match(pathPattern, relPath); err == nil && match {
+				// Try matching against basename if full path didn't match
+				if !matched {
+					if match, err := doublestar.Match(pathPattern, filepath.Base(v.File)); err == nil && match {
 						matched = true
 					}
 				}
+
+				// For relative patterns, try matching against relative path
+				if !matched && !filepath.IsAbs(pathPattern) {
+					if relPath, err := filepath.Rel(filepath.Dir(v.File), v.File); err == nil {
+						if match, err := doublestar.Match(pathPattern, relPath); err == nil && match {
+							matched = true
+						}
+					}
+				}
+
+				if matched {
+					fileSet[v.File] = true
+				}
 			}
 
-			if matched {
-				fileSet[v.File] = true
+			if len(fileSet) == 0 {
+				return nil
+			}
+
+			for file := range fileSet {
+				filesToDelete = append(filesToDelete, file)
 			}
 		}
 
-		if len(fileSet) == 0 {
-			return 0, nil
+		// Build the query
+		query := tx.Model(&models.Violation{})
+
+		// Apply time filter
+		if !olderThan.IsZero() {
+			query = query.Where("created_at < ?", olderThan)
 		}
 
-		var filesToDelete []string
-		for file := range fileSet {
-			filesToDelete = append(filesToDelete, file)
+		// Apply file pattern filter
+		if len(filesToDelete) > 0 {
+			query = query.Where("file_path IN ?", filesToDelete)
 		}
 
-		if len(filesToDelete) == 0 {
-			return 0, nil
+		// Count before deletion
+		var count int64
+		if err := query.Count(&count).Error; err != nil {
+			return err
+		}
+		deletedCount = count
+
+		// Delete violations
+		if !olderThan.IsZero() || len(filesToDelete) > 0 {
+			if err := query.Delete(&models.Violation{}).Error; err != nil {
+				return err
+			}
+		} else {
+			// Delete all violations
+			if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.Violation{}).Error; err != nil {
+				return err
+			}
 		}
 
-		// Build IN clause for file paths
-		placeholders := make([]string, len(filesToDelete))
-		for i := range placeholders {
-			placeholders[i] = "?"
+		// Clean up file_scans entries
+		if len(filesToDelete) > 0 {
+			if err := tx.Where("file_path IN ?", filesToDelete).Delete(&FileScan{}).Error; err != nil {
+				return err
+			}
+		} else if !olderThan.IsZero() {
+			if err := tx.Where("last_scan_time < ?", olderThan.Unix()).Delete(&FileScan{}).Error; err != nil {
+				return err
+			}
+		} else {
+			// Clear all file_scans if clearing all violations
+			if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&FileScan{}).Error; err != nil {
+				return err
+			}
 		}
-		conditions = append(conditions, fmt.Sprintf("file_path IN (%s)", strings.Join(placeholders, ",")))
-		for _, file := range filesToDelete {
-			args = append(args, file)
-		}
-	}
 
-	// Build the DELETE query
-	if len(conditions) > 0 {
-		query = "DELETE FROM violations WHERE " + strings.Join(conditions, " AND ")
-	} else {
-		// Clear all violations
-		query = "DELETE FROM violations"
-	}
+		return nil
+	})
 
-	// Execute the deletion
-	result, err := c.db.Exec(query, args...)
-	if err != nil {
-		return 0, err
-	}
-
-	// Also clean up file_scans entries for deleted violations
-	if pathPattern != "" && len(conditions) > 0 {
-		// Clean up file_scans for matching files
-		fileQuery := "DELETE FROM file_scans WHERE file_path IN (SELECT DISTINCT file_path FROM violations WHERE " + strings.Join(conditions, " AND ") + ")"
-		c.db.Exec(fileQuery, args...)
-	} else if !olderThan.IsZero() {
-		// Clean up old file_scans entries
-		c.db.Exec("DELETE FROM file_scans WHERE last_scan_time < ?", olderThan.Unix())
-	} else {
-		// Clear all file_scans if clearing all violations
-		c.db.Exec("DELETE FROM file_scans")
-	}
-
-	return result.RowsAffected()
+	return deletedCount, err
 }

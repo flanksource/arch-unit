@@ -44,6 +44,12 @@ type OptionsMixin interface {
 	SetOptions(opts RunOptions)
 }
 
+// MetadataProvider provides file and rule count information from linters
+type MetadataProvider interface {
+	GetFileCount() int
+	GetRuleCount() int
+}
+
 // LinterWithLanguageSupport extends Linter to provide language-aware file filtering
 type LinterWithLanguageSupport interface {
 	Linter
@@ -128,6 +134,8 @@ type LinterResult struct {
 	Error        string             `json:"error,omitempty"`
 	Debounced    bool               `json:"debounced,omitempty"`
 	DebounceUsed time.Duration      `json:"debounce_used,omitempty"`
+	FileCount    int                `json:"file_count,omitempty"`
+	RuleCount    int                `json:"rule_count,omitempty"`
 }
 
 // GetViolationCount returns the number of violations found
@@ -167,7 +175,11 @@ func (lr *LinterResult) Pretty() api.Text {
 	if lr.Debounced {
 		text += fmt.Sprintf(" (cached, %v)", lr.DebounceUsed)
 	} else {
-		text += fmt.Sprintf(" (%d violations, %v)", len(lr.Violations), lr.Duration)
+		if lr.FileCount > 0 {
+			text += fmt.Sprintf(" (%d violations, %d files, %v)", len(lr.Violations), lr.FileCount, lr.Duration)
+		} else {
+			text += fmt.Sprintf(" (%d violations, %v)", len(lr.Violations), lr.Duration)
+		}
 	}
 
 	if lr.Error != "" {

@@ -266,15 +266,13 @@ func (issue *GolangciIssue) ToViolation(workDir string) models.Violation {
 		filename = filepath.Join(workDir, filename)
 	}
 
-	return models.Violation{
-		File:          filename,
-		Line:          line,
-		Column:        column,
-		CallerPackage: filepath.Dir(filename),
-		CallerMethod:  "unknown",
-		CalledPackage: "golangci-lint",
-		CalledMethod:  issue.FromLinter,
-		Message:       message,
-		Source:        "golangci-lint",
-	}
+	return models.NewViolationBuilder().
+		WithFile(filename).
+		WithLocation(line, column).
+		WithCaller(filepath.Dir(filename), "unknown").
+		WithCalled("golangci-lint", issue.FromLinter).
+		WithMessage(message).
+		WithSource("golangci-lint").
+		WithRuleFromLinter("golangci-lint", issue.FromLinter).
+		Build()
 }

@@ -273,17 +273,15 @@ func (i *MarkdownlintIssue) ToViolation(workDir, filename string) models.Violati
 		column = i.ErrorRange[0]
 	}
 
-	return models.Violation{
-		File:          filename,
-		Line:          i.LineNumber,
-		Column:        column,
-		CallerPackage: filepath.Dir(filename),
-		CallerMethod:  "unknown",
-		CalledPackage: "markdownlint",
-		CalledMethod:  ruleName,
-		Message:       message,
-		Source:        "markdownlint",
-	}
+	return models.NewViolationBuilder().
+		WithFile(filename).
+		WithLocation(i.LineNumber, column).
+		WithCaller(filepath.Dir(filename), "unknown").
+		WithCalled("markdownlint", ruleName).
+		WithMessage(message).
+		WithSource("markdownlint").
+		WithRuleFromLinter("markdownlint", ruleName).
+		Build()
 }
 
 // MarkdownlintCli2Result represents a single result from markdownlint-cli2

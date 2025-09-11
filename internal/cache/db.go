@@ -2,63 +2,102 @@ package cache
 
 import (
 	"database/sql"
+	"fmt"
 	"sync"
+	
+	"github.com/flanksource/arch-unit/models"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-// DB wraps sql.DB with mutex synchronization for write operations
+// DB wraps GORM DB with mutex synchronization for write operations
 type DB struct {
-	conn    *sql.DB
+	conn    *gorm.DB
 	writeMu sync.Mutex // Protects write operations
 }
 
-// NewDB creates a new synchronized database wrapper
+// NewDB creates a new synchronized GORM database wrapper
 func NewDB(driverName, dataSourceName string) (*DB, error) {
-	conn, err := sql.Open(driverName, dataSourceName)
-	if err != nil {
-		return nil, err
-	}
+	var gormDB *gorm.DB
+	var err error
 
-	// Configure SQLite for better concurrency
 	if driverName == "sqlite" {
+		// Configure GORM with SQLite
+		config := &gorm.Config{
+			Logger: logger.Default.LogMode(logger.Silent), // Reduce logging noise
+		}
+		
+		gormDB, err = gorm.Open(sqlite.Open(dataSourceName), config)
+		if err != nil {
+			return nil, err
+		}
+
+		// Get underlying sql.DB to configure SQLite pragmas
+		sqlDB, err := gormDB.DB()
+		if err != nil {
+			return nil, err
+		}
+
+		// Configure SQLite for better concurrency
 		// Enable WAL mode for better concurrent access
-		if _, err := conn.Exec("PRAGMA journal_mode=WAL"); err != nil {
-			conn.Close()
+		if _, err := sqlDB.Exec("PRAGMA journal_mode=WAL"); err != nil {
 			return nil, err
 		}
 
 		// Set busy timeout to 5 seconds (5000ms)
-		if _, err := conn.Exec("PRAGMA busy_timeout=5000"); err != nil {
-			conn.Close()
+		if _, err := sqlDB.Exec("PRAGMA busy_timeout=5000"); err != nil {
 			return nil, err
 		}
 
 		// Enable foreign keys
-		if _, err := conn.Exec("PRAGMA foreign_keys=ON"); err != nil {
-			conn.Close()
+		if _, err := sqlDB.Exec("PRAGMA foreign_keys=ON"); err != nil {
 			return nil, err
 		}
 
 		// Set synchronous to NORMAL for better performance
-		if _, err := conn.Exec("PRAGMA synchronous=NORMAL"); err != nil {
-			conn.Close()
+		if _, err := sqlDB.Exec("PRAGMA synchronous=NORMAL"); err != nil {
 			return nil, err
 		}
+	} else {
+		return nil, fmt.Errorf("unsupported database driver: %s", driverName)
 	}
 
-	return &DB{conn: conn}, nil
+	db := &DB{conn: gormDB}
+	
+	// Automatically run migrations for all models
+	if err := db.Migrate(); err != nil {
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
+	}
+	
+	return db, nil
+}
+
+// GormDB returns the underlying GORM database instance
+func (db *DB) GormDB() *gorm.DB {
+	return db.conn
 }
 
 // Exec executes a query with mutex protection for writes
 func (db *DB) Exec(query string, args ...interface{}) (sql.Result, error) {
 	db.writeMu.Lock()
 	defer db.writeMu.Unlock()
-	return db.conn.Exec(query, args...)
+	sqlDB, err := db.conn.DB()
+	if err != nil {
+		return nil, err
+	}
+	return sqlDB.Exec(query, args...)
 }
 
 // Begin starts a transaction with mutex protection
 func (db *DB) Begin() (*Tx, error) {
 	db.writeMu.Lock()
-	tx, err := db.conn.Begin()
+	sqlDB, err := db.conn.DB()
+	if err != nil {
+		db.writeMu.Unlock()
+		return nil, err
+	}
+	tx, err := sqlDB.Begin()
 	if err != nil {
 		db.writeMu.Unlock()
 		return nil, err
@@ -68,24 +107,46 @@ func (db *DB) Begin() (*Tx, error) {
 
 // Query performs read operations (no mutex needed for reads)
 func (db *DB) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	return db.conn.Query(query, args...)
+	sqlDB, err := db.conn.DB()
+	if err != nil {
+		return nil, err
+	}
+	return sqlDB.Query(query, args...)
 }
 
 // QueryRow performs single row reads (no mutex needed for reads)
 func (db *DB) QueryRow(query string, args ...interface{}) *sql.Row {
-	return db.conn.QueryRow(query, args...)
+	sqlDB, _ := db.conn.DB()
+	return sqlDB.QueryRow(query, args...)
 }
 
 // Prepare prepares a statement
 func (db *DB) Prepare(query string) (*sql.Stmt, error) {
-	return db.conn.Prepare(query)
+	sqlDB, err := db.conn.DB()
+	if err != nil {
+		return nil, err
+	}
+	return sqlDB.Prepare(query)
 }
 
 // Close closes the database connection
 func (db *DB) Close() error {
 	db.writeMu.Lock()
 	defer db.writeMu.Unlock()
-	return db.conn.Close()
+	sqlDB, err := db.conn.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
+}
+
+// Migrate runs automatic migrations for all models
+func (db *DB) Migrate() error {
+	return db.conn.AutoMigrate(
+		&models.Violation{},
+		&models.ASTNode{},
+		&FileScan{},
+	)
 }
 
 // Tx wraps sql.Tx to ensure mutex is released on commit/rollback

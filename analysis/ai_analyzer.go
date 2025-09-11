@@ -145,16 +145,28 @@ func (aa *AIAnalyzer) generateViolations(ast *models.GenericAST, commentResults 
 	// Generate violations from comment analysis
 	poorComments := aa.commentAnalyzer.GetPoorQualityComments(commentResults)
 	for _, result := range poorComments {
+		callerNode := models.ASTNode{
+			FilePath:    ast.FilePath,
+			PackageName: ast.PackageName,
+			StartLine:   result.Comment.StartLine,
+			NodeType:    models.NodeTypePackage,
+		}
+
+		calledNode := models.ASTNode{
+			FilePath:    ast.FilePath,
+			PackageName: "comment-quality.analysis",
+			StartLine:   result.Comment.StartLine,
+			NodeType:    models.NodeTypeMethod,
+		}
+
 		violation := models.Violation{
-			File:          ast.FilePath,
-			Line:          result.Comment.StartLine,
-			Column:        1,
-			CallerPackage: ast.PackageName,
-			CallerMethod:  result.Comment.Context,
-			CalledPackage: "comment-quality",
-			CalledMethod:  "analysis",
-			Message:       aa.formatCommentViolationMessage(result),
-			Source:        "ai-analyzer",
+			File:    ast.FilePath,
+			Line:    result.Comment.StartLine,
+			Column:  1,
+			Caller:  &callerNode,
+			Called:  &calledNode,
+			Message: aa.formatCommentViolationMessage(result),
+			Source:  "ai-analyzer",
 		}
 		violations = append(violations, violation)
 	}

@@ -259,15 +259,13 @@ func (d *PyrightDiagnostic) ToViolation(workDir string) models.Violation {
 		calledMethod = fmt.Sprintf("%s:%s", d.Severity, d.Rule)
 	}
 
-	return models.Violation{
-		File:          filename,
-		Line:          d.Range.Start.Line + 1, // Pyright uses 0-based indexing
-		Column:        d.Range.Start.Character + 1,
-		CallerPackage: filepath.Dir(filename),
-		CallerMethod:  "unknown",
-		CalledPackage: "pyright",
-		CalledMethod:  calledMethod,
-		Message:       d.Message,
-		Source:        "pyright",
-	}
+	return models.NewViolationBuilder().
+		WithFile(filename).
+		WithLocation(d.Range.Start.Line + 1, d.Range.Start.Character + 1). // Pyright uses 0-based indexing
+		WithCaller(filepath.Dir(filename), "unknown").
+		WithCalled("pyright", calledMethod).
+		WithMessage(d.Message).
+		WithSource("pyright").
+		WithRuleFromLinter("pyright", calledMethod).
+		Build()
 }

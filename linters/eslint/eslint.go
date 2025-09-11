@@ -274,15 +274,14 @@ func (m *ESLintMessage) ToViolation(workDir, filePath string) models.Violation {
 		calledMethod = severity
 	}
 
-	return models.Violation{
-		File:          filename,
-		Line:          m.Line,
-		Column:        m.Column,
-		CallerPackage: filepath.Dir(filename),
-		CallerMethod:  "unknown",
-		CalledPackage: "eslint",
-		CalledMethod:  calledMethod,
-		Message:       m.Message,
-		Source:        "eslint",
-	}
+	return models.NewViolationBuilder().
+		WithFile(filename).
+		WithLocation(m.Line, m.Column).
+		WithCaller(filepath.Dir(filename), "unknown").
+		WithCalled("eslint", calledMethod).
+		WithMessage(m.Message).
+		WithSource("eslint").
+		WithRuleFromLinter("eslint", calledMethod).
+		WithFixable(m.Fix != nil).
+		Build()
 }

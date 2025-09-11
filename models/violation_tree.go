@@ -3,6 +3,7 @@ package models
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -12,8 +13,18 @@ import (
 
 // ViolationRootNode represents the root node of the violations tree
 type ViolationRootNode struct {
-	fileNodes []*ViolationFileNode
-	total     int
+	directoryNodes []*ViolationDirectoryNode
+	fileNodes      []*ViolationFileNode
+	total          int
+}
+
+// ViolationDirectoryNode represents a directory containing files or subdirectories
+type ViolationDirectoryNode struct {
+	path           string
+	name           string
+	childDirs      []*ViolationDirectoryNode
+	fileNodes      []*ViolationFileNode
+	total          int
 }
 
 // ViolationFileNode represents a file containing violations
@@ -44,18 +55,132 @@ func NewViolationRootNode(violations []Violation) *ViolationRootNode {
 	}
 	sort.Strings(files)
 
-	// Create file nodes
-	var fileNodes []*ViolationFileNode
-	for _, file := range files {
-		fileViolations := fileMap[file]
-		fileNode := NewViolationFileNode(file, fileViolations)
-		fileNodes = append(fileNodes, fileNode)
-	}
+	// Build directory tree
+	directoryNodes, rootFileNodes := buildDirectoryTree(files, fileMap)
 
 	return &ViolationRootNode{
-		fileNodes: fileNodes,
-		total:     len(violations),
+		directoryNodes: directoryNodes,
+		fileNodes:      rootFileNodes,
+		total:          len(violations),
 	}
+}
+
+// buildDirectoryTree creates a directory tree structure from file paths
+func buildDirectoryTree(files []string, fileMap map[string][]Violation) ([]*ViolationDirectoryNode, []*ViolationFileNode) {
+	// Map to track directory nodes by their path
+	dirMap := make(map[string]*ViolationDirectoryNode)
+	var rootFileNodes []*ViolationFileNode
+
+	// Get current working directory for relative path conversion
+	cwd, err := os.Getwd()
+	if err != nil {
+		// If we can't get the working directory, proceed with original paths
+		cwd = ""
+	}
+
+	// Process each file to build directory structure
+	for _, file := range files {
+		// Convert to relative path if possible
+		relativeFile := file
+		if cwd != "" {
+			if rel, err := filepath.Rel(cwd, file); err == nil && !strings.HasPrefix(rel, "../") {
+				relativeFile = rel
+			}
+		}
+
+		dir := filepath.Dir(relativeFile)
+
+		// If file is in current directory (dir == "."), add to root
+		if dir == "." {
+			fileNode := NewViolationFileNode(file, fileMap[file]) // Use original path for file node
+			rootFileNodes = append(rootFileNodes, fileNode)
+			continue
+		}
+
+		// Ensure all parent directories exist (using relative path for tree structure)
+		createDirectoryPath(dir, dirMap)
+
+		// Add file to its parent directory
+		parentDir := dirMap[dir]
+		fileNode := NewViolationFileNode(file, fileMap[file]) // Use original path for file node
+		parentDir.fileNodes = append(parentDir.fileNodes, fileNode)
+		parentDir.total += len(fileMap[file])
+	}
+
+	// Build hierarchy and find root directories
+	var rootDirs []*ViolationDirectoryNode
+	for path, dirNode := range dirMap {
+		parentPath := filepath.Dir(path)
+		if parentPath == "." || parentPath == path {
+			// This is a root directory
+			rootDirs = append(rootDirs, dirNode)
+		} else if parentDir, exists := dirMap[parentPath]; exists {
+			// Add as child to parent directory
+			parentDir.childDirs = append(parentDir.childDirs, dirNode)
+		}
+	}
+
+	// Calculate totals for directory nodes (bottom-up)
+	for _, dirNode := range dirMap {
+		calculateDirectoryTotal(dirNode)
+	}
+
+	// Sort directories and files
+	sort.Slice(rootDirs, func(i, j int) bool {
+		return rootDirs[i].name < rootDirs[j].name
+	})
+
+	for _, dirNode := range dirMap {
+		sort.Slice(dirNode.childDirs, func(i, j int) bool {
+			return dirNode.childDirs[i].name < dirNode.childDirs[j].name
+		})
+		sort.Slice(dirNode.fileNodes, func(i, j int) bool {
+			return filepath.Base(dirNode.fileNodes[i].path) < filepath.Base(dirNode.fileNodes[j].path)
+		})
+	}
+
+	return rootDirs, rootFileNodes
+}
+
+// createDirectoryPath ensures all directories in a path exist in dirMap
+func createDirectoryPath(path string, dirMap map[string]*ViolationDirectoryNode) {
+	if path == "." || dirMap[path] != nil {
+		return
+	}
+
+	// Recursively create parent directories
+	parentPath := filepath.Dir(path)
+	if parentPath != "." && parentPath != path {
+		createDirectoryPath(parentPath, dirMap)
+	}
+
+	// Create this directory node
+	dirName := filepath.Base(path)
+	dirMap[path] = &ViolationDirectoryNode{
+		path:      path,
+		name:      dirName,
+		childDirs: []*ViolationDirectoryNode{},
+		fileNodes: []*ViolationFileNode{},
+		total:     0,
+	}
+}
+
+// calculateDirectoryTotal calculates the total violations for a directory
+func calculateDirectoryTotal(dirNode *ViolationDirectoryNode) {
+	total := 0
+	
+	// Add violations from direct files
+	for _, fileNode := range dirNode.fileNodes {
+		total += fileNode.total
+	}
+	
+	// Add violations from child directories (recursively)
+	for _, childDir := range dirNode.childDirs {
+		calculateDirectoryTotal(childDir)
+		total += childDir.total
+	}
+	
+	dirNode.total = total
 }
 
 // NewViolationFileNode creates a new file node
@@ -124,10 +249,18 @@ func (vrt *ViolationRootTreeNode) Pretty() api.Text {
 }
 
 func (vrt *ViolationRootTreeNode) GetChildren() []api.TreeNode {
-	nodes := make([]api.TreeNode, len(vrt.root.fileNodes))
-	for i, fileNode := range vrt.root.fileNodes {
-		nodes[i] = fileNode.Tree()
+	var nodes []api.TreeNode
+	
+	// Add directory nodes first
+	for _, dirNode := range vrt.root.directoryNodes {
+		nodes = append(nodes, dirNode.Tree())
 	}
+	
+	// Add direct file nodes (files not in any directory)
+	for _, fileNode := range vrt.root.fileNodes {
+		nodes = append(nodes, fileNode.Tree())
+	}
+	
 	return nodes
 }
 
@@ -135,6 +268,13 @@ func (vrt *ViolationRootTreeNode) GetChildren() []api.TreeNode {
 func (vrt *ViolationRootTreeNode) MarshalJSON() ([]byte, error) {
 	// Collect all violations from the tree in a flat structure for JSON
 	var violations []Violation
+	
+	// Collect from directory nodes
+	for _, dirNode := range vrt.root.directoryNodes {
+		violations = append(violations, vrt.collectViolationsFromDirectory(dirNode)...)
+	}
+	
+	// Collect from direct file nodes
 	for _, fileNode := range vrt.root.fileNodes {
 		for _, sourceNode := range fileNode.sourceNodes {
 			for _, violationNode := range sourceNode.violationNodes {
@@ -149,6 +289,32 @@ func (vrt *ViolationRootTreeNode) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// collectViolationsFromDirectory recursively collects violations from a directory node
+func (vrt *ViolationRootTreeNode) collectViolationsFromDirectory(dirNode *ViolationDirectoryNode) []Violation {
+	var violations []Violation
+	
+	// Collect from child directories
+	for _, childDir := range dirNode.childDirs {
+		violations = append(violations, vrt.collectViolationsFromDirectory(childDir)...)
+	}
+	
+	// Collect from files in this directory
+	for _, fileNode := range dirNode.fileNodes {
+		for _, sourceNode := range fileNode.sourceNodes {
+			for _, violationNode := range sourceNode.violationNodes {
+				violations = append(violations, violationNode.violation)
+			}
+		}
+	}
+	
+	return violations
+}
+
+// Tree returns a TreeNode representation of this ViolationDirectoryNode
+func (v *ViolationDirectoryNode) Tree() api.TreeNode {
+	return &ViolationDirectoryTreeNode{directory: v}
+}
+
 // Tree returns a TreeNode representation of this ViolationFileNode
 func (v *ViolationFileNode) Tree() api.TreeNode {
 	return &ViolationFileTreeNode{file: v}
@@ -160,13 +326,8 @@ type ViolationFileTreeNode struct {
 }
 
 func (vft *ViolationFileTreeNode) Pretty() api.Text {
-	// Get relative path for display
-	relPath := vft.file.path
-	if cwd, err := filepath.Abs("."); err == nil {
-		if rel, err := filepath.Rel(cwd, vft.file.path); err == nil && !strings.HasPrefix(rel, "../") {
-			relPath = rel
-		}
-	}
+	// In tree view, use basename only since directory structure is already shown
+	fileName := filepath.Base(vft.file.path)
 
 	// Determine icon based on file extension
 	var icon string
@@ -185,7 +346,7 @@ func (vft *ViolationFileTreeNode) Pretty() api.Text {
 		icon = "📁"
 	}
 
-	content := fmt.Sprintf("%s %s (%d violations)", icon, relPath, vft.file.total)
+	content := fmt.Sprintf("%s %s (%d violations)", icon, fileName, vft.file.total)
 	return api.Text{
 		Content: content,
 		Style:   "text-cyan-600 font-bold",
@@ -197,6 +358,35 @@ func (vft *ViolationFileTreeNode) GetChildren() []api.TreeNode {
 	for i, sourceNode := range vft.file.sourceNodes {
 		nodes[i] = sourceNode.Tree()
 	}
+	return nodes
+}
+
+// ViolationDirectoryTreeNode is a TreeNode wrapper for ViolationDirectoryNode
+type ViolationDirectoryTreeNode struct {
+	directory *ViolationDirectoryNode
+}
+
+func (vdt *ViolationDirectoryTreeNode) Pretty() api.Text {
+	content := fmt.Sprintf("📁 %s (%d violations)", vdt.directory.name, vdt.directory.total)
+	return api.Text{
+		Content: content,
+		Style:   "text-blue-600 font-bold",
+	}
+}
+
+func (vdt *ViolationDirectoryTreeNode) GetChildren() []api.TreeNode {
+	var nodes []api.TreeNode
+	
+	// Add subdirectories first
+	for _, childDir := range vdt.directory.childDirs {
+		nodes = append(nodes, childDir.Tree())
+	}
+	
+	// Add files
+	for _, fileNode := range vdt.directory.fileNodes {
+		nodes = append(nodes, fileNode.Tree())
+	}
+	
 	return nodes
 }
 

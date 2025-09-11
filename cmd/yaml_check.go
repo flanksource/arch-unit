@@ -5,8 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/flanksource/arch-unit/client"
 	"github.com/flanksource/arch-unit/internal/cache"
+	"github.com/flanksource/arch-unit/internal/files"
+	"github.com/flanksource/arch-unit/linters/archunit"
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/commons/logger"
@@ -29,7 +30,7 @@ func runYAMLBasedCheck(rootDir string, config *models.Config, specificFiles []st
 	} else {
 		// Find all source files
 		var err error
-		goFiles, pythonFiles, err = client.FindSourceFiles(rootDir)
+		goFiles, pythonFiles, err = files.FindSourceFiles(rootDir)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find source files: %w", err)
 		}
@@ -115,7 +116,7 @@ func runYAMLBasedCheck(rootDir string, config *models.Config, specificFiles []st
 
 // analyzeGoFilesWithCache analyzes Go files with caching support
 func analyzeGoFilesWithCache(rootDir string, files []string, config *models.Config, violationCache *cache.ViolationCache) (*models.AnalysisResult, error) {
-	analyzer := client.NewGoAnalyzer()
+	checker := archunit.NewViolationChecker()
 	result := &models.AnalysisResult{
 		FileCount: len(files),
 	}
@@ -159,7 +160,7 @@ func analyzeGoFilesWithCache(rootDir string, files []string, config *models.Conf
 			result.RuleCount += len(rules.Rules)
 		}
 
-		violations, err := analyzer.AnalyzeFile(file, rules)
+		violations, err := checker.CheckViolations(file, rules)
 		if err != nil {
 			return nil, fmt.Errorf("failed to analyze %s: %w", file, err)
 		}
@@ -180,72 +181,16 @@ func analyzeGoFilesWithCache(rootDir string, files []string, config *models.Conf
 	return result, nil
 }
 
+// TODO: Implement Python analysis with new architecture
 // analyzePythonFilesWithCache analyzes Python files with caching support
 func analyzePythonFilesWithCache(rootDir string, files []string, config *models.Config, violationCache *cache.ViolationCache) (*models.AnalysisResult, error) {
-	analyzer := client.NewPythonAnalyzer(rootDir)
-	result := &models.AnalysisResult{
-		FileCount: len(files),
-	}
-
-	var filesToAnalyze []string
-
-	// Check cache for each file
-	for _, file := range files {
-		if violationCache != nil {
-			needsRescan, err := violationCache.NeedsRescan(file)
-			if err != nil {
-				logger.Debugf("Error checking cache for %s: %v", file, err)
-				filesToAnalyze = append(filesToAnalyze, file)
-				continue
-			}
-
-			if !needsRescan {
-				logger.Debugf("Using cached violations for %s", file)
-				// Still count rules for cached files
-				if rules, err := config.GetRulesForFile(file); err == nil && rules != nil {
-					result.RuleCount += len(rules.Rules)
-				}
-			} else {
-				filesToAnalyze = append(filesToAnalyze, file)
-			}
-		} else {
-			filesToAnalyze = append(filesToAnalyze, file)
-		}
-	}
-
-	logger.Infof("Analyzing %d Python files (using cache for %d files)", len(filesToAnalyze), len(files)-len(filesToAnalyze))
-
-	// Analyze files that need scanning
-	for _, file := range filesToAnalyze {
-		rules, err := config.GetRulesForFile(file)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get rules for file %s: %w", file, err)
-		}
-
-		if rules != nil {
-			result.RuleCount += len(rules.Rules)
-		}
-
-		violations, err := analyzer.AnalyzeFile(file, rules)
-		if err != nil {
-			// Skip files with errors for Python
-			continue
-		}
-
-		// Store in cache
-		if violationCache != nil {
-			// Set source for violations
-			for i := range violations {
-				violations[i].Source = "arch-unit"
-			}
-			if err := violationCache.StoreViolations(file, violations); err != nil {
-				logger.Debugf("Failed to cache violations for %s: %v", file, err)
-			}
-		}
-	}
-
-	// Don't return violations here - they will be fetched from DB
-	return result, nil
+	// TODO: Implement Python analysis with new architecture
+	logger.Warnf("Python analysis temporarily disabled during refactoring")
+	return &models.AnalysisResult{
+		FileCount:  len(files),
+		RuleCount:  0,
+		Violations: []models.Violation{},
+	}, nil
 }
 
 // outputConsolidatedResults outputs consolidated results from arch-unit and linters

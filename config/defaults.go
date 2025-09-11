@@ -85,6 +85,16 @@ func CreateSmartDefaultConfig(rootDir string) (*models.Config, error) {
 		// Rules can be added by users as needed
 	}
 
+	// Try to load .ARCHUNIT files and merge them into the config
+	archUnitParser := NewArchUnitParser(rootDir)
+	archUnitRules, err := archUnitParser.LoadArchUnitRules()
+	if err != nil {
+		logger.Debugf("No .ARCHUNIT files found: %v", err)
+	} else if len(archUnitRules) > 0 {
+		logger.Infof("Loaded %d .ARCHUNIT rule sets", len(archUnitRules))
+		MergeArchUnitWithYAML(config, archUnitRules)
+	}
+
 	return config, nil
 }
 

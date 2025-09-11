@@ -256,17 +256,15 @@ func (issue *RuffIssue) ToViolation(workDir string) models.Violation {
 		fixApplicability = issue.Fix.Applicability
 	}
 
-	return models.Violation{
-		File:             filename,
-		Line:             issue.Location.Row,
-		Column:           issue.Location.Column,
-		CallerPackage:    filepath.Dir(filename),
-		CallerMethod:     "unknown",
-		CalledPackage:    "ruff",
-		CalledMethod:     issue.Code,
-		Message:          issue.Message,
-		Source:           "ruff",
-		Fixable:          fixable,
-		FixApplicability: fixApplicability,
-	}
+	return models.NewViolationBuilder().
+		WithFile(filename).
+		WithLocation(issue.Location.Row, issue.Location.Column).
+		WithCaller(filepath.Dir(filename), "unknown").
+		WithCalled("ruff", issue.Code).
+		WithMessage(issue.Message).
+		WithSource("ruff").
+		WithRuleFromLinter("ruff", issue.Code).
+		WithFixable(fixable).
+		WithFixApplicability(fixApplicability).
+		Build()
 }

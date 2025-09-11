@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/flanksource/arch-unit/models"
+	"github.com/flanksource/commons/logger"
 	"gopkg.in/yaml.v3"
 )
 
@@ -21,13 +22,57 @@ func NewParser(rootDir string) *Parser {
 	}
 }
 
+// findGitRoot finds the git root directory by walking up from startDir
+func findGitRoot(startDir string) string {
+	dir := startDir
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir
+		}
+		
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached root directory, no git repo found
+			return startDir
+		}
+		dir = parent
+	}
+}
+
+// findConfigFile searches for a config file by walking up the directory tree
+func (p *Parser) findConfigFile(startDir, fileName string) (string, error) {
+	gitRoot := findGitRoot(startDir)
+	dir := startDir
+	
+	for {
+		configPath := filepath.Join(dir, fileName)
+		if _, err := os.Stat(configPath); err == nil {
+			logger.Debugf("Found config file: %s", configPath)
+			return configPath, nil
+		}
+		
+		// Don't go above git root
+		if dir == gitRoot {
+			break
+		}
+		
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached root directory
+			break
+		}
+		dir = parent
+	}
+	
+	return "", fmt.Errorf("configuration file %s not found in directory tree from %s to %s", fileName, startDir, gitRoot)
+}
+
 // LoadConfig loads the arch-unit.yaml configuration file
 func (p *Parser) LoadConfig() (*models.Config, error) {
-	configPath := filepath.Join(p.rootDir, ConfigFileName)
-
-	// Check if config file exists
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("configuration file %s not found in %s", ConfigFileName, p.rootDir)
+	// Try to find config file by walking up the directory tree
+	configPath, err := p.findConfigFile(p.rootDir, ConfigFileName)
+	if err != nil {
+		return nil, err
 	}
 
 	data, err := os.ReadFile(configPath)

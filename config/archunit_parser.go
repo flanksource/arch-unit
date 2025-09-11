@@ -25,15 +25,24 @@ func NewArchUnitParser(rootDir string) *ArchUnitParser {
 	}
 }
 
-// LoadArchUnitRules loads all .ARCHUNIT files in the directory tree
+// LoadArchUnitRules loads all .ARCHUNIT files by walking up from the root directory to git root
 func (p *ArchUnitParser) LoadArchUnitRules() ([]models.RuleSet, error) {
 	var ruleSets []models.RuleSet
 
-	logger.Debugf("Searching for .ARCHUNIT files in %s", p.rootDir)
+	logger.Debugf("Searching for .ARCHUNIT files starting from %s", p.rootDir)
 
-	err := filepath.Walk(p.rootDir, func(path string, info os.FileInfo, err error) error {
+	// Find git root to limit our search
+	gitRoot := findGitRoot(p.rootDir)
+	
+	// Walk the directory tree looking for .ARCHUNIT files
+	err := filepath.Walk(gitRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // Skip files with errors
+		}
+
+		// Skip hidden directories except .git
+		if info.IsDir() && strings.HasPrefix(info.Name(), ".") && info.Name() != ".git" {
+			return filepath.SkipDir
 		}
 
 		if info.Name() == ArchUnitFileName {
@@ -53,9 +62,10 @@ func (p *ArchUnitParser) LoadArchUnitRules() ([]models.RuleSet, error) {
 		return nil, err
 	}
 
-	logger.Infof("Loaded %d .ARCHUNIT rule sets", len(ruleSets))
+	logger.Infof("Loaded %d .ARCHUNIT rule sets from %s to %s", len(ruleSets), p.rootDir, gitRoot)
 	return ruleSets, nil
 }
+
 
 // parseArchUnitFile parses a single .ARCHUNIT file
 func (p *ArchUnitParser) parseArchUnitFile(path string) (*models.RuleSet, error) {

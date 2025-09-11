@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/api"
 )
 
 type RuleType string
@@ -19,23 +22,39 @@ const (
 )
 
 type Rule struct {
-	Type         RuleType
-	Pattern      string
-	Package      string
-	Method       string
-	SourceFile   string
-	LineNumber   int
-	Scope        string // Directory where this rule applies
-	OriginalLine string
-	FilePattern  string // File-specific pattern (e.g., "*_test.go", "cmd/*/main.go")
+	Type         RuleType `json:"type,omitempty"`
+	Pattern      string   `json:"pattern,omitempty"`
+	Package      string   `json:"package,omitempty"`
+	Method       string   `json:"method,omitempty"`
+	SourceFile   string   `json:"source_file,omitempty"`
+	LineNumber   int      `json:"line_number,omitempty"`
+	Scope        string   `json:"scope,omitempty"` // Directory where this rule applies
+	OriginalLine string   `json:"original_line,omitempty"`
+	FilePattern  string   `json:"file_pattern,omitempty"` // File-specific pattern (e.g., "*_test.go", "cmd/*/main.go")
 
 	// Quality rule parameters
-	MaxFileLines        int      `yaml:"max_file_lines,omitempty"`
-	MaxNameLength       int      `yaml:"max_name_length,omitempty"`
-	DisallowedPatterns  []string `yaml:"disallowed_patterns,omitempty"`
-	CommentWordLimit    int      `yaml:"comment_word_limit,omitempty"`
-	CommentAIModel      string   `yaml:"comment_ai_model,omitempty"`
-	MinDescriptiveScore float64  `yaml:"min_descriptive_score,omitempty"`
+	MaxFileLines        int      `yaml:"max_file_lines,omitempty" json:"max_file_lines,omitempty"`
+	MaxNameLength       int      `yaml:"max_name_length,omitempty" json:"max_name_length,omitempty"`
+	DisallowedPatterns  []string `yaml:"disallowed_patterns,omitempty" json:"disallowed_patterns,omitempty"`
+	CommentWordLimit    int      `yaml:"comment_word_limit,omitempty" json:"comment_word_limit,omitempty"`
+	CommentAIModel      string   `yaml:"comment_ai_model,omitempty" json:"comment_ai_model,omitempty"`
+	MinDescriptiveScore float64  `yaml:"min_descriptive_score,omitempty" json:"min_descriptive_score,omitempty"`
+}
+
+func (r Rule) Pretty() api.Text {
+	prefix := clicky.Text("")
+	switch r.Type {
+	case RuleTypeDeny:
+		prefix.Append("!", "text-red-600")
+	case RuleTypeOverride:
+		prefix.Append("+", "text-green-600")
+	}
+
+	if r.Method != "" {
+		return prefix.Append(r.Package, "text-blue-600").Append(":", "text-gray-500").Append(r.Method, "text-blue-600")
+	}
+
+	return prefix.Append(r.Pattern, "text-blue-600")
 }
 
 func (r Rule) String() string {

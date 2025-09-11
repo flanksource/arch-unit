@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/flanksource/arch-unit/client"
 	"github.com/flanksource/arch-unit/config"
 	"github.com/flanksource/arch-unit/internal/cache"
+	"github.com/flanksource/arch-unit/internal/files"
 	"github.com/flanksource/arch-unit/linters"
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/clicky"
@@ -18,6 +18,8 @@ import (
 // ArchUnit implements the Linter interface for arch-unit rules
 type ArchUnit struct {
 	linters.RunOptions
+	fileCount int
+	ruleCount int
 }
 
 // NewArchUnit creates a new arch-unit linter
@@ -72,6 +74,16 @@ func (a *ArchUnit) ValidateConfig(config *models.LinterConfig) error {
 	return nil
 }
 
+// GetFileCount returns the number of files analyzed by the last run
+func (a *ArchUnit) GetFileCount() int {
+	return a.fileCount
+}
+
+// GetRuleCount returns the number of rules applied by the last run
+func (a *ArchUnit) GetRuleCount() int {
+	return a.ruleCount
+}
+
 // Run executes the arch-unit analysis and returns violations
 func (a *ArchUnit) Start(ctx commonsCtx.Context, task *clicky.Task) ([]models.Violation, error) {
 	return a.Run(ctx, a.RunOptions)
@@ -95,18 +107,24 @@ func (a *ArchUnit) Run(ctx context.Context, opts linters.RunOptions) ([]models.V
 	} else {
 		// Find all source files in the work directory
 		var err error
-		goFiles, pythonFiles, err = client.FindSourceFiles(opts.WorkDir)
+		goFiles, pythonFiles, err = files.FindSourceFiles(opts.WorkDir)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find source files: %w", err)
 		}
 	}
 
-	// Load configuration
-	configParser := config.NewParser(opts.WorkDir)
+	// Load configuration - start from the directory containing the files being analyzed
+	searchDir := opts.WorkDir
+	if len(opts.Files) > 0 {
+		// Use the directory of the first file for config search
+		searchDir = filepath.Dir(opts.Files[0])
+	}
+	
+	configParser := config.NewParser(searchDir)
 	archConfig, err := configParser.LoadConfig()
 	if err != nil {
 		// Use smart defaults if no config found
-		archConfig, err = config.CreateSmartDefaultConfig(opts.WorkDir)
+		archConfig, err = config.CreateSmartDefaultConfig(searchDir)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create default configuration: %w", err)
 		}
@@ -129,6 +147,7 @@ func (a *ArchUnit) Run(ctx context.Context, opts linters.RunOptions) ([]models.V
 	}
 
 	var allViolations []models.Violation
+	var totalFiles, totalRules int
 
 	// Analyze Go files
 	if len(goFiles) > 0 {
@@ -137,16 +156,20 @@ func (a *ArchUnit) Run(ctx context.Context, opts linters.RunOptions) ([]models.V
 			return nil, fmt.Errorf("failed to analyze Go files: %w", err)
 		}
 		allViolations = append(allViolations, goResult.Violations...)
+		totalFiles += goResult.FileCount
+		totalRules += goResult.RuleCount
 	}
 
+	// TODO: Implement Python analysis using new architecture
 	// Analyze Python files
 	if len(pythonFiles) > 0 {
-		pyResult, err := analyzePythonFilesWithCache(opts.WorkDir, pythonFiles, archConfig, violationCache)
-		if err != nil {
-			logger.Warnf("Failed to analyze Python files: %v", err)
-		} else {
-			allViolations = append(allViolations, pyResult.Violations...)
-		}
+		logger.Warnf("Python analysis temporarily disabled during refactoring")
+		// pyResult, err := analyzePythonFilesWithCache(opts.WorkDir, pythonFiles, archConfig, violationCache)
+		// if err != nil {
+		// 	logger.Warnf("Failed to analyze Python files: %v", err)
+		// } else {
+		// 	allViolations = append(allViolations, pyResult.Violations...)
+		// }
 	}
 
 	// Set source to "arch-unit" for all violations
@@ -154,12 +177,16 @@ func (a *ArchUnit) Run(ctx context.Context, opts linters.RunOptions) ([]models.V
 		allViolations[i].Source = "arch-unit"
 	}
 
+	// Store counts for later retrieval
+	a.fileCount = totalFiles
+	a.ruleCount = totalRules
+
 	return allViolations, nil
 }
 
 // analyzeGoFilesWithCache analyzes Go files with caching support
 func analyzeGoFilesWithCache(rootDir string, files []string, config *models.Config, violationCache *cache.ViolationCache) (*models.AnalysisResult, error) {
-	analyzer := client.NewGoAnalyzer()
+	checker := NewViolationChecker()
 	result := &models.AnalysisResult{
 		FileCount: len(files),
 	}
@@ -203,7 +230,7 @@ func analyzeGoFilesWithCache(rootDir string, files []string, config *models.Conf
 			result.RuleCount += len(rules.Rules)
 		}
 
-		violations, err := analyzer.AnalyzeFile(file, rules)
+		violations, err := checker.CheckViolations(file, rules)
 		if err != nil {
 			return nil, fmt.Errorf("failed to analyze %s: %w", file, err)
 		}
@@ -226,70 +253,14 @@ func analyzeGoFilesWithCache(rootDir string, files []string, config *models.Conf
 	return result, nil
 }
 
+// TODO: Refactor Python analysis to use new architecture
 // analyzePythonFilesWithCache analyzes Python files with caching support
 func analyzePythonFilesWithCache(rootDir string, files []string, config *models.Config, violationCache *cache.ViolationCache) (*models.AnalysisResult, error) {
-	analyzer := client.NewPythonAnalyzer(rootDir)
-	result := &models.AnalysisResult{
-		FileCount: len(files),
-	}
-
-	var filesToAnalyze []string
-
-	// Check cache for each file
-	for _, file := range files {
-		if violationCache != nil {
-			needsRescan, err := violationCache.NeedsRescan(file)
-			if err != nil {
-				logger.Debugf("Error checking cache for %s: %v", file, err)
-				filesToAnalyze = append(filesToAnalyze, file)
-				continue
-			}
-
-			if !needsRescan {
-				logger.Debugf("Using cached violations for %s", file)
-				// Still count rules for cached files
-				if rules, err := config.GetRulesForFile(file); err == nil && rules != nil {
-					result.RuleCount += len(rules.Rules)
-				}
-			} else {
-				filesToAnalyze = append(filesToAnalyze, file)
-			}
-		} else {
-			filesToAnalyze = append(filesToAnalyze, file)
-		}
-	}
-
-	// Analyze files that need scanning
-	for _, file := range filesToAnalyze {
-		rules, err := config.GetRulesForFile(file)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get rules for file %s: %w", file, err)
-		}
-
-		if rules != nil {
-			result.RuleCount += len(rules.Rules)
-		}
-
-		violations, err := analyzer.AnalyzeFile(file, rules)
-		if err != nil {
-			logger.Warnf("Failed to analyze Python file %s: %v", file, err)
-			continue // Skip this file but continue with others
-		}
-
-		// Store in cache
-		if violationCache != nil {
-			// Set source for violations
-			for i := range violations {
-				violations[i].Source = "arch-unit"
-			}
-			if err := violationCache.StoreViolations(file, violations); err != nil {
-				logger.Debugf("Failed to cache violations for %s: %v", file, err)
-			}
-		}
-
-		// Also add to result for immediate return
-		result.Violations = append(result.Violations, violations...)
-	}
-
-	return result, nil
+	logger.Warnf("Python analysis temporarily disabled during refactoring")
+	return &models.AnalysisResult{
+		FileCount:  len(files),
+		RuleCount:  0,
+		Violations: []models.Violation{},
+	}, nil
 }
+
