@@ -2,7 +2,7 @@ version: "3"
 
 vars:
   BINARY_NAME: arch-unit
-  GO_VERSION: 1.23
+  GO_VERSION: 1.25
   MAIN_PACKAGE: .
 
 tasks:
@@ -57,20 +57,16 @@ tasks:
 
   test:
     desc: Run tests
-    cmds:
-      - ginkgo run --poll-progress-after=10s --json-report test-results.json --skip-package=examples ./...
 
-  test:unit:
-    desc: Run unit tests only
     cmds:
-      # Use centralized exclusion patterns aligned with linter exclusions
-      - go test -v -short $(go list ./... | grep -v '/examples/' | grep -v '/hack/' | grep -v '/vendor/' | grep -v '/build/' | grep -v '/dist/' | grep -v '/__pycache__/' | grep -v '/.git/' | grep -v '/node_modules/')
+      - ginkgo run {{.EXTRA_ARGS}} --poll-progress-after=10s --skip-package=examples ./...
 
-  test:integration:
-    desc: Run integration tests
+  test:ci:
+    desc: Run tests with github actions output
     cmds:
-      # Use centralized exclusion patterns aligned with linter exclusions
-      - go test -v -run Integration $(go list ./... | grep -v '/examples/' | grep -v '/hack/' | grep -v '/vendor/' | grep -v '/build/' | grep -v '/dist/' | grep -v '/__pycache__/' | grep -v '/.git/' | grep -v '/node_modules/')
+      - task: test
+        vars:
+          EXTRA_ARGS: " --github-output "
 
   test:coverage:
     desc: Run tests with coverage report
@@ -126,11 +122,6 @@ tasks:
     cmds:
       - ./{{.BINARY_NAME}} init {{.CLI_ARGS}}
 
-  dev:
-    desc: Run in development mode with live reload
-    cmds:
-      - air
-
   docker:build:
     desc: Build Docker image
     cmds:
@@ -168,7 +159,7 @@ tasks:
     cmds:
       - task: fmt
       - task: lint
-      - task: test
+      - task: test:ci
       - task: build
 
   example:go:

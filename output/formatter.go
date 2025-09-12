@@ -12,6 +12,22 @@ import (
 	"github.com/flanksource/arch-unit/models"
 )
 
+// getCallerMethod extracts the caller method name from a violation
+func getCallerMethod(v models.Violation) string {
+	if v.Caller != nil {
+		if v.Caller.MethodName != "" {
+			return v.Caller.MethodName
+		}
+		if v.Caller.TypeName != "" {
+			return v.Caller.TypeName
+		}
+		if v.Caller.PackageName != "" {
+			return v.Caller.PackageName
+		}
+	}
+	return "unknown"
+}
+
 type OutputManager struct {
 	format  string
 	output  string
@@ -197,9 +213,15 @@ func (o *OutputManager) outputTree(result *models.AnalysisResult) {
 			for k, v := range ruleViolations {
 				isLastViolation := k == len(ruleViolations)-1
 
-				call := v.CalledPackage
-				if v.CalledMethod != "" {
-					call = fmt.Sprintf("%s.%s", v.CalledPackage, v.CalledMethod)
+				call := "unknown"
+				if v.Called != nil {
+					if v.Called.PackageName != "" && v.Called.MethodName != "" {
+						call = fmt.Sprintf("%s.%s", v.Called.PackageName, v.Called.MethodName)
+					} else if v.Called.PackageName != "" {
+						call = v.Called.PackageName
+					} else if v.Called.MethodName != "" {
+						call = v.Called.MethodName
+					}
 				}
 
 				lineInfo := fmt.Sprintf("line %d", v.Line)
@@ -296,9 +318,15 @@ func (o *OutputManager) outputCSV(result *models.AnalysisResult) error {
 
 	// Write violations
 	for _, v := range result.Violations {
-		call := v.CalledPackage
-		if v.CalledMethod != "" {
-			call = fmt.Sprintf("%s.%s", v.CalledPackage, v.CalledMethod)
+		call := "unknown"
+		if v.Called != nil {
+			if v.Called.PackageName != "" && v.Called.MethodName != "" {
+				call = fmt.Sprintf("%s.%s", v.Called.PackageName, v.Called.MethodName)
+			} else if v.Called.PackageName != "" {
+				call = v.Called.PackageName
+			} else if v.Called.MethodName != "" {
+				call = v.Called.MethodName
+			}
 		}
 
 		ruleStr := ""
@@ -309,7 +337,7 @@ func (o *OutputManager) outputCSV(result *models.AnalysisResult) error {
 		}
 
 		fmt.Fprintf(writer, "%s,%d,%d,%s,%s,%s,%s\n",
-			v.File, v.Line, v.Column, v.CallerMethod, call, ruleStr, ruleFile)
+			v.File, v.Line, v.Column, getCallerMethod(v), call, ruleStr, ruleFile)
 	}
 
 	return nil
@@ -370,9 +398,15 @@ func (o *OutputManager) outputHTML(result *models.AnalysisResult) error {
 		<tbody>`)
 
 		for _, v := range result.Violations {
-			call := v.CalledPackage
-			if v.CalledMethod != "" {
-				call = fmt.Sprintf("%s.%s", v.CalledPackage, v.CalledMethod)
+			call := "unknown"
+			if v.Called != nil {
+				if v.Called.PackageName != "" && v.Called.MethodName != "" {
+					call = fmt.Sprintf("%s.%s", v.Called.PackageName, v.Called.MethodName)
+				} else if v.Called.PackageName != "" {
+					call = v.Called.PackageName
+				} else if v.Called.MethodName != "" {
+					call = v.Called.MethodName
+				}
 			}
 
 			ruleStr := ""
@@ -389,7 +423,7 @@ func (o *OutputManager) outputHTML(result *models.AnalysisResult) error {
 				<td class="violation">%s</td>
 				<td>%s</td>
 				<td>%s</td>
-			</tr>`, v.File, v.Line, v.Column, v.Line, v.CallerMethod, call, ruleStr, ruleFile)
+			</tr>`, v.File, v.Line, v.Column, v.Line, getCallerMethod(v), call, ruleStr, ruleFile)
 		}
 
 		fmt.Fprintln(file, `</tbody></table>`)
@@ -430,9 +464,15 @@ func (o *OutputManager) outputMarkdown(result *models.AnalysisResult) error {
 	fmt.Fprintln(writer, "|------|------|--------|-----------|------|--------|")
 
 	for _, v := range result.Violations {
-		call := v.CalledPackage
-		if v.CalledMethod != "" {
-			call = fmt.Sprintf("%s.%s", v.CalledPackage, v.CalledMethod)
+		call := "unknown"
+		if v.Called != nil {
+			if v.Called.PackageName != "" && v.Called.MethodName != "" {
+				call = fmt.Sprintf("%s.%s", v.Called.PackageName, v.Called.MethodName)
+			} else if v.Called.PackageName != "" {
+				call = v.Called.PackageName
+			} else if v.Called.MethodName != "" {
+				call = v.Called.MethodName
+			}
 		}
 
 		ruleStr := ""
@@ -443,7 +483,7 @@ func (o *OutputManager) outputMarkdown(result *models.AnalysisResult) error {
 		}
 
 		fmt.Fprintf(writer, "| %s:%d:%d | %d | %s | %s | %s | %s |\n",
-			v.File, v.Line, v.Column, v.Line, v.CallerMethod, call, ruleStr, ruleFile)
+			v.File, v.Line, v.Column, v.Line, getCallerMethod(v), call, ruleStr, ruleFile)
 	}
 
 	return nil

@@ -108,16 +108,17 @@ func (a *GoAnalyzer) checkCallExpr(call *ast.CallExpr, rules *models.RuleSet) *m
 		if rule.FilePattern != "" {
 			violationMsg = fmt.Sprintf("Call to %s.%s violates file-specific rule [%s]", pkgName, methodName, rule.FilePattern)
 		}
+		// Note: caller and called information is now stored in the message
+		// TODO: When AST nodes are available, set CallerID and CalledID fields
+		
 		return &models.Violation{
-			File:          a.filePath,
-			Line:          pos.Line,
-			Column:        pos.Column,
-			CallerPackage: a.pkgName,
-			CallerMethod:  a.getCurrentFunction(call),
-			CalledPackage: pkgName,
-			CalledMethod:  methodName,
-			Rule:          rule,
-			Message:       violationMsg,
+			File:    a.filePath,
+			Line:    pos.Line,
+			Column:  pos.Column,
+			Rule:    rule,
+			Message: violationMsg,
+			// Note: CallerID and CalledID should be set when AST nodes are available
+			// For now, the caller/called information is in the message
 		}
 	}
 

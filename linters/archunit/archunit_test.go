@@ -93,7 +93,7 @@ var _ = Describe("ArchUnit Linter", func() {
 			// Should not have violations for database/sql import in repository
 			var foundDatabaseViolation bool
 			for _, violation := range violations {
-				if violation.CalledPackage == "database/sql" {
+				if violation.Called != nil && violation.Called.PackageName == "database/sql" {
 					foundDatabaseViolation = true
 					break
 				}

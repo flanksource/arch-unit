@@ -49,15 +49,24 @@ func (tdb *TestDB) TempDir() string {
 	return tdb.tempDir
 }
 
+// ASTCache creates and returns an AST cache instance using the test database
+func (tdb *TestDB) ASTCache() *cache.ASTCache {
+	astCache, err := cache.NewASTCacheWithPath(tdb.tempDir)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create AST cache: %v", err))
+	}
+	return astCache
+}
+
 // ClearAllData removes all data from all tables
 func (tdb *TestDB) ClearAllData() error {
-	// Clear all tables in proper order (relationships first)
+	// Clear all tables in proper order (dependencies first, then referenced tables)
 	tables := []interface{}{
-		&models.ASTRelationship{},
-		&models.LibraryRelationship{},
-		&models.ASTNode{},
-		&models.LibraryNode{},
-		&models.Violation{},
+		&models.Violation{},           // Has foreign keys to ASTNode
+		&models.ASTRelationship{},     // Has foreign keys to ASTNode
+		&models.LibraryRelationship{}, // Has foreign keys to ASTNode and LibraryNode
+		&models.ASTNode{},              // Referenced by Violation, ASTRelationship, LibraryRelationship
+		&models.LibraryNode{},          // Referenced by LibraryRelationship
 		&models.FileScan{},
 		&models.FileMetadata{},
 		&models.DependencyAlias{},
@@ -118,13 +127,13 @@ func (tdb *TestDB) CreateTestASTNode(overrides ...func(*models.ASTNode)) *models
 // CreateTestViolation creates a test violation with default values
 func (tdb *TestDB) CreateTestViolation(overrides ...func(*models.Violation)) *models.Violation {
 	violation := &models.Violation{
-		File:          "/test/file.go",
-		Line:          42,
-		Column:        10,
-		Source:        "arch-unit",
-		Message:       "Test violation",
-		CallerPackage: "main",
-		CallerMethod:  "TestMethod",
+		File:    "/test/file.go",
+		Line:    42,
+		Column:  10,
+		Source:  "arch-unit",
+		Message: "Test violation",
+		// Note: CallerID and CalledID should be set when AST nodes are available
+		// For test purposes, the caller/called information is in the message
 	}
 
 	// Apply overrides first to get the final file path

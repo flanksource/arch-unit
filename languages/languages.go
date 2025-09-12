@@ -1,6 +1,8 @@
 package languages
 
 import (
+	"sync"
+
 	"github.com/flanksource/arch-unit/analysis"
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/clicky"
@@ -24,16 +26,16 @@ func (a *genericAnalyzerAdapter) AnalyzeFile(task interface{}, filepath string, 
 // DefaultRegistry is the global language registry
 var DefaultRegistry *Registry
 
+// genericAnalyzerInstance is lazily initialized
+var (
+	genericAnalyzerInstance ASTAnalyzer
+	genericAnalyzerOnce     sync.Once
+)
+
 func init() {
 	DefaultRegistry = NewRegistry()
 
-	// Create generic analyzer
-	astCache := cache.MustGetASTCache()
-	genericAnalyzer := &genericAnalyzerAdapter{
-		analyzer: analysis.NewGenericAnalyzer(astCache),
-	}
-
-	// Register Go language
+	// Register Go language - analyzer will be created lazily
 	DefaultRegistry.Register(&LanguageConfig{
 		Name:       "go",
 		Extensions: []string{".go"},
@@ -41,7 +43,7 @@ func init() {
 			"golangci-lint",
 			"arch-unit",
 		},
-		Analyzer: genericAnalyzer,
+		Analyzer: nil, // Will be set lazily when needed
 	})
 
 	// Register Python language
@@ -162,10 +164,19 @@ func SetAnalyzer(langName string, analyzer ASTAnalyzer) {
 	}
 }
 
-// GetGenericAnalyzerAdapter returns the generic analyzer adapter
+// GetGenericAnalyzerAdapter returns the generic analyzer adapter with lazy initialization
 func GetGenericAnalyzerAdapter() ASTAnalyzer {
-	astCache := cache.MustGetASTCache()
-	return &genericAnalyzerAdapter{
-		analyzer: analysis.NewGenericAnalyzer(astCache),
-	}
+	genericAnalyzerOnce.Do(func() {
+		astCache := cache.MustGetASTCache()
+		genericAnalyzerInstance = &genericAnalyzerAdapter{
+			analyzer: analysis.NewGenericAnalyzer(astCache),
+		}
+	})
+	return genericAnalyzerInstance
+}
+
+// ResetGenericAnalyzer resets the generic analyzer instance (for testing)
+func ResetGenericAnalyzer() {
+	genericAnalyzerInstance = nil
+	genericAnalyzerOnce = sync.Once{}
 }

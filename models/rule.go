@@ -42,6 +42,11 @@ type Rule struct {
 }
 
 func (r Rule) Pretty() api.Text {
+	// If we have an OriginalLine, use that for display
+	if r.OriginalLine != "" {
+		return clicky.Text(r.OriginalLine)
+	}
+	
 	prefix := clicky.Text("")
 	switch r.Type {
 	case RuleTypeDeny:

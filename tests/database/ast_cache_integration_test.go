@@ -187,4 +187,122 @@ var _ = Describe("AST Cache Integration with GORM", func() {
 			Expect(relationships[0].Text).To(Equal("callee()"))
 		})
 	})
+
+	Context("FindByLine Method", func() {
+		const testFile = "/test/findbyline.go"
+		
+		BeforeEach(func() {
+			// Create test nodes with different line ranges
+			testDB.CreateTestASTNode(func(n *models.ASTNode) {
+				n.FilePath = testFile
+				n.PackageName = "main"
+				n.NodeType = models.NodeTypePackage
+				n.StartLine = 1
+				n.EndLine = 100
+			})
+
+			testDB.CreateTestASTNode(func(n *models.ASTNode) {
+				n.FilePath = testFile
+				n.TypeName = "TestStruct"
+				n.NodeType = models.NodeTypeType
+				n.StartLine = 10
+				n.EndLine = 50
+			})
+
+			testDB.CreateTestASTNode(func(n *models.ASTNode) {
+				n.FilePath = testFile
+				n.TypeName = "TestStruct"
+				n.MethodName = "TestMethod"
+				n.NodeType = models.NodeTypeMethod
+				n.StartLine = 20
+				n.EndLine = 30
+			})
+
+			testDB.CreateTestASTNode(func(n *models.ASTNode) {
+				n.FilePath = testFile
+				n.TypeName = "TestStruct"
+				n.FieldName = "TestField"
+				n.NodeType = models.NodeTypeField
+				n.StartLine = 15
+				n.EndLine = 0 // Single line field
+			})
+		})
+
+		It("should find the most specific node at a given line", func() {
+			cache := testDB.ASTCache()
+
+			// Test finding method (most specific)
+			node := cache.FindByLine(testFile, 25)
+			Expect(node).ToNot(BeNil())
+			Expect(node.MethodName).To(Equal("TestMethod"))
+			Expect(node.NodeType).To(Equal(models.NodeTypeMethod))
+
+			// Test finding struct (less specific)
+			node = cache.FindByLine(testFile, 35)
+			Expect(node).ToNot(BeNil())
+			Expect(node.TypeName).To(Equal("TestStruct"))
+			Expect(node.NodeType).To(Equal(models.NodeTypeType))
+
+			// Test finding package (least specific)
+			node = cache.FindByLine(testFile, 75)
+			Expect(node).ToNot(BeNil())
+			Expect(node.PackageName).To(Equal("main"))
+			Expect(node.NodeType).To(Equal(models.NodeTypePackage))
+		})
+
+		It("should handle single line nodes (end_line = 0)", func() {
+			cache := testDB.ASTCache()
+
+			// Test finding field with end_line = 0
+			node := cache.FindByLine(testFile, 15)
+			Expect(node).ToNot(BeNil())
+			Expect(node.FieldName).To(Equal("TestField"))
+			Expect(node.NodeType).To(Equal(models.NodeTypeField))
+		})
+
+		It("should return nil when no node contains the line", func() {
+			cache := testDB.ASTCache()
+
+			// Test line before all nodes
+			node := cache.FindByLine(testFile, 0)
+			Expect(node).To(BeNil())
+
+			// Test line after all nodes
+			node = cache.FindByLine(testFile, 200)
+			Expect(node).To(BeNil())
+		})
+
+		It("should return nil for non-existent file", func() {
+			cache := testDB.ASTCache()
+
+			node := cache.FindByLine("/nonexistent/file.go", 10)
+			Expect(node).To(BeNil())
+		})
+
+		It("should handle boundary conditions correctly", func() {
+			cache := testDB.ASTCache()
+
+			// Test exact start line of method
+			node := cache.FindByLine(testFile, 20)
+			Expect(node).ToNot(BeNil())
+			Expect(node.MethodName).To(Equal("TestMethod"))
+
+			// Test exact end line of method
+			node = cache.FindByLine(testFile, 30)
+			Expect(node).ToNot(BeNil())
+			Expect(node.MethodName).To(Equal("TestMethod"))
+
+			// Test one line before method
+			node = cache.FindByLine(testFile, 19)
+			Expect(node).ToNot(BeNil())
+			Expect(node.TypeName).To(Equal("TestStruct"))
+			Expect(node.MethodName).To(Equal(""))
+
+			// Test one line after method
+			node = cache.FindByLine(testFile, 31)
+			Expect(node).ToNot(BeNil())
+			Expect(node.TypeName).To(Equal("TestStruct"))
+			Expect(node.MethodName).To(Equal(""))
+		})
+	})
 })

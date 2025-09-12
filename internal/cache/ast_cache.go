@@ -55,7 +55,7 @@ func MustGetASTCache() *ASTCache {
 }
 
 // ResetASTCache resets the singleton instance (mainly for testing)
-func resetASTCache() {
+func ResetASTCache() {
 	astCacheMutex.Lock()
 	defer astCacheMutex.Unlock()
 
@@ -69,17 +69,15 @@ func resetASTCache() {
 // ClearAllData removes all data from the AST cache tables
 // This is useful for testing to ensure clean state
 func (c *ASTCache) ClearAllData() error {
-	if 1 == 1 {
-		return nil
-	}
 	// Use GORM transaction for consistency
 	return c.db.Transaction(func(tx *gorm.DB) error {
-		// Clear tables in proper order (relationships first due to foreign keys)
+		// Clear tables in proper order (dependencies first, then referenced tables)
 		tables := []interface{}{
-			&models.ASTRelationship{},
-			&models.LibraryRelationship{},
-			&models.ASTNode{},
-			&models.LibraryNode{},
+			&models.Violation{},           // Has foreign keys to ASTNode
+			&models.ASTRelationship{},     // Has foreign keys to ASTNode
+			&models.LibraryRelationship{}, // Has foreign keys to ASTNode and LibraryNode
+			&models.ASTNode{},              // Referenced by above tables
+			&models.LibraryNode{},          // Referenced by LibraryRelationship
 			&models.FileMetadata{},
 			&models.DependencyAlias{},
 		}
@@ -759,4 +757,24 @@ func (c *ASTCache) StoreDependencyAlias(alias *models.DependencyAlias) error {
 		return fmt.Errorf("failed to store dependency alias: %w", err)
 	}
 	return nil
+}
+
+// FindByLine finds the most specific AST node that contains the given line number in a file
+func (c *ASTCache) FindByLine(file string, line int) *models.ASTNode {
+	var node models.ASTNode
+
+	// Query for nodes that contain the given line number
+	// For end_line = 0, only match if line == start_line (single line nodes)
+	// For end_line > 0, match if start_line <= line <= end_line
+	// Order by start_line DESC, then by end_line ASC (smallest range first) to get the most specific node
+	err := c.db.Where("file_path = ? AND start_line <= ? AND (end_line >= ? OR (end_line = 0 AND start_line = ?))",
+		file, line, line, line).
+		Order("start_line DESC, CASE WHEN end_line = 0 THEN 0 ELSE end_line - start_line END ASC").
+		First(&node).Error
+
+	if err != nil {
+		return nil
+	}
+
+	return &node
 }

@@ -94,8 +94,13 @@ var _ = Describe("GORM Integration", func() {
 					v.Column = 25
 					v.Source = "custom-linter"
 					v.Message = "Custom violation message"
-					v.CallerPackage = "custom.package"
-					v.CallerMethod = "CustomMethod"
+					// Create AST node for caller
+					callerNode := &models.ASTNode{
+						PackageName: "custom.package",
+						MethodName:  "CustomMethod",
+						NodeType:    models.NodeTypeMethod,
+					}
+					v.Caller = callerNode
 				})
 
 				var retrieved models.Violation

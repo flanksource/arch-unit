@@ -170,16 +170,17 @@ func (a *PythonAnalyzer) AnalyzeFile(filePath string, rules *models.RuleSet) ([]
 				if rule.FilePattern != "" {
 					violationMsg = fmt.Sprintf("Call to %s.%s violates file-specific rule [%s]", call.Module, call.Function, rule.FilePattern)
 				}
+				// Note: caller and called information is now stored in the message
+				// TODO: When AST nodes are available, set CallerID and CalledID fields
+				
 				violations = append(violations, models.Violation{
-					File:          filePath,
-					Line:          call.Line,
-					Column:        call.Column,
-					CallerPackage: filepath.Dir(filePath),
-					CallerMethod:  call.Caller,
-					CalledPackage: call.Module,
-					CalledMethod:  call.Function,
-					Rule:          rule,
-					Message:       violationMsg,
+					File:    filePath,
+					Line:    call.Line,
+					Column:  call.Column,
+					Rule:    rule,
+					Message: violationMsg,
+					// Note: CallerID and CalledID should be set when AST nodes are available
+					// For now, the caller/called information is in the message
 				})
 			}
 		}

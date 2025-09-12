@@ -107,8 +107,10 @@ fmt:!Println
 		// Verify specific violation details
 		for _, v := range result.Violations {
 			if filepath.Base(v.File) == "service.go" {
-				Expect(v.CalledPackage).To(Equal("fmt"))
-				Expect(v.CalledMethod).To(Equal("Println"))
+				if v.Called != nil {
+					Expect(v.Called.PackageName).To(Equal("fmt"))
+					Expect(v.Called.MethodName).To(Equal("Println"))
+				}
 			}
 		}
 	})

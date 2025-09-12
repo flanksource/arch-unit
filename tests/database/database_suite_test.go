@@ -3,6 +3,8 @@ package database_test_suite
 import (
 	"testing"
 
+	"github.com/flanksource/arch-unit/internal/cache"
+	"github.com/flanksource/arch-unit/languages"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -15,6 +17,11 @@ func TestDatabase(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	// Reset all global singletons before starting tests
+	cache.ResetGormDB()
+	cache.ResetASTCache()
+	languages.ResetGenericAnalyzer()
+	
 	var err error
 	testDB, err = NewTestDB()
 	Expect(err).ToNot(HaveOccurred())
@@ -23,6 +30,10 @@ var _ = BeforeSuite(func() {
 		if testDB != nil {
 			testDB.Close()
 		}
+		// Reset singletons after tests
+		cache.ResetGormDB()
+		cache.ResetASTCache()
+		languages.ResetGenericAnalyzer()
 	})
 })
 

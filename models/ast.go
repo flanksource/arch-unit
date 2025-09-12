@@ -238,11 +238,11 @@ type ASTNode struct {
 	FieldName            string        `json:"field_name,omitempty" gorm:"column:field_name"`
 	NodeType             NodeType      `json:"node_type" gorm:"column:node_type;not null;index"` // "package", "type", "method", "field", "variable"
 	StartLine            int           `json:"start_line" gorm:"column:start_line"`
-	EndLine              int           `json:"end_line" gorm:"column:end_line"`
-	CyclomaticComplexity int           `json:"cyclomatic_complexity" gorm:"column:cyclomatic_complexity;default:0;index"`
-	ParameterCount       int           `json:"parameter_count" gorm:"column:parameter_count;default:0"`
-	ReturnCount          int           `json:"return_count" gorm:"column:return_count;default:0"`
-	LineCount            int           `json:"line_count" gorm:"column:line_count;default:0"`
+	EndLine              int           `json:"end_line,omitempty" gorm:"column:end_line"`
+	CyclomaticComplexity int           `json:"cyclomatic_complexity,omitempty" gorm:"column:cyclomatic_complexity;default:0;index"`
+	ParameterCount       int           `json:"parameter_count,omitempty" gorm:"column:parameter_count;default:0"`
+	ReturnCount          int           `json:"return_count,omitempty" gorm:"column:return_count;default:0"`
+	LineCount            int           `json:"line_count,omitempty" gorm:"column:line_count;default:0"`
 	Imports              []string      `json:"imports,omitempty" gorm:"-"`                     // List of import paths - not stored in DB
 	Parameters           []Parameter   `json:"parameters,omitempty" gorm:"serializer:json"`    // Detailed parameter information
 	ReturnValues         []ReturnValue `json:"return_values,omitempty" gorm:"serializer:json"` // Return value information
@@ -476,26 +476,31 @@ func (n *ASTNode) Pretty() api.Text {
 }
 
 func (n *ASTNode) PrettyShort() api.Text {
-
 	content := clicky.Text("")
+	
+	// Include package name if present
+	if n.PackageName != "" {
+		content = content.Append(n.PackageName)
+	}
+	
 	if n.TypeName != "" {
 		if !content.IsEmpty() {
 			content = content.Append(".", "text-gray-500")
 		}
 		content = content.Append(n.TypeName)
 	}
+	
 	if n.FieldName != "" {
 		if !content.IsEmpty() {
 			content = content.Append(".", "text-gray-500")
 		}
-
 		content = content.Append(n.FieldName, "font-bold")
 	}
+	
 	if n.MethodName != "" {
 		if !content.IsEmpty() {
 			content = content.Append(".", "text-gray-500")
 		}
-
 		content = content.Append(n.MethodName, "font-bold")
 	}
 
