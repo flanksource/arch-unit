@@ -411,7 +411,7 @@ func (e *AQLEngine) findMatchingNodes(pattern *models.AQLPattern) ([]*models.AST
 	if err != nil {
 		return nil, fmt.Errorf("failed to query AST nodes: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var nodes []*models.ASTNode
 	for rows.Next() {
@@ -427,32 +427,4 @@ func (e *AQLEngine) findMatchingNodes(pattern *models.AQLPattern) ([]*models.AST
 	}
 
 	return nodes, nil
-}
-
-// matchesWildcard performs wildcard matching (copied from models/aql.go for convenience)
-func matchesWildcard(text, pattern string) bool {
-	if pattern == "*" {
-		return true
-	}
-
-	if !strings.Contains(pattern, "*") {
-		return text == pattern
-	}
-
-	// Simple wildcard matching
-	if strings.HasPrefix(pattern, "*") && strings.HasSuffix(pattern, "*") {
-		// *substring*
-		substring := pattern[1 : len(pattern)-1]
-		return strings.Contains(text, substring)
-	} else if strings.HasPrefix(pattern, "*") {
-		// *suffix
-		suffix := pattern[1:]
-		return strings.HasSuffix(text, suffix)
-	} else if strings.HasSuffix(pattern, "*") {
-		// prefix*
-		prefix := pattern[:len(pattern)-1]
-		return strings.HasPrefix(text, prefix)
-	}
-
-	return text == pattern
 }

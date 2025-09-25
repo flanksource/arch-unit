@@ -50,10 +50,10 @@ var _ = BeforeSuite(func() {
 
 var _ = AfterSuite(func() {
 	if sharedASTCache != nil {
-		sharedASTCache.Close()
+		_ = sharedASTCache.Close()
 	}
 	if sharedTmpDir != "" {
-		os.RemoveAll(sharedTmpDir)
+		_ = os.RemoveAll(sharedTmpDir)
 	}
 	// cache.ResetASTCache()
 })
@@ -87,13 +87,13 @@ func copyExampleFiles(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		defer sourceFile.Close()
+		defer func() { _ = sourceFile.Close() }()
 
 		destFile, err := os.Create(destPath)
 		if err != nil {
 			return err
 		}
-		defer destFile.Close()
+		defer func() { _ = destFile.Close() }()
 
 		_, err = io.Copy(destFile, sourceFile)
 		return err

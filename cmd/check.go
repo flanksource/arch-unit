@@ -403,13 +403,13 @@ func runCheck(cmd *cobra.Command, args []string) error {
 				linterRunner, err = linters.NewRunner(filteredConfig, workingDir)
 			}
 			if err != nil {
-				logger.Warnf("Failed to create linter runner: %v", err)
+				return fmt.Errorf("failed to create linter runner: %w", err)
 			} else {
-				defer linterRunner.Close()
+				defer func() { _ = linterRunner.Close() }()
 
 				results, err := linterRunner.RunEnabledLintersOnFiles(specificFiles, fixFlag)
 				if err != nil {
-					logger.Warnf("Failed to run linters: %v", err)
+					return fmt.Errorf("failed to run linters: %w", err)
 				} else {
 					// Convert to models.LinterResult
 					for _, result := range results {
@@ -452,17 +452,9 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	} else {
 		violationCache, err := cache.NewViolationCache()
 		if err != nil {
-			logger.Warnf("Failed to open violation cache for reporting: %v", err)
-			// Fall back to in-memory results
-			if len(linterResults) > 0 {
-				consolidatedResult = models.NewConsolidatedResult(archResult, linterResults)
-			} else if archResult != nil {
-				consolidatedResult = models.NewConsolidatedResult(archResult, nil)
-			} else {
-				consolidatedResult = models.NewConsolidatedResult(&models.AnalysisResult{}, nil)
-			}
+			return fmt.Errorf("failed to open violation cache for reporting: %w", err)
 		} else {
-			defer violationCache.Close()
+			defer func() { _ = violationCache.Close() }()
 
 			// Get violations from the database filtered by requested linters
 			var allViolations []models.Violation
@@ -649,31 +641,11 @@ func displayCombinedViolations(result *models.ConsolidatedResult) {
 	}
 }
 
-func filterFiles(files []string, include, exclude string) []string {
-	if include == "" && exclude == "" {
-		return files
-	}
-
-	var filtered []string
-	for _, file := range files {
-		if include != "" {
-			matched, _ := filepath.Match(include, filepath.Base(file))
-			if !matched {
-				continue
-			}
-		}
-
-		if exclude != "" {
-			matched, _ := filepath.Match(exclude, filepath.Base(file))
-			if matched {
-				continue
-			}
-		}
-
-		filtered = append(filtered, file)
-	}
-
-	return filtered
+// outputConsolidatedResults outputs consolidated results in the requested format
+func outputConsolidatedResults(result *models.ConsolidatedResult) error {
+	// For now, just print a simple summary
+	fmt.Printf("Total violations: %d\n", result.Summary.TotalViolations)
+	return nil
 }
 
 func getOutputFormat() string {

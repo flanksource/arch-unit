@@ -79,7 +79,7 @@ func (sv *SourceViewer) ViewMultipleNodes(nodes []*models.ASTNode) ([]*NodeSourc
 		view, err := sv.ViewNodeSource(node)
 		if err != nil {
 			// Log error but continue with other nodes
-			fmt.Fprintf(os.Stderr, "Warning: failed to view source for node %s: %v\n", node.GetFullName(), err)
+			_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to view source for node %s: %v\n", node.GetFullName(), err)
 			continue
 		}
 		views = append(views, view)
@@ -171,7 +171,7 @@ func (sv *SourceViewer) readFileLines(filePath string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var lines []string
 	scanner := bufio.NewScanner(file)

@@ -75,7 +75,7 @@ func ResetViolationCache() {
 	violationCacheMutex.Lock()
 	defer violationCacheMutex.Unlock()
 	if violationCacheInstance != nil {
-		violationCacheInstance.Close()
+		_ = violationCacheInstance.Close()
 		violationCacheInstance = nil
 	}
 	violationCacheOnce = sync.Once{}

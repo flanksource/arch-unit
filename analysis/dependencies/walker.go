@@ -19,7 +19,6 @@ type DependencyWalker struct {
 	visited   sync.Map // map[string]bool - thread-safe visited tracking
 	taskGroup task.TypedGroup[[]*models.Dependency]
 	allDeps   sync.Map // map[string]*models.Dependency - all discovered dependencies
-	mutex     sync.RWMutex
 }
 
 // WalkResult contains the result of a dependency walk
@@ -48,7 +47,7 @@ func (w *DependencyWalker) Walk(ctxArg interface{}, path string, depth int) *Wal
 	// Wait for all tasks to complete
 	result := w.taskGroup.WaitFor()
 	if result.Error != nil {
-		w.ctx.Warnf("Some dependency scans failed: %v", result.Error)
+		w.ctx.Errorf("Some dependency scans failed: %v", result.Error)
 	}
 
 	// Collect all dependencies from the sync.Map
@@ -104,8 +103,7 @@ func (w *DependencyWalker) queueScanJob(path, gitURL string, depth int, isLocal 
 		}
 
 		if err != nil {
-			t.Warnf("Failed to scan %s: %v", taskName, err)
-			return []*models.Dependency{}, nil // Continue with empty results
+			return []*models.Dependency{}, err // Continue with empty results
 		}
 
 		// Apply filtering
@@ -143,8 +141,7 @@ func (w *DependencyWalker) scanLocalPath(ctx commonsCtx.Context, t *clicky.Task,
 	for _, fileJob := range files {
 		deps, err := w.scanFile(fileJob)
 		if err != nil {
-			t.Warnf("Failed to scan file %s: %v", fileJob.FilePath, err)
-			continue
+			return nil, fmt.Errorf("failed to scan file %s: %w", fileJob.FilePath, err)
 		}
 		allDeps = append(allDeps, deps...)
 	}
@@ -163,7 +160,7 @@ func (w *DependencyWalker) scanGitDependency(ctx commonsCtx.Context, t *clicky.T
 	t.Debugf("Resolving version %s for %s", version, gitURL)
 	resolvedVersion, err := w.scanner.gitManager.ResolveVersionAlias(gitURL, version)
 	if err != nil {
-		t.Warnf("Failed to resolve version %s for %s: %v", version, gitURL, err)
+		t.Errorf("Failed to resolve version %s for %s: %v", version, gitURL, err)
 		resolvedVersion = version // fallback to original version
 	}
 

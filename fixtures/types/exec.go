@@ -405,11 +405,11 @@ func createTempFile(name, content string) (*TempFileInfo, error) {
 
 	// Write content
 	if _, err := tmpFile.WriteString(content); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		os.Remove(tmpFile.Name())
 		return nil, err
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// Detect file type (simplified - would use libmagic in production)
 	detected := "text"
@@ -446,5 +446,5 @@ func renderTemplate(template string, data map[string]interface{}) (string, error
 
 func init() {
 	// Register the exec fixture type
-	fixtures.Register(&ExecFixture{})
+	_ = fixtures.Register(&ExecFixture{})
 }

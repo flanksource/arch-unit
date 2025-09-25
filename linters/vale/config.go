@@ -103,5 +103,5 @@ func convertToValePattern(pattern string) string {
 // CleanupValeConfig removes temporary Vale configuration
 func CleanupValeConfig(workDir string) {
 	tempDir := filepath.Join(workDir, ".arch-unit-vale-temp")
-	os.RemoveAll(tempDir)
+	_ = os.RemoveAll(tempDir)
 }

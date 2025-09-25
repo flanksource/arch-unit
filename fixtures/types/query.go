@@ -149,5 +149,5 @@ func (q *QueryFixture) GetOptionalFields() []string {
 
 func init() {
 	// Register the query fixture type
-	fixtures.Register(&QueryFixture{})
+	_ = fixtures.Register(&QueryFixture{})
 }

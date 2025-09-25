@@ -4,6 +4,7 @@ vars:
   BINARY_NAME: arch-unit
   GO_VERSION: 1.25
   MAIN_PACKAGE: .
+  BIN_DIR: "{{.ROOT_DIR}}/bin"
 
 tasks:
   default:
@@ -76,11 +77,24 @@ tasks:
       - go tool cover -html=coverage.out -o coverage.html
       - echo "Coverage report generated at coverage.html"
 
-  lint:
-    desc: Run linters
+  install-lint:
+    desc: Install linters
+    generates:
+      - "{{.BIN_DIR}}/golangci-lint"
     cmds:
-      - cmd: golangci-lint run
-        ignore_error: true
+      - GOBIN={{.BIN_DIR}} go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.4.0
+
+  lint:
+    desc: Run linters with errcheck and staticcheck disabled for test files
+    deps:
+      - install-lint
+    cmds:
+      # Run golangci-lint on non-test files with all linters including errcheck and staticcheck
+      # Note: unused linter has false positives, so it's disabled
+      - cmd: "{{.BIN_DIR}}/golangci-lint run --disable=unused --tests=false ./..."
+      # Run golangci-lint on test files with errcheck, staticcheck, and unused disabled
+      # This allows test files to ignore error checks which is common in test code
+      - cmd: "{{.BIN_DIR}}/golangci-lint run --disable=errcheck,staticcheck,unused ./..."
       - go vet ./...
       - go mod tidy
 

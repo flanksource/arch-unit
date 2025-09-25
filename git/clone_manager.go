@@ -11,9 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+
 	"github.com/flanksource/arch-unit/shutdown"
 	"github.com/flanksource/commons/logger"
-	"log/slog"
 )
 
 // contextKey is used for storing values in context
@@ -128,13 +129,13 @@ func NewCloneManager() CloneManager {
 // CreateClone creates a new clone for the specified version with given depth
 func (cm *DefaultCloneManager) CreateClone(ctx context.Context, repoPath, version, clonePath string, depth int) error {
 	start := time.Now()
-	
+
 	// Extract repo name for logging
 	repoName := cm.extractRepoName(repoPath)
-	
+
 	// Get logger from context (falls back to global logger)
 	log := getLoggerFromContext(ctx)
-	
+
 	// Log start of operation
 	log.Debugf("Creating clone: repo=%s, version=%s, depth=%d", repoName, version, depth)
 	// Ensure the repository exists and is up to date
@@ -178,12 +179,12 @@ func (cm *DefaultCloneManager) CreateClone(ctx context.Context, repoPath, versio
 	// Set up progress output filtering for V(4) and full output for V(9)
 	cmd.Stdout = cm.getProgressWriter(ctx, 4)
 	cmd.Stderr = cm.getProgressWriter(ctx, 9)
-	
+
 	err := cmd.Run()
 	if err != nil {
 		// Try without --branch if the version might be a tag or commit hash
 		log.Debugf("Branch-specific clone failed, trying fallback approach for %s@%s", repoName, version)
-		
+
 		// First clone without branch/tag, then checkout
 		if depth <= 0 {
 			cmd = exec.Command("git", "clone", repoPath, clonePath)
@@ -194,10 +195,10 @@ func (cm *DefaultCloneManager) CreateClone(ctx context.Context, repoPath, versio
 
 		cmd.Stdout = cm.getProgressWriter(ctx, 4)
 		cmd.Stderr = cm.getProgressWriter(ctx, 9)
-		
+
 		err = cmd.Run()
 		if err != nil {
-			os.RemoveAll(clonePath)
+			_ = os.RemoveAll(clonePath)
 			log.Errorf("Failed to clone %s: %v", repoName, err)
 			return fmt.Errorf("failed to clone repository %s: %w", repoName, err)
 		}
@@ -208,10 +209,10 @@ func (cm *DefaultCloneManager) CreateClone(ctx context.Context, repoPath, versio
 		checkoutCmd.Dir = clonePath
 		checkoutCmd.Stdout = cm.getProgressWriter(ctx, 9)
 		checkoutCmd.Stderr = cm.getProgressWriter(ctx, 9)
-		
+
 		err = checkoutCmd.Run()
 		if err != nil {
-			os.RemoveAll(clonePath)
+			_ = os.RemoveAll(clonePath)
 			log.Errorf("Failed to checkout version %s in %s: %v", version, repoName, err)
 			return fmt.Errorf("failed to checkout version %s: %w", version, err)
 		}
@@ -223,7 +224,7 @@ func (cm *DefaultCloneManager) CreateClone(ctx context.Context, repoPath, versio
 	cm.mu.Unlock()
 
 	duration := time.Since(start)
-	log.Debugf("Clone completed in %v: %s@%s -> %s (depth: %d)", 
+	log.Debugf("Clone completed in %v: %s@%s -> %s (depth: %d)",
 		duration, repoName, cm.formatVersion(version), clonePath, depth)
 
 	return nil
@@ -232,7 +233,7 @@ func (cm *DefaultCloneManager) CreateClone(ctx context.Context, repoPath, versio
 // RemoveClone removes an existing clone
 func (cm *DefaultCloneManager) RemoveClone(ctx context.Context, clonePath string) error {
 	log := getLoggerFromContext(ctx)
-	
+
 	cm.mu.Lock()
 	repoPath, exists := cm.activeClones[clonePath]
 	if exists {
@@ -304,7 +305,7 @@ func (cm *DefaultCloneManager) CleanupStaleClones(ctx context.Context, repoPath 
 	log := getLoggerFromContext(ctx)
 	repoName := cm.extractRepoName(repoPath)
 	log.Debugf("Cleaning up stale clones for %s (maxAge: %v)", repoName, maxAge)
-	
+
 	clones, err := cm.ListClones(ctx, repoPath)
 	if err != nil {
 		return err
@@ -375,7 +376,7 @@ func (cm *DefaultCloneManager) ensureRepoFetched(repoPath string) error {
 
 	if output, err := cmd.CombinedOutput(); err != nil {
 		// Don't fail if fetch fails (might be offline), just warn
-		logger.Warnf("Failed to fetch updates for %s: %v\nOutput: %s", repoPath, err, string(output))
+		return fmt.Errorf("Failed to fetch updates for %s: %v\nOutput: %s", repoPath, err, string(output))
 	}
 
 	return nil
@@ -426,29 +427,29 @@ type progressWriter struct {
 
 func (pw *progressWriter) Write(p []byte) (n int, err error) {
 	output := string(p)
-	
+
 	// Filter out common git progress messages at level 4
 	if pw.logLevel == 4 {
 		lines := strings.Split(strings.TrimSpace(output), "\n")
 		var filteredLines []string
-		
+
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
 			if line == "" {
 				continue
 			}
-			
+
 			// Filter out progress messages
 			if strings.Contains(line, "Compressing objects:") ||
-			   strings.Contains(line, "Counting objects:") ||
-			   strings.Contains(line, "Receiving objects:") ||
-			   strings.Contains(line, "Resolving deltas:") {
+				strings.Contains(line, "Counting objects:") ||
+				strings.Contains(line, "Receiving objects:") ||
+				strings.Contains(line, "Resolving deltas:") {
 				continue
 			}
-			
+
 			filteredLines = append(filteredLines, line)
 		}
-		
+
 		if len(filteredLines) > 0 {
 			pw.logger.Debugf("Git: %s", strings.Join(filteredLines, " | "))
 		}
@@ -456,6 +457,6 @@ func (pw *progressWriter) Write(p []byte) (n int, err error) {
 		// Show all output at higher verbosity levels
 		pw.logger.Debugf("Git output: %s", strings.TrimSpace(output))
 	}
-	
+
 	return len(p), nil
 }

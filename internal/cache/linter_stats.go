@@ -47,7 +47,7 @@ func NewLinterStats() (*LinterStats, error) {
 
 	ls := &LinterStats{db: db}
 	if err := ls.initSchema(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 
@@ -345,7 +345,7 @@ func (ls *LinterStats) GetLinterHistory(workDir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var linters []string
 	for rows.Next() {
@@ -367,19 +367,7 @@ func (ls *LinterStats) Close() error {
 	return nil
 }
 
-func min(a, b time.Duration) time.Duration {
-	if a < b {
-		return a
-	}
-	return b
-}
 
-func max(a, b time.Duration) time.Duration {
-	if a > b {
-		return a
-	}
-	return b
-}
 
 func minFloat(a, b float64) float64 {
 	if a < b {

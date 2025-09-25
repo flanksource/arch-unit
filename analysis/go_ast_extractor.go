@@ -277,40 +277,7 @@ func (e *GoASTExtractor) getReceiverTypeName(expr ast.Expr) string {
 }
 
 // countParameters counts function parameters
-func (e *GoASTExtractor) countParameters(funcType *ast.FuncType) int {
-	if funcType.Params == nil {
-		return 0
-	}
-
-	count := 0
-	for _, param := range funcType.Params.List {
-		if len(param.Names) == 0 {
-			count++ // Unnamed parameter
-		} else {
-			count += len(param.Names)
-		}
-	}
-	return count
-}
-
 // countReturns counts function return values
-func (e *GoASTExtractor) countReturns(funcType *ast.FuncType) int {
-	if funcType.Results == nil {
-		return 0
-	}
-
-	count := 0
-	for _, result := range funcType.Results.List {
-		if len(result.Names) == 0 {
-			count++ // Unnamed return
-		} else {
-			count += len(result.Names)
-		}
-	}
-	return count
-}
-
-// extractParameters extracts detailed parameter information from a function type
 func (e *GoASTExtractor) extractParameters(funcType *ast.FuncType) []models.Parameter {
 	if funcType.Params == nil || len(funcType.Params.List) == 0 {
 		return nil
@@ -519,6 +486,7 @@ func (e *GoASTExtractor) handleSelectorCall(cache cache.ReadOnlyCache, funcNode 
 
 		// Check if it's a known import
 		if pkgPath, isImport := e.imports[receiverName]; isImport {
+
 			// This is an external library call
 			return e.handleLibraryCall(funcNode, line, text, pkgPath, "", methodName, result)
 		}

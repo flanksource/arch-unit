@@ -3,7 +3,6 @@ package git
 import (
 	"time"
 
-	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
@@ -33,9 +32,6 @@ type VersionInfo struct {
 
 // ManagedRepository represents a git repository with multiple worktrees
 type ManagedRepository struct {
-	gitRepo   *git.Repository
-	worktrees map[string]string // version -> worktree_path
-	lastFetch time.Time
 }
 
 // ScanJob represents a scanning task for a specific file at a specific depth

@@ -29,7 +29,7 @@ func NewTestDB() (*TestDB, error) {
 	// Create GORM database instance
 	db, err := cache.NewGormDBWithPath(tempDir)
 	if err != nil {
-		os.RemoveAll(tempDir)
+		_ = os.RemoveAll(tempDir)
 		return nil, fmt.Errorf("failed to create test database: %w", err)
 	}
 
@@ -87,12 +87,12 @@ func (tdb *TestDB) Close() error {
 	if tdb.db != nil {
 		sqlDB, err := tdb.db.DB()
 		if err == nil {
-			sqlDB.Close()
+			_ = sqlDB.Close()
 		}
 	}
 
 	if tdb.tempDir != "" {
-		os.RemoveAll(tdb.tempDir)
+		_ = os.RemoveAll(tdb.tempDir)
 	}
 
 	return nil

@@ -176,7 +176,7 @@ func selectStyleGuide(questions *InitQuestions, scanner *bufio.Scanner) error {
 		questions.StyleGuide = options[0]
 	} else {
 		var idx int
-		fmt.Sscanf(input, "%d", &idx)
+		_, _ = fmt.Sscanf(input, "%d", &idx)
 		if idx > 0 && idx <= len(options) {
 			questions.StyleGuide = options[idx-1]
 		} else {

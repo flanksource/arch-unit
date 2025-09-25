@@ -236,73 +236,6 @@ func rebuildASTCache(astCache *cache.ASTCache) error {
 	return nil
 }
 
-// formatASTQueryResults formats and outputs AST query results
-func formatASTQueryResults(nodes []*models.ASTNode, pattern string) error {
-	// Get working directory for relative paths
-	workingDir, _ := GetWorkingDir()
-
-	// Format based on the selected format
-	format := getASTQueryOutputFormat()
-
-	switch format {
-	case "json":
-		// Output as JSON
-		output, err := jsonenc.MarshalIndent(nodes, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal to JSON: %w", err)
-		}
-		fmt.Println(string(output))
-	case "table", "pretty":
-		// Output as table
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(w, "Name\tType\tPackage\tFile\tLine\tComplexity\n")
-		for _, node := range nodes {
-			relPath, _ := filepath.Rel(workingDir, node.FilePath)
-			name := node.TypeName
-			if node.MethodName != "" {
-				name = node.MethodName
-			} else if node.FieldName != "" {
-				name = node.FieldName
-			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%d\n",
-				name, node.NodeType, node.PackageName, relPath, node.StartLine, node.CyclomaticComplexity)
-		}
-		w.Flush()
-	default:
-		// Default text output
-		for _, node := range nodes {
-			relPath, _ := filepath.Rel(workingDir, node.FilePath)
-			fmt.Printf("%s:%d - %s (%s) [complexity: %d]\n",
-				relPath, node.StartLine, node.GetFullName(), node.NodeType, node.CyclomaticComplexity)
-		}
-	}
-
-	return nil
-}
-
-// getASTQueryOutputFormat determines the output format for AST queries
-func getASTQueryOutputFormat() string {
-	// Use the astFormat flag
-	switch astFormat {
-	case "json":
-		return "json"
-	case "csv":
-		return "csv"
-	case "markdown":
-		return "markdown"
-	case "html":
-		return "html"
-	case "excel":
-		return "excel"
-	case "table":
-		return "table"
-	case "tree":
-		return "tree"
-	default:
-		return "pretty"
-	}
-}
-
 // executeAQLQuery executes an AQL query
 func executeAQLQuery(astCache *cache.ASTCache, aqlQuery string, workingDir string) error {
 	// Wrap the query in a temporary rule
@@ -438,7 +371,7 @@ func analyzeFiles(astCache *cache.ASTCache, workingDir string) error {
 	// Initialize library resolver
 	libResolver := analysis.NewLibraryResolver(astCache)
 	if err := libResolver.StoreLibraryNodes(); err != nil {
-		logger.Warnf("Failed to store library nodes: %v", err)
+		return fmt.Errorf("Failed to store library nodes: %v", err)
 	}
 
 	// Create generic analyzer for all languages
@@ -451,8 +384,7 @@ func analyzeFiles(astCache *cache.ASTCache, workingDir string) error {
 		// Read file content
 		content, err := os.ReadFile(file.path)
 		if err != nil {
-			logger.Warnf("Failed to read file %s: %v", file.path, err)
-			continue
+			return fmt.Errorf("Failed to read file %s: %v", file.path, err)
 		}
 
 		// Use generic analyzer
@@ -460,8 +392,7 @@ func analyzeFiles(astCache *cache.ASTCache, workingDir string) error {
 		_, err = genericAnalyzer.AnalyzeFile(task, file.path, content)
 
 		if err != nil {
-			logger.Warnf("Failed to extract AST from %s: %v", file.path, err)
-			continue
+			return fmt.Errorf("Failed to extract AST from %s: %v", file.path, err)
 		}
 	}
 
@@ -516,7 +447,7 @@ func queryASTPattern(astCache *cache.ASTCache, pattern string, workingDir string
 	if err != nil {
 		return fmt.Errorf("failed to query AST nodes: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var nodes []*models.ASTNode
 	for rows.Next() {
@@ -554,7 +485,7 @@ func showASTOverview(astCache *cache.ASTCache, workingDir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get AST statistics: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	stats := make(map[string]int)
 	total := 0
@@ -578,16 +509,16 @@ func showASTOverview(astCache *cache.ASTCache, workingDir string) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "Node Type\tCount\n")
-	fmt.Fprintf(w, "─────────\t─────\n")
+	_, _ = fmt.Fprintf(w, "Node Type\tCount\n")
+	_, _ = fmt.Fprintf(w, "─────────\t─────\n")
 
 	for nodeType, count := range stats {
-		fmt.Fprintf(w, "%s\t%d\n", nodeType, count)
+		_, _ = fmt.Fprintf(w, "%s\t%d\n", nodeType, count)
 	}
 
-	fmt.Fprintf(w, "─────────\t─────\n")
-	fmt.Fprintf(w, "Total\t%d\n", total)
-	w.Flush()
+	_, _ = fmt.Fprintf(w, "─────────\t─────\n")
+	_, _ = fmt.Fprintf(w, "Total\t%d\n", total)
+	_ = w.Flush()
 
 	return nil
 }
@@ -621,8 +552,8 @@ func outputNodesJSON(nodes []*models.ASTNode) error {
 // outputNodesTable outputs nodes as a table
 func outputNodesTable(nodes []*models.ASTNode, workingDir string) error {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "File\tPackage\tType\tMethod\tComplexity\tLines\n")
-	fmt.Fprintf(w, "────\t───────\t────\t──────\t──────────\t─────\n")
+	_, _ = fmt.Fprintf(w, "File\tPackage\tType\tMethod\tComplexity\tLines\n")
+	_, _ = fmt.Fprintf(w, "────\t───────\t────\t──────\t──────────\t─────\n")
 
 	for _, node := range nodes {
 		relPath := node.FilePath
@@ -638,7 +569,7 @@ func outputNodesTable(nodes []*models.ASTNode, workingDir string) error {
 			node.LineCount)
 	}
 
-	w.Flush()
+	_ = w.Flush()
 	return nil
 }
 
@@ -813,66 +744,6 @@ func outputNodesTree(astCache *cache.ASTCache, nodes []*models.ASTNode, pattern 
 	return nil
 }
 
-// displayNodeRelationships displays call relationships for a node
-func displayNodeRelationships(astCache *cache.ASTCache, node *models.ASTNode, prefix string) error {
-	relationships, err := astCache.GetASTRelationships(node.ID, models.RelationshipCall)
-	if err != nil {
-		return err
-	}
-
-	if len(relationships) == 0 {
-		return nil
-	}
-
-	fmt.Printf("%s📞 Calls (%d):\n", prefix, len(relationships))
-
-	for i, rel := range relationships {
-		isLastRel := i == len(relationships)-1
-		relPrefix := "├── "
-		if isLastRel {
-			relPrefix = "└── "
-		}
-
-		if rel.ToASTID != nil {
-			toNode, err := astCache.GetASTNode(*rel.ToASTID)
-			if err != nil {
-				continue
-			}
-			fmt.Printf("%s    %s%s (line %d)\n", prefix, relPrefix, toNode.GetFullName(), rel.LineNo)
-		} else {
-			fmt.Printf("%s    %s%s (line %d)\n", prefix, relPrefix, rel.Text, rel.LineNo)
-		}
-	}
-
-	return nil
-}
-
-// displayNodeLibraries displays library dependencies for a node
-func displayNodeLibraries(astCache *cache.ASTCache, node *models.ASTNode, prefix string) error {
-	libRels, err := astCache.GetLibraryRelationships(node.ID, models.RelationshipCall)
-	if err != nil {
-		return err
-	}
-
-	if len(libRels) == 0 {
-		return nil
-	}
-
-	fmt.Printf("%s📚 Libraries (%d):\n", prefix, len(libRels))
-
-	for i, libRel := range libRels {
-		isLastRel := i == len(libRels)-1
-		relPrefix := "├── "
-		if isLastRel {
-			relPrefix = "└── "
-		}
-
-		fmt.Printf("%s    %s%s (%s, line %d)\n", prefix, relPrefix,
-			libRel.LibraryNode.GetFullName(), libRel.LibraryNode.Framework, libRel.LineNo)
-	}
-
-	return nil
-}
 
 // outputJSON outputs data as JSON
 func outputJSON(data interface{}) error {

@@ -266,26 +266,6 @@ func getRelativePath(path string) string {
 	return relPath
 }
 
-func (o *OutputManager) createBorder(widths []int, left, mid, right, fill string) string {
-	var border strings.Builder
-	border.WriteString(left)
-	for i, width := range widths {
-		border.WriteString(strings.Repeat(fill, width+2))
-		if i < len(widths)-1 {
-			border.WriteString(mid)
-		}
-	}
-	border.WriteString(right)
-	return border.String()
-}
-
-func (o *OutputManager) padString(s string, width int) string {
-	if len(s) > width {
-		return s[:width-3] + "..."
-	}
-	return s + strings.Repeat(" ", width-len(s))
-}
-
 func (o *OutputManager) outputJSON(result *models.AnalysisResult) error {
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
@@ -309,7 +289,7 @@ func (o *OutputManager) outputCSV(result *models.AnalysisResult) error {
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		writer = file
 	}
 
@@ -352,7 +332,7 @@ func (o *OutputManager) outputHTML(result *models.AnalysisResult) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	html := `<!DOCTYPE html>
 <html>
@@ -379,7 +359,7 @@ func (o *OutputManager) outputHTML(result *models.AnalysisResult) error {
 	</div>
 `
 
-	fmt.Fprintf(file, html, result.FileCount, result.RuleCount, len(result.Violations))
+	_, _ = fmt.Fprintf(file, html, result.FileCount, result.RuleCount, len(result.Violations))
 
 	if len(result.Violations) == 0 {
 		fmt.Fprintln(file, `<div class="no-violations">✓ No architecture violations found!</div>`)
@@ -441,16 +421,16 @@ func (o *OutputManager) outputMarkdown(result *models.AnalysisResult) error {
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		writer = file
 	}
 
 	fmt.Fprintln(writer, "# Architecture Violations Report")
 	fmt.Fprintln(writer)
 	fmt.Fprintln(writer, "## Summary")
-	fmt.Fprintf(writer, "- **Files Analyzed:** %d\n", result.FileCount)
-	fmt.Fprintf(writer, "- **Rules Applied:** %d\n", result.RuleCount)
-	fmt.Fprintf(writer, "- **Violations Found:** %d\n", len(result.Violations))
+	_, _ = fmt.Fprintf(writer, "- **Files Analyzed:** %d\n", result.FileCount)
+	_, _ = fmt.Fprintf(writer, "- **Rules Applied:** %d\n", result.RuleCount)
+	_, _ = fmt.Fprintf(writer, "- **Violations Found:** %d\n", len(result.Violations))
 	fmt.Fprintln(writer)
 
 	if len(result.Violations) == 0 {

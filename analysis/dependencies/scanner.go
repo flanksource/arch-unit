@@ -12,7 +12,6 @@ import (
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/task"
-	commonsCtx "github.com/flanksource/commons/context"
 )
 
 // Scanner orchestrates dependency scanning across multiple languages
@@ -25,9 +24,9 @@ type Scanner struct {
 	// Tracking for two-phase scanning
 	visited        map[string]*git.VisitedDep
 	repoVisited    map[string]bool
-	discoveredDeps map[string][]*models.Dependency // Map of parent -> dependencies
-	mutex          sync.RWMutex
-	discoveryGroup task.TypedGroup[[]*models.Dependency]
+	discoveredDeps map[string][]*models.Dependency       // Map of parent -> dependencies
+	mutex          sync.RWMutex                          //nolint:unused // Used in concurrent operations
+	discoveryGroup task.TypedGroup[[]*models.Dependency] //nolint:unused // Used in task management
 }
 
 // NewScanner creates a new dependency scanner
@@ -84,7 +83,7 @@ func (s *Scanner) ScanWithContext(ctx *analysis.ScanContext, pathOrURL string) (
 		if ctx.MaxDepth == 0 {
 			ctx.MaxDepth = 1 // For git URLs, default to at least depth 1
 		}
-		
+
 		if subdir != "" {
 			ctx.Infof("Scanning git repository %s@%s in subdirectory '%s'", gitURL, version, subdir)
 		} else {
@@ -106,7 +105,7 @@ func (s *Scanner) ScanWithContext(ctx *analysis.ScanContext, pathOrURL string) (
 		// If subdirectory specified, navigate to it
 		if subdir != "" {
 			rootPath = filepath.Join(worktreePath, subdir)
-			
+
 			// Verify the subdirectory exists
 			if _, err := os.Stat(rootPath); os.IsNotExist(err) {
 				// Workaround: Check if the worktree was created with nested cache structure
@@ -116,12 +115,12 @@ func (s *Scanner) ScanWithContext(ctx *analysis.ScanContext, pathOrURL string) (
 					if len(parts) >= 2 {
 						org := parts[0]
 						repo := strings.TrimSuffix(parts[1], ".git")
-						
+
 						// Try the nested path that was actually created
 						baseRepoPath := filepath.Join(".cache", "arch-unit", "repositories", "github.com", org, repo)
 						nestedWorktreePath := filepath.Join(baseRepoPath, ".cache", "arch-unit", "repositories", "github.com", org, repo, "worktrees", version)
 						nestedRootPath := filepath.Join(nestedWorktreePath, subdir)
-						
+
 						if _, nestedErr := os.Stat(nestedRootPath); nestedErr == nil {
 							ctx.Warnf("Using nested worktree path due to git manager issue: %s", nestedWorktreePath)
 							rootPath = nestedRootPath
@@ -178,75 +177,8 @@ func (s *Scanner) ScanDirectory(task *clicky.Task, dir string) ([]*models.Depend
 }
 
 // scanWithScanner scans for dependencies using a specific scanner
-func (s *Scanner) scanWithScanner(ctx *analysis.ScanContext, dir string, scanner analysis.DependencyScanner) ([]*models.Dependency, error) {
-	var allDeps []*models.Dependency
-
-	// Walk the directory tree
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Skip errors
-		}
-
-		// Skip directories
-		if info.IsDir() {
-			// Skip common directories that shouldn't be scanned
-			name := info.Name()
-			if name == ".git" || name == "node_modules" || name == "vendor" ||
-				name == ".venv" || name == "venv" || name == "__pycache__" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		// Check if this file matches the scanner's patterns
-		if !s.matchesScanner(scanner, path) {
-			return nil
-		}
-
-		// Read file content
-		content, err := os.ReadFile(path)
-		if err != nil {
-			if ctx.Task != nil {
-				ctx.Task.Warnf("Error reading %s: %v", path, err)
-			}
-			return nil
-		}
-
-		// Scan the file
-		deps, err := scanner.ScanFile(ctx, path, content)
-		if err != nil {
-			if ctx.Task != nil {
-				ctx.Task.Warnf("Error scanning %s: %v", path, err)
-			}
-			return nil
-		}
-		deps = ctx.FilterDeps(deps)
-
-		allDeps = append(allDeps, deps...)
-		return nil
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("error walking directory: %w", err)
-	}
-
-	return allDeps, nil
-}
 
 // matchesScanner checks if a file matches any of the scanner's supported patterns
-func (s *Scanner) matchesScanner(scanner analysis.DependencyScanner, filePath string) bool {
-	fileName := filepath.Base(filePath)
-	patterns := scanner.SupportedFiles()
-
-	for _, pattern := range patterns {
-		matched, _ := filepath.Match(pattern, fileName)
-		if matched {
-			return true
-		}
-	}
-
-	return false
-}
 
 // getDependencyKey returns a unique key for a dependency
 func (s *Scanner) getDependencyKey(dep *models.Dependency) string {
@@ -269,47 +201,6 @@ func (s *Scanner) ScanWithDepth(task *clicky.Task, dir string, maxDepth int) (*g
 }
 
 // scanWithTwoPhases performs two-phase dependency scanning
-func (s *Scanner) scanWithTwoPhases(ctx *analysis.ScanContext, rootPath string) (*git.DependencyTree, error) {
-	// Reset tracking state for new scan
-	s.mutex.Lock()
-	s.visited = make(map[string]*git.VisitedDep)
-	s.repoVisited = make(map[string]bool)
-	s.discoveredDeps = make(map[string][]*models.Dependency)
-	s.mutex.Unlock()
-
-	// Discover initial files first
-	initialFiles, err := s.discoverScanFiles(rootPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to discover files in %s: %w", rootPath, err)
-	}
-
-	// Only create task group if we have files to scan
-	if len(initialFiles) > 0 {
-		// Create task group for discovery phase
-		s.discoveryGroup = task.StartGroup[[]*models.Dependency]("Dependency Discovery")
-
-		// Queue all initial file scans
-		for _, fileJob := range initialFiles {
-			fileJob.Depth = 0
-			fileJob.Parent = "root"
-			s.queueSimpleTask(ctx, fileJob)
-		}
-
-		// Wait for all tasks to complete
-		result := s.discoveryGroup.WaitFor()
-		if result.Error != nil {
-			// Log the error but continue with the dependencies that were successfully discovered
-			ctx.Warnf("Some dependency scans failed: %v", result.Error)
-			// Continue processing with whatever dependencies we did manage to collect
-		}
-	}
-
-	tree := s.buildDependencyTree()
-	s.detectVersionConflicts(tree)
-
-	ctx.Debugf("Completed: Found %d dependencies", len(tree.Dependencies))
-	return tree, nil
-}
 
 // ScanGitRepository scans a specific git repository at a given version
 func (s *Scanner) ScanGitRepository(task *clicky.Task, gitURL, version string, maxDepth int) (*git.DependencyTree, error) {
@@ -346,11 +237,6 @@ func (s *Scanner) HasGitSupport() bool {
 
 // parseGitURL parses a path to determine if it's a git URL and extracts components
 // Supports go-getter subdirectory syntax: https://github.com/user/repo//subdir@version
-func (s *Scanner) parseGitURL(pathOrURL string) (gitURL, version string, isGit bool) {
-	gitURL, version, _, isGit = s.parseGitURLWithSubdir(pathOrURL)
-	return gitURL, version, isGit
-}
-
 
 // parseGitURLWithSubdir parses git URLs with optional subdirectory support
 // Returns: gitURL (without subdir), version, subdirectory, isGit
@@ -393,7 +279,7 @@ func (s *Scanner) parseGitURLWithSubdir(pathOrURL string) (gitURL, version, subd
 
 	// Check for URLs without version (default to HEAD)
 	candidateURL := pathOrURL
-	
+
 	// Check for go-getter subdirectory syntax (double slash after protocol)
 	// Look for // that's not part of the protocol (https://, ssh://, etc.)
 	protocolEnd := strings.Index(candidateURL, "://")
@@ -422,164 +308,18 @@ func (s *Scanner) parseGitURLWithSubdir(pathOrURL string) (gitURL, version, subd
 }
 
 // scanDirectory is the renamed original ScanDirectory method for internal use
-func (s *Scanner) scanDirectory(task *clicky.Task, dir string) ([]*models.Dependency, error) {
-	// Create a default context for backward compatibility
-	ctx := analysis.NewScanContext(task, dir).WithIndirect(true)
-	return s.scanDirectoryWithContext(ctx, dir)
-}
 
 // scanDirectoryWithContext scans a directory using the provided context
-func (s *Scanner) scanDirectoryWithContext(ctx *analysis.ScanContext, dir string) ([]*models.Dependency, error) {
-	if ctx.Task != nil {
-		ctx.Task.Infof("Scanning dependencies in %s", dir)
-	}
-
-	var allDeps []*models.Dependency
-	depMap := make(map[string]*models.Dependency)
-
-	// Get all registered scanners
-	languages := s.Registry.List()
-	for _, lang := range languages {
-		scanner, _ := s.Registry.Get(lang)
-		if scanner == nil {
-			continue
-		}
-
-		if ctx.Task != nil {
-			ctx.Task.Infof("Scanning %s dependencies", scanner.Language())
-		}
-
-		deps, err := s.scanWithScanner(ctx, dir, scanner)
-		if err != nil {
-			if ctx.Task != nil {
-				ctx.Task.Warnf("Error scanning %s: %v", scanner.Language(), err)
-			}
-			continue
-		}
-
-		// Deduplicate dependencies
-		for _, dep := range deps {
-			key := s.getDependencyKey(dep)
-			if existing, exists := depMap[key]; exists {
-				// Merge information if needed - prefer newer non-empty values
-				if dep.Version != "" {
-					existing.Version = dep.Version
-				}
-				if dep.Git != "" {
-					existing.Git = dep.Git
-				}
-				if len(dep.Package) > 0 {
-					existing.Package = dep.Package
-				}
-				if dep.Source != "" {
-					existing.Source = dep.Source
-				}
-			} else {
-				depMap[key] = dep
-			}
-		}
-	}
-
-	// Convert map to slice
-	for _, dep := range depMap {
-		allDeps = append(allDeps, dep)
-	}
-
-	// Apply filters from the context
-	allDeps = ctx.FilterDeps(allDeps)
-
-	if ctx.Task != nil {
-		ctx.Task.Infof("Found %d unique dependencies", len(allDeps))
-	}
-	return allDeps, nil
-}
 
 // scanWithDepthTraversal performs depth traversal on local dependencies
-func (s *Scanner) scanWithDepthTraversal(task *clicky.Task, dir string, maxDepth int) ([]*models.Dependency, []models.VersionConflict, error) {
-
-	// Use existing ScanWithDepth method
-	depTree, err := s.ScanWithDepth(task, dir, maxDepth)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Convert git types to models types
-	return s.convertDepTreeToModels(depTree)
-}
 
 // scanGitRepositoryWithDepth scans a specific git repository with depth
-func (s *Scanner) scanGitRepositoryWithDepth(task *clicky.Task, gitURL, version string, maxDepth int) ([]*models.Dependency, []models.VersionConflict, error) {
-
-	// Use existing ScanGitRepository method
-	depTree, err := s.ScanGitRepository(task, gitURL, version, maxDepth)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Convert git types to models types
-	return s.convertDepTreeToModels(depTree)
-}
 
 // convertDepTreeToModels converts git.DependencyTree to models types
-func (s *Scanner) convertDepTreeToModels(depTree *git.DependencyTree) ([]*models.Dependency, []models.VersionConflict, error) {
-	var deps []*models.Dependency
-	var conflicts []models.VersionConflict
-
-	// Convert dependencies
-	for _, rootRef := range depTree.Root {
-		if visitedDep, exists := depTree.Dependencies[s.getRefKey(rootRef)]; exists {
-			dep := s.convertRefToModel(rootRef, visitedDep)
-			deps = append(deps, dep)
-		}
-	}
-
-	// Convert conflicts
-	for _, gitConflict := range depTree.Conflicts {
-		conflict := models.VersionConflict{
-			DependencyName:     gitConflict.DependencyName,
-			ResolutionStrategy: gitConflict.ResolutionStrategy,
-		}
-
-		for _, gitVersionInfo := range gitConflict.Versions {
-			versionInfo := models.VersionInfo{
-				Version:    gitVersionInfo.Version,
-				CommitSHA:  gitVersionInfo.CommitSHA,
-				CommitDate: gitVersionInfo.CommitDate.Format("2006-01-02 15:04:05"),
-			}
-			conflict.Versions = append(conflict.Versions, versionInfo)
-		}
-
-		conflicts = append(conflicts, conflict)
-	}
-
-	return deps, conflicts, nil
-}
 
 // convertRefToModel converts a git.DependencyRef and VisitedDep to models.Dependency
-func (s *Scanner) convertRefToModel(ref *git.DependencyRef, visited *git.VisitedDep) *models.Dependency {
-	dep := &models.Dependency{
-		Name:    ref.Name,
-		Version: ref.Version,
-		Git:     ref.Git,
-		Type:    models.DependencyType(ref.Type),
-		Depth:   visited.FirstSeen,
-	}
-
-	// Set resolved from if we have version instances with different original versions
-	if len(visited.Versions) > 0 {
-		firstVersion := visited.Versions[0]
-		if firstVersion.Version != ref.Version {
-			dep.ResolvedFrom = firstVersion.Version // The original alias
-		}
-	}
-
-	return dep
-}
 
 // getRefKey returns a key for a dependency reference
-func (s *Scanner) getRefKey(ref *git.DependencyRef) string {
-	return fmt.Sprintf("%s:%s", ref.Type, ref.Name)
-}
 
 // discoverScanFiles discovers all scannable files in a directory
 func (s *Scanner) discoverScanFiles(dir string) ([]git.ScanJob, error) {
@@ -684,345 +424,21 @@ func ParseFilters(filters []string) string {
 }
 
 // queueSimpleTask queues a simple scanning task without recursive task groups
-func (s *Scanner) queueSimpleTask(ctx *analysis.ScanContext, job git.ScanJob) {
-	taskName := s.getJobIdentifier(job)
-
-	s.discoveryGroup.Add(taskName, func(taskCtx commonsCtx.Context, t *clicky.Task) ([]*models.Dependency, error) {
-		// Check depth limit
-		if job.Depth > ctx.MaxDepth {
-			return []*models.Dependency{}, nil
-		}
-
-		// Check for recursion prevention for git repositories
-		if !job.IsLocal {
-			repoKey := fmt.Sprintf("%s@%s", job.GitURL, job.Version)
-			s.mutex.Lock()
-			if s.repoVisited[repoKey] {
-				s.mutex.Unlock()
-				// Skip silently - already processed
-				return []*models.Dependency{}, nil
-			}
-			s.repoVisited[repoKey] = true
-			s.mutex.Unlock()
-		}
-
-		// Scan the current level
-		deps, err := s.scanCurrentLevel(ctx, job)
-		if err != nil {
-			// Log the error but don't fail the entire scan
-			t.Warnf("Failed to scan %s: %v", taskName, err)
-			return []*models.Dependency{}, nil
-		}
-
-		// Apply filtering immediately after scanning
-		deps = ctx.FilterDeps(deps)
-
-		t.SetName(taskName + fmt.Sprintf(" (%d deps, depth: %d)", len(deps), job.Depth))
-
-		// Store discovered dependencies
-		s.mutex.Lock()
-		s.discoveredDeps[job.Parent] = append(s.discoveredDeps[job.Parent], deps...)
-		s.mutex.Unlock()
-
-		// Process discovered dependencies for deeper levels
-		for _, dep := range deps {
-			// Track this dependency
-			s.trackDependency(dep, job.Depth, job.Parent)
-
-			// For deeper levels, check if we should scan deeper
-			if job.Depth < ctx.MaxDepth && dep.Git != "" {
-				// Log at info level to ensure it shows
-				s.processDeepDependency(ctx, dep, job.Depth+1)
-			}
-		}
-
-		return deps, nil
-	})
-}
 
 // processDeepDependency handles deeper dependency scanning
-func (s *Scanner) processDeepDependency(ctx *analysis.ScanContext, dep *models.Dependency, nextDepth int) {
-	if dep.Git == "" {
-		return
-	}
-
-	version := dep.Version
-	if version == "" {
-		version = "latest"
-	}
-
-	// For local replacements, use the local path directly
-	var worktreePath string
-	var err error
-	if strings.HasPrefix(version, "local:") {
-		worktreePath = strings.TrimPrefix(version, "local:")
-		// No need to checkout, just use the local path
-	} else {
-		// Set task logger for git operations
-		if ctx.Task != nil {
-			git.SetCurrentTaskLogger(ctx.Task)
-		}
-		// Checkout and discover files synchronously
-		worktreePath, err = s.checkoutDependency(dep.Git, version)
-		if err != nil {
-			ctx.Warnf("Failed to checkout %s@%s: %v", dep.Git, version, err)
-			return
-		}
-	}
-
-	// Discover scannable files in the repository
-	discoveredFiles, err := s.discoverScanFiles(worktreePath)
-	if err != nil {
-		ctx.Warnf("Failed to discover files in %s: %v", worktreePath, err)
-		return
-	}
-
-	// Queue individual scan jobs directly
-	for _, fileJob := range discoveredFiles {
-		job := git.ScanJob{
-			Path:        worktreePath,
-			FilePath:    fileJob.FilePath,
-			GitURL:      dep.Git,
-			Version:     version,
-			Depth:       nextDepth,
-			IsLocal:     false,
-			Parent:      dep.Name,
-			ScannerType: fileJob.ScannerType,
-		}
-		s.queueSimpleTask(ctx, job)
-	}
-}
 
 // scanCurrentLevel scans dependencies at the current level
-func (s *Scanner) scanCurrentLevel(ctx *analysis.ScanContext, job git.ScanJob) ([]*models.Dependency, error) {
-	var filePath string
-	var scanner analysis.DependencyScanner
-
-	if job.IsLocal {
-		filePath = filepath.Join(job.Path, job.FilePath)
-		scannerInterface, ok := s.Registry.Get(job.ScannerType)
-		if !ok {
-			return nil, fmt.Errorf("no scanner found for type: %s", job.ScannerType)
-		}
-		scanner = scannerInterface
-	} else {
-		// For git repositories, the path is already the worktree path
-		filePath = filepath.Join(job.Path, job.FilePath)
-		scannerInterface, ok := s.Registry.Get(job.ScannerType)
-		if !ok {
-			return nil, fmt.Errorf("no scanner found for type: %s", job.ScannerType)
-		}
-		scanner = scannerInterface
-	}
-
-	// Read the specific file
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)
-	}
-
-	// Scan the specific file
-	deps, err := scanner.ScanFile(ctx, filePath, content)
-	if err != nil {
-		return nil, err
-	}
-	return deps, nil
-}
 
 // buildDependencyTree builds the final dependency tree from discovered dependencies
-func (s *Scanner) buildDependencyTree() *git.DependencyTree {
-	tree := &git.DependencyTree{
-		Dependencies: make(map[string]*git.VisitedDep),
-		MaxDepth:     0,
-	}
-
-	// Copy visited dependencies to tree
-	s.mutex.RLock()
-	for key, visited := range s.visited {
-		tree.Dependencies[key] = visited
-		// Track max depth
-		for _, depth := range visited.SeenAt {
-			if depth > tree.MaxDepth {
-				tree.MaxDepth = depth
-			}
-		}
-	}
-
-	// Build root dependencies - these are dependencies discovered at depth 0
-	// We collect all dependencies from discoveredDeps to ensure filtered results are included
-	for parent, deps := range s.discoveredDeps {
-		// Root dependencies are those with parent "root"
-		if parent == "root" {
-			for _, dep := range deps {
-				tree.Root = append(tree.Root, s.depToRef(dep))
-			}
-		}
-	}
-	s.mutex.RUnlock()
-
-	return tree
-}
 
 // detectVersionConflicts identifies dependencies with multiple versions
-func (s *Scanner) detectVersionConflicts(tree *git.DependencyTree) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	for depName, visited := range s.visited {
-		if len(visited.Versions) > 1 {
-			// Check if all versions are the same
-			versions := make(map[string]bool)
-			for _, v := range visited.Versions {
-				if v.Version != "" {
-					versions[v.Version] = true
-				}
-			}
-
-			if len(versions) > 1 {
-				var versionInfos []git.VersionInfo
-				for version := range versions {
-					versionInfos = append(versionInfos, git.VersionInfo{
-						Version: version,
-					})
-				}
-
-				conflict := git.VersionConflict{
-					DependencyName:     depName,
-					Versions:           versionInfos,
-					ResolutionStrategy: "latest",
-				}
-
-				tree.Conflicts = append(tree.Conflicts, conflict)
-			}
-		}
-	}
-}
 
 // trackDependency tracks a dependency in our visited map
-func (s *Scanner) trackDependency(dep *models.Dependency, depth int, parent string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	depKey := s.getDependencyKey(dep)
-
-	if visited, exists := s.visited[depKey]; exists {
-		visited.SeenAt = append(visited.SeenAt, depth)
-		visited.Versions = append(visited.Versions, git.VersionInstance{
-			Version: dep.Version,
-			Depth:   depth,
-			Source:  parent,
-		})
-	} else {
-		s.visited[depKey] = &git.VisitedDep{
-			Dependency: s.depToRef(dep),
-			FirstSeen:  depth,
-			SeenAt:     []int{depth},
-			Versions: []git.VersionInstance{{
-				Version: dep.Version,
-				Depth:   depth,
-				Source:  parent,
-			}},
-		}
-	}
-}
 
 // checkoutDependency ensures a git dependency is checked out to a worktree
-func (s *Scanner) checkoutDependency(gitURL, version string) (string, error) {
-	// Handle local directory replacements
-	if strings.HasPrefix(version, "local:") {
-		localPath := strings.TrimPrefix(version, "local:")
-		// Return the local path directly - no git checkout needed
-		return localPath, nil
-	}
-
-	resolvedVersion, err := s.gitManager.ResolveVersionAlias(gitURL, version)
-	if err != nil {
-		resolvedVersion = version
-	}
-
-	worktreePath, err := s.gitManager.GetWorktreePath(gitURL, resolvedVersion, 1) // Shallow clone for dependency scanning
-	if err != nil {
-		return "", fmt.Errorf("failed to get worktree for %s@%s: %w", gitURL, resolvedVersion, err)
-	}
-
-	return worktreePath, nil
-}
 
 // getJobIdentifier returns a readable identifier for a scan job
-func (s *Scanner) getJobIdentifier(job git.ScanJob) string {
-	if job.IsLocal {
-		if job.FilePath != "" {
-			// Special case for go.mod - indicate it includes go.sum
-			if job.ScannerType == "go" && strings.HasSuffix(job.FilePath, "go.mod") {
-				return fmt.Sprintf("%s/go.mod", job.Path)
-			}
-			return fmt.Sprintf("%s/%s", job.Path, job.FilePath)
-		}
-		return job.Path
-	}
-	// For remote repositories
-	if job.ScannerType == "go" && strings.HasSuffix(job.FilePath, "go.mod") {
-		return fmt.Sprintf("%s@%s:go.mod", job.GitURL, job.Version)
-	}
-	return fmt.Sprintf("%s@%s:%s", job.GitURL, job.Version, job.FilePath)
-}
 
 // depToRef converts a models.Dependency to a git.DependencyRef
-func (s *Scanner) depToRef(dep *models.Dependency) *git.DependencyRef {
-	return &git.DependencyRef{
-		Name:    dep.Name,
-		Version: dep.Version,
-		Type:    string(dep.Type),
-		Git:     dep.Git,
-	}
-}
 
 // treeToLists converts a DependencyTree to lists of dependencies and conflicts
-func (s *Scanner) treeToLists(tree *git.DependencyTree) ([]*models.Dependency, []models.VersionConflict) {
-	var deps []*models.Dependency
-	var conflicts []models.VersionConflict
-
-	// Convert all dependencies from discoveredDeps that made it into the tree
-	// We use discoveredDeps because those are the actual filtered results
-	// Use a map to deduplicate
-	depMap := make(map[string]*models.Dependency)
-
-	s.mutex.RLock()
-	for _, depList := range s.discoveredDeps {
-		for _, dep := range depList {
-			key := s.getDependencyKey(dep)
-			if _, exists := depMap[key]; !exists {
-				// Create a copy to avoid modifying the original
-				depCopy := *dep
-				depMap[key] = &depCopy
-			}
-		}
-	}
-	s.mutex.RUnlock()
-
-	// Convert map to slice
-	for _, dep := range depMap {
-		deps = append(deps, dep)
-	}
-
-	// Convert conflicts
-	for _, gitConflict := range tree.Conflicts {
-		conflict := models.VersionConflict{
-			DependencyName:     gitConflict.DependencyName,
-			ResolutionStrategy: gitConflict.ResolutionStrategy,
-		}
-
-		for _, gitVersionInfo := range gitConflict.Versions {
-			versionInfo := models.VersionInfo{
-				Version:    gitVersionInfo.Version,
-				CommitSHA:  gitVersionInfo.CommitSHA,
-				CommitDate: gitVersionInfo.CommitDate.Format("2006-01-02 15:04:05"),
-			}
-			conflict.Versions = append(conflict.Versions, versionInfo)
-		}
-
-		conflicts = append(conflicts, conflict)
-	}
-
-	return deps, conflicts
-}

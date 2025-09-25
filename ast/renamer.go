@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/flanksource/arch-unit/models"
@@ -269,13 +268,13 @@ func (r *Renamer) createBackup(filePath string) error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	dst, err := os.Create(backupPath)
 	if err != nil {
 		return err
 	}
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 
 	_, err = io.Copy(dst, src)
 	return err
@@ -309,7 +308,7 @@ func (r *Renamer) readFileLines(filePath string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var lines []string
 	scanner := bufio.NewScanner(file)
@@ -326,10 +325,10 @@ func (r *Renamer) writeFileLines(filePath string, lines []string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	writer := bufio.NewWriter(file)
-	defer writer.Flush()
+	defer func() { _ = writer.Flush() }()
 
 	for _, line := range lines {
 		if _, err := writer.WriteString(line + "\n"); err != nil {
@@ -341,9 +340,3 @@ func (r *Renamer) writeFileLines(filePath string, lines []string) error {
 }
 
 // findWordBoundaryRename finds and replaces a word with word boundaries
-func (r *Renamer) findWordBoundaryRename(text, oldName, newName string) string {
-	// Use regex to match word boundaries
-	pattern := `\b` + regexp.QuoteMeta(oldName) + `\b`
-	re := regexp.MustCompile(pattern)
-	return re.ReplaceAllString(text, newName)
-}

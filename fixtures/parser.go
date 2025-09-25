@@ -84,7 +84,7 @@ func ParseMarkdownFixtures(fixtureFilePath string) ([]FixtureNode, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open fixture file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Get the directory containing the fixture file
 	sourceDir := filepath.Dir(fixtureFilePath)
@@ -112,7 +112,7 @@ func ParseMarkdownFixtures(fixtureFilePath string) ([]FixtureNode, error) {
 	}
 
 	// No front-matter found, read the entire file
-	file.Seek(0, 0)
+	_, _ = file.Seek(0, 0)
 	scanner := bufio.NewScanner(file)
 	var lines []string
 	for scanner.Scan() {
@@ -227,7 +227,7 @@ func parseFrontMatter(file *os.File) (*FrontMatter, string, error) {
 	firstLine := strings.TrimSpace(scanner.Text())
 	if firstLine != "---" {
 		// No front-matter
-		file.Seek(0, 0)
+		_, _ = file.Seek(0, 0)
 		return nil, "", nil
 	}
 
@@ -263,19 +263,8 @@ func parseFrontMatter(file *os.File) (*FrontMatter, string, error) {
 	return &frontMatter, content, nil
 }
 
-// parseMarkdownContent parses the markdown content for fixture tables and command blocks
-func parseMarkdownContent(content string, frontMatter *FrontMatter) ([]FixtureNode, error) {
-	return parseMarkdownContentWithSourceDir(content, frontMatter, "")
-}
-
-// parseMarkdownContentWithSourceDir parses markdown content with source directory information
+// parseMarkdownContentWithSourceDir parses markdown content with source directory context
 func parseMarkdownContentWithSourceDir(content string, frontMatter *FrontMatter, sourceDir string) ([]FixtureNode, error) {
-	// Try goldmark parser first for enhanced command block support
-	if fixtures, err := parseMarkdownWithGoldmark(content, frontMatter, sourceDir); err == nil {
-		return fixtures, nil
-	}
-	
-	// Fall back to legacy string-based parsing for tables
 	return parseMarkdownContentLegacy(content, frontMatter, sourceDir)
 }
 
@@ -419,7 +408,7 @@ func ParseMarkdownFixturesWithTree(filePath string) (*FixtureNode, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Parse front-matter and get content
 	frontMatter, content, err := parseFrontMatter(file)
@@ -429,7 +418,7 @@ func ParseMarkdownFixturesWithTree(filePath string) (*FixtureNode, error) {
 
 	// If no content after front-matter, read the entire file
 	if content == "" {
-		file.Seek(0, 0)
+		_, _ = file.Seek(0, 0)
 		scanner := bufio.NewScanner(file)
 		var lines []string
 		for scanner.Scan() {
@@ -579,20 +568,6 @@ func parseMarkdownContentWithSections(content string, fileNode *FixtureNode, fix
 }
 
 // buildSectionPath constructs a section path from the stack
-func buildSectionPath(stack []*FixtureNode, name string) string {
-	if len(stack) == 0 {
-		return name
-	}
-
-	var parts []string
-	for _, node := range stack {
-		if node.Type != FileNode {
-			parts = append(parts, node.Name)
-		}
-	}
-	parts = append(parts, name)
-	return strings.Join(parts, " > ")
-}
 
 // adjustSectionStack adjusts the section stack to the correct level
 func adjustSectionStack(stack *[]*FixtureNode, targetLevel int) {

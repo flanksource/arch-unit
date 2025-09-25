@@ -98,7 +98,7 @@ func runViolationsList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open violation cache: %w", err)
 	}
-	defer violationCache.Close()
+	defer func() { _ = violationCache.Close() }()
 
 	// Get all violations
 	allViolations, err := violationCache.GetAllViolations()
@@ -126,7 +126,7 @@ func runViolationsClear(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open violation cache: %w", err)
 	}
-	defer violationCache.Close()
+	defer func() { _ = violationCache.Close() }()
 
 	// Parse older duration if provided
 	var olderThan time.Time
@@ -282,20 +282,3 @@ func parseDuration(s string) (time.Duration, error) {
 	return time.ParseDuration(s)
 }
 
-func formatTimeAgo(t time.Time) string {
-	duration := time.Since(t)
-
-	if duration < time.Minute {
-		return fmt.Sprintf("%ds ago", int(duration.Seconds()))
-	} else if duration < time.Hour {
-		return fmt.Sprintf("%dm ago", int(duration.Minutes()))
-	} else if duration < 24*time.Hour {
-		return fmt.Sprintf("%dh ago", int(duration.Hours()))
-	} else {
-		days := int(duration.Hours() / 24)
-		if days == 1 {
-			return "1 day ago"
-		}
-		return fmt.Sprintf("%d days ago", days)
-	}
-}

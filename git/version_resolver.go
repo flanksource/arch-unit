@@ -173,17 +173,3 @@ func (vr *DefaultVersionResolver) getStableVersionsSorted(repo GitRepository) ([
 	// 4. Return the sorted stable versions
 	return []string{}, fmt.Errorf("stable version filtering not yet implemented")
 }
-
-func (vr *DefaultVersionResolver) isPreRelease(version string, preReleasePatterns []string) bool {
-	if preReleasePatterns == nil {
-		preReleasePatterns = []string{"alpha", "beta", "rc", "preview", "pre"}
-	}
-
-	versionLower := strings.ToLower(version)
-	for _, pattern := range preReleasePatterns {
-		if strings.Contains(versionLower, strings.ToLower(pattern)) {
-			return true
-		}
-	}
-	return false
-}

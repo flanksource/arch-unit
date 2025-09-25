@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/flanksource/commons/logger"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -81,7 +80,7 @@ func (r *DefaultGitRepository) Fetch(ctx context.Context) error {
 func (r *DefaultGitRepository) GetWorktree(version string, depth int) (string, error) {
 	// Create cache key that includes both version and depth
 	cacheKey := fmt.Sprintf("%s-%d", version, depth)
-	
+
 	r.mutex.RLock()
 	if info, exists := r.clones[cacheKey]; exists {
 		// Check if clone still exists on disk
@@ -125,7 +124,7 @@ func (r *DefaultGitRepository) GetWorktree(version string, depth int) (string, e
 
 	// Ensure we have the latest refs
 	if err := r.Fetch(context.Background()); err != nil {
-		logger.Warnf("Failed to fetch latest refs: %v", err)
+		return "", fmt.Errorf("failed to fetch latest refs: %w", err)
 	}
 
 	// Create new clone
@@ -388,7 +387,7 @@ func (r *DefaultGitRepository) CleanupWorktree(version string) error {
 	for _, key := range toDelete {
 		delete(r.clones, key)
 	}
-	
+
 	return nil
 }
 

@@ -116,7 +116,7 @@ func (a *Analyzer) AnalyzeFiles() error {
 	// Initialize library resolver
 	libResolver := analysis.NewLibraryResolver(a.cache)
 	if err := libResolver.StoreLibraryNodes(); err != nil {
-		ctx.Warnf("Failed to store library nodes: %v", err)
+		return fmt.Errorf("Failed to store library nodes: %v", err)
 	}
 
 	// Create generic analyzer for all languages
@@ -133,26 +133,24 @@ func (a *Analyzer) AnalyzeFiles() error {
 	for _, file := range sourceFiles {
 		relPath, _ := filepath.Rel(a.workDir, file.path)
 		ctx.Debugf("🔨 Analyzing %s (%s)", relPath, file.language)
-		
+
 		// Read file content
 		content, err := os.ReadFile(file.path)
 		if err != nil {
 			errorCount++
-			ctx.Warnf("❌ Failed to read file %s: %v", relPath, err)
-			continue
+			return fmt.Errorf("❌ Failed to read file %s: %v", relPath, err)
 		}
-		
-		// Use generic analyzer (it handles caching internally) 
+
+		// Use generic analyzer (it handles caching internally)
 		// Create a simple task for the analyzer
 		task := &clicky.Task{}
 		result, err := genericAnalyzer.AnalyzeFile(task, file.path, content)
-		
+
 		if err != nil {
 			errorCount++
-			ctx.Warnf("❌ Failed to analyze %s: %v", relPath, err)
-			continue
+			return fmt.Errorf("❌ Failed to analyze %s: %v", relPath, err)
 		}
-		
+
 		if result == nil {
 			cachedCount++
 			ctx.Tracef("✓ Using cached AST for %s", relPath)
@@ -322,10 +320,8 @@ func (a *Analyzer) processSourceFiles(ctx flanksourceContext.Context, sourceFile
 		// Read file content
 		content, err := os.ReadFile(file.path)
 		if err != nil {
-			ctx.Warnf("Failed to read file %s: %v", file.path, err)
-			continue
+			return fmt.Errorf("Failed to read file %s: %v", file.path, err)
 		}
-
 		// Use generic analyzer (it handles caching internally)
 		task := &clicky.Task{}
 		_, err = genericAnalyzer.AnalyzeFile(task, file.path, content)
@@ -337,8 +333,7 @@ func (a *Analyzer) processSourceFiles(ctx flanksourceContext.Context, sourceFile
 		}
 
 		if err != nil {
-			ctx.Warnf("Failed to analyze AST from %s: %v", file.path, err)
-			continue
+			return fmt.Errorf("Failed to extract AST from %s: %v", file.path, err)
 		}
 	}
 
@@ -418,7 +413,7 @@ func (a *Analyzer) GetCacheStats() (*CacheStats, error) {
 
 	// Count total files in directory (for comparison)
 	totalFiles := 0
-	filepath.Walk(a.workDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(a.workDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
@@ -508,7 +503,7 @@ func (a *Analyzer) GetAllRelationships() ([]*models.ASTRelationship, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query relationships: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var relationships []*models.ASTRelationship
 	for rows.Next() {
@@ -538,7 +533,7 @@ func (a *Analyzer) GetLibraryRelationships() ([]*models.LibraryRelationship, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to query library relationships: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var relationships []*models.LibraryRelationship
 	for rows.Next() {
@@ -573,7 +568,7 @@ func (a *Analyzer) GetRelationshipsForNode(nodeID int64) ([]*models.ASTRelations
 	if err != nil {
 		return nil, fmt.Errorf("failed to query relationships for node %d: %w", nodeID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var relationships []*models.ASTRelationship
 	for rows.Next() {

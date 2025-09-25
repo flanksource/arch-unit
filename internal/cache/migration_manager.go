@@ -201,7 +201,7 @@ func (m *MigrationManager) migrateASTCacheV1(mgr *MigrationManager) error {
 	if err != nil {
 		return fmt.Errorf("failed to open AST cache: %w", err)
 	}
-	defer astDB.Close()
+	defer func() { _ = astDB.Close() }()
 
 	// Begin transaction on AST database
 	astTx, err := astDB.Begin()
@@ -343,7 +343,7 @@ func (m *MigrationManager) migrateViolationCacheV1(mgr *MigrationManager) error 
 	if err != nil {
 		return fmt.Errorf("failed to open violation cache: %w", err)
 	}
-	defer violationDB.Close()
+	defer func() { _ = violationDB.Close() }()
 
 	// Begin transaction on violation database
 	violationTx, err := violationDB.Begin()
@@ -397,7 +397,7 @@ func (m *MigrationManager) migrateASTCacheDependencyAliases(mgr *MigrationManage
 	if err != nil {
 		return fmt.Errorf("failed to open AST cache: %w", err)
 	}
-	defer astDB.Close()
+	defer func() { _ = astDB.Close() }()
 
 	astTx, err := astDB.Begin()
 	if err != nil {
@@ -436,7 +436,7 @@ func (m *MigrationManager) migrateViolationCacheStoredAt(mgr *MigrationManager) 
 	if err != nil {
 		return fmt.Errorf("failed to open violation cache: %w", err)
 	}
-	defer violationDB.Close()
+	defer func() { _ = violationDB.Close() }()
 
 	violationTx, err := violationDB.Begin()
 	if err != nil {
@@ -459,7 +459,7 @@ func (m *MigrationManager) migrateViolationCacheStoredAt(mgr *MigrationManager) 
 
 		err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk)
 		if err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return fmt.Errorf("failed to scan table info: %w", err)
 		}
 
@@ -468,7 +468,7 @@ func (m *MigrationManager) migrateViolationCacheStoredAt(mgr *MigrationManager) 
 			break
 		}
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	// Add stored_at column if it doesn't exist
 	if !hasStoredAt {
@@ -516,7 +516,7 @@ func (m *MigrationManager) migrateASTCacheForGORM() error {
 	if err != nil {
 		return fmt.Errorf("failed to open AST cache: %w", err)
 	}
-	defer astDB.Close()
+	defer func() { _ = astDB.Close() }()
 
 	astTx, err := astDB.Begin()
 	if err != nil {
@@ -568,7 +568,7 @@ func (m *MigrationManager) migrateViolationCacheForGORM() error {
 	if err != nil {
 		return fmt.Errorf("failed to open violation cache: %w", err)
 	}
-	defer violationDB.Close()
+	defer func() { _ = violationDB.Close() }()
 
 	violationTx, err := violationDB.Begin()
 	if err != nil {
@@ -592,7 +592,7 @@ func (m *MigrationManager) addColumnIfNotExists(tx *Tx, tableName, columnName, c
 	if err != nil {
 		return fmt.Errorf("failed to get table info for %s: %w", tableName, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	hasColumn := false
 	for rows.Next() {
@@ -611,7 +611,7 @@ func (m *MigrationManager) addColumnIfNotExists(tx *Tx, tableName, columnName, c
 			break
 		}
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	// Add column if it doesn't exist
 	if !hasColumn {

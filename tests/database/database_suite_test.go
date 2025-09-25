@@ -28,7 +28,7 @@ var _ = BeforeSuite(func() {
 
 	DeferCleanup(func() {
 		if testDB != nil {
-			testDB.Close()
+			_ = testDB.Close()
 		}
 		// Reset singletons after tests
 		cache.ResetGormDB()

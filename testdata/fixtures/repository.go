@@ -190,7 +190,7 @@ func (r *UserRepository) Search(query SearchQuery) ([]*model.User, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var users []*model.User
 	for rows.Next() {
@@ -278,7 +278,7 @@ func (r *UserRepository) FindActiveUsers(limit, offset int) ([]*model.User, erro
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var users []*model.User
 	for rows.Next() {
@@ -380,7 +380,7 @@ func (r *UserRepository) BulkInsert(users []*model.User) error {
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	// Execute for each user
 	for i, user := range users {
@@ -436,7 +436,7 @@ func (r *UserRepository) BulkUpdate(users []*model.User) error {
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	// Execute for each user
 	for i, user := range users {

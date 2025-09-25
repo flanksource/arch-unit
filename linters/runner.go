@@ -3,7 +3,6 @@ package linters
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/flanksource/arch-unit/internal/cache"
@@ -268,26 +267,7 @@ func (r *Runner) updateTaskStatus(task *clicky.Task, linterName string, success 
 }
 
 // hasArg checks if args contains a specific argument or argument prefix
-func (r *Runner) hasArg(args []string, argToFind string) bool {
-	prefix := strings.Split(argToFind, "=")[0]
-	for _, arg := range args {
-		if arg == argToFind || strings.HasPrefix(arg, prefix+"=") {
-			return true
-		}
-	}
-	return false
-}
-
 // hasPathArg checks if the args already contain a path argument
-func (r *Runner) hasPathArg(args []string) bool {
-	for _, arg := range args {
-		if !strings.HasPrefix(arg, "-") {
-			return true
-		}
-	}
-	return false
-}
-
 // formatError formats an error for display
 func (r *Runner) formatError(err error) string {
 	if err == nil {

@@ -109,7 +109,7 @@ func (a *AQL) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Viola
 		a.resolver = analysis.NewLibraryResolver(a.astCache)
 		// Pre-populate library nodes
 		if err := a.resolver.StoreLibraryNodes(); err != nil {
-			logger.Warnf("Failed to store library nodes: %v", err)
+			return nil, fmt.Errorf("failed to store library nodes: %w", err)
 		}
 	}
 
@@ -119,14 +119,14 @@ func (a *AQL) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Viola
 			// Read file content
 			content, err := os.ReadFile(file)
 			if err != nil {
-				logger.Warnf("Failed to read file %s: %v", file, err)
-				continue
+				return nil, fmt.Errorf("Failed to read file %s: %v", file, err)
+
 			}
 
 			// Use generic analyzer
 			task := &clicky.Task{}
 			if _, err := a.analyzer.AnalyzeFile(task, file, content); err != nil {
-				logger.Warnf("Failed to analyze AST from %s: %v", file, err)
+				return nil, fmt.Errorf("Failed to extract AST from %s: %v", file, err)
 			}
 		}
 	}
@@ -237,12 +237,3 @@ func (a *AQL) Close() error {
 }
 
 // filterGoFiles returns only Go files from the provided list
-func filterGoFiles(filePaths []string) []string {
-	var goFiles []string
-	for _, file := range filePaths {
-		if filepath.Ext(file) == ".go" {
-			goFiles = append(goFiles, file)
-		}
-	}
-	return goFiles
-}

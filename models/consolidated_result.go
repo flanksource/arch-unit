@@ -1,7 +1,6 @@
 package models
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -52,7 +51,7 @@ func NewConsolidatedResult(archResult *AnalysisResult, linterResults []LinterRes
 	result.consolidateViolations()
 
 	// Calculate summary
-	result.calculateSummary(start)
+	result.GenerateSummary()
 
 	return result
 }
@@ -86,31 +85,10 @@ func (cr *ConsolidatedResult) consolidateViolations() {
 	cr.Violations = allViolations
 }
 
-// deduplicateViolations removes duplicate violations based on file, line, and message
-func (cr *ConsolidatedResult) deduplicateViolations(violations []Violation) []Violation {
-	seen := make(map[string]bool)
-	var unique []Violation
+// GenerateSummary creates a summary of the analysis results
+func (cr *ConsolidatedResult) GenerateSummary() {
+	summary := ConsolidatedSummary{}
 
-	for _, violation := range violations {
-		// Create a key based on file, line, and message
-		key := fmt.Sprintf("%s:%d:%s", violation.File, violation.Line, violation.Message)
-
-		if !seen[key] {
-			seen[key] = true
-			unique = append(unique, violation)
-		}
-	}
-
-	return unique
-}
-
-// calculateSummary computes aggregate statistics
-func (cr *ConsolidatedResult) calculateSummary(start time.Time) {
-	summary := ConsolidatedSummary{
-		Duration: time.Since(start),
-	}
-
-	// Basic statistics
 	if cr.ArchUnit != nil {
 		summary.FilesAnalyzed = cr.ArchUnit.FileCount
 		summary.RulesApplied = cr.ArchUnit.RuleCount

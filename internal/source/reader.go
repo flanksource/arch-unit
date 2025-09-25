@@ -77,7 +77,7 @@ func (r *Reader) getLines(filepath string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file %s: %w", filepath, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var lines []string
 	scanner := bufio.NewScanner(file)

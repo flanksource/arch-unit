@@ -51,7 +51,7 @@ func (p *Parser) parseRuleFile(path string) (*models.RuleSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Use relative path for rule source
 	relPath, err := filepath.Rel(".", path)

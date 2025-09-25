@@ -50,7 +50,7 @@ func ResetGormDB() {
 	if gormInstance != nil {
 		sqlDB, _ := gormInstance.DB()
 		if sqlDB != nil {
-			sqlDB.Close()
+			_ = sqlDB.Close()
 		}
 		gormInstance = nil
 	}

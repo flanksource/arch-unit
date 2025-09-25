@@ -153,13 +153,13 @@ func (gm *DefaultGitRepositoryManager) CleanupUnused(maxAge time.Duration) error
 			clones, err := entry.repository.ListWorktrees()
 			if err == nil {
 				for _, clone := range clones {
-					entry.repository.CleanupWorktree(clone.Version)
+					_ = entry.repository.CleanupWorktree(clone.Version)
 				}
 			}
 
 			// Remove repository directory
 			repoPath := entry.repository.GetRepoPath()
-			os.RemoveAll(repoPath)
+			_ = os.RemoveAll(repoPath)
 
 			delete(gm.repositories, url)
 		}

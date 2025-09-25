@@ -38,6 +38,9 @@ type ASTResult struct {
 	// Relationships between dependencies
 	DependencyRelationships []*models.DependencyRelationship
 
+	// Rule violations found in the file (optional)
+	Violations []models.Violation
+
 	// File metadata
 	FilePath    string
 	Language    string
@@ -47,6 +50,7 @@ type ASTResult struct {
 	NodeCount         int
 	RelationshipCount int
 	LibraryCount      int
+	ViolationCount    int
 }
 
 // NewASTResult creates a new AST result

@@ -60,9 +60,6 @@ func (p *Parser) currentTokenIs(tokenType TokenType) bool {
 }
 
 // peekTokenIs checks if peek token is of given type
-func (p *Parser) peekTokenIs(tokenType TokenType) bool {
-	return p.peekToken.Type == tokenType
-}
 
 // ParseRuleSet parses a complete AQL rule set
 func (p *Parser) ParseRuleSet() (*models.AQLRuleSet, error) {

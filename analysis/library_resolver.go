@@ -531,7 +531,7 @@ func (r *LibraryResolver) AnalyzeGoMod(projectRoot string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open go.mod: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var dependencies []string
 	scanner := bufio.NewScanner(file)

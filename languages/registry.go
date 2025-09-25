@@ -222,13 +222,3 @@ func (r *Registry) GetBestPractices(language, strictness string) map[string]inte
 }
 
 // Helper function for strictness-based values
-func getValueByStrictness(strictness string, strict, normal, relaxed interface{}) interface{} {
-	switch strictness {
-	case "strict":
-		return strict
-	case "relaxed":
-		return relaxed
-	default:
-		return normal
-	}
-}

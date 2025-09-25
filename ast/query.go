@@ -314,7 +314,7 @@ func (a *Analyzer) GetOverview() (*Overview, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get AST statistics: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	stats := make(map[string]int)
 	total := 0

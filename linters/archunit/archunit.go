@@ -141,7 +141,7 @@ func (a *ArchUnit) Run(ctx context.Context, opts linters.RunOptions) ([]models.V
 		}
 		defer func() {
 			if violationCache != nil {
-				violationCache.Close()
+				_ = violationCache.Close()
 			}
 		}()
 	}
@@ -254,13 +254,3 @@ func analyzeGoFilesWithCache(rootDir string, files []string, config *models.Conf
 }
 
 // TODO: Refactor Python analysis to use new architecture
-// analyzePythonFilesWithCache analyzes Python files with caching support
-func analyzePythonFilesWithCache(rootDir string, files []string, config *models.Config, violationCache *cache.ViolationCache) (*models.AnalysisResult, error) {
-	logger.Warnf("Python analysis temporarily disabled during refactoring")
-	return &models.AnalysisResult{
-		FileCount:  len(files),
-		RuleCount:  0,
-		Violations: []models.Violation{},
-	}, nil
-}
-

@@ -12,9 +12,8 @@ import (
 )
 
 var (
-	depsOnce      sync.Once
-	depsInstalled bool
-	depsError     error
+	depsOnce  sync.Once
+	depsError error
 )
 
 // NodeDependenciesManager manages Node.js dependencies for parsers
@@ -41,9 +40,6 @@ func (m *NodeDependenciesManager) GetNodeModulesPath() string {
 func (m *NodeDependenciesManager) EnsureDependencies(ctx flanksourceContext.Context) error {
 	depsOnce.Do(func() {
 		depsError = m.installDependencies(ctx)
-		if depsError == nil {
-			depsInstalled = true
-		}
 	})
 
 	return depsError

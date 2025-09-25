@@ -83,7 +83,6 @@ func (ca *CommentAnalyzer) AnalyzeComment(ctx context.Context, comment models.Co
 
 	// Use AI for complex comments
 	if ca.aiAgent == nil {
-		logger.Warnf("AI agent not available for comment analysis, skipping complex comment")
 		return &CommentQualityResult{
 			Comment:        comment,
 			IsSimple:       false,

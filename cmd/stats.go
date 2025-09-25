@@ -60,7 +60,7 @@ func runStats(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize linter statistics: %w", err)
 	}
-	defer linterStats.Close()
+	defer func() { _ = linterStats.Close() }()
 
 	// Get all linters that have been run
 	linters, err := linterStats.GetLinterHistory(workDir)

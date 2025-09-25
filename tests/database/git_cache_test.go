@@ -27,10 +27,10 @@ var _ = Describe("Git Repository Caching", func() {
 
 	AfterEach(func() {
 		if gitManager != nil {
-			gitManager.Close()
+			_ = gitManager.Close()
 		}
 		if tempDir != "" {
-			os.RemoveAll(tempDir)
+			_ = os.RemoveAll(tempDir)
 		}
 	})
 
@@ -142,10 +142,10 @@ var _ = Describe("Git Repository Caching", func() {
 			defer os.RemoveAll(tempDir2)
 
 			gitManager1 := git.NewGitRepositoryManager(tempDir1)
-			defer gitManager1.Close()
+			defer func() { _ = gitManager1.Close() }()
 
 			gitManager2 := git.NewGitRepositoryManager(tempDir2)
-			defer gitManager2.Close()
+			defer func() { _ = gitManager2.Close() }()
 
 			// First resolution
 			start1 := time.Now()

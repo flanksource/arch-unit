@@ -95,7 +95,7 @@ func (gc *GitCache) CloneOrUpdate(repoURL string, ref string) (string, error) {
 		}
 	} else {
 		if err := gc.update(cacheDir); err != nil {
-			os.RemoveAll(cacheDir)
+			_ = os.RemoveAll(cacheDir)
 			if err := gc.clone(repoURL, cacheDir); err != nil {
 				return "", fmt.Errorf("failed to re-clone repository after update failure: %w", err)
 			}

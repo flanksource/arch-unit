@@ -60,7 +60,7 @@ func ResetASTCache() {
 	defer astCacheMutex.Unlock()
 
 	if astCacheInstance != nil {
-		astCacheInstance.Close()
+		_ = astCacheInstance.Close()
 		astCacheInstance = nil
 	}
 	astCacheOnce = sync.Once{}
@@ -199,7 +199,7 @@ func calculateFileHash(filePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {

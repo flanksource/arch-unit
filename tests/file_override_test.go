@@ -7,8 +7,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/flanksource/arch-unit/client"
+	"github.com/flanksource/arch-unit/analysis"
 	"github.com/flanksource/arch-unit/filters"
+	"github.com/flanksource/arch-unit/internal/files"
 )
 
 var _ = Describe("File Specific Overrides", func() {
@@ -77,10 +78,11 @@ fmt:!Println
 		Expect(ruleSets).To(HaveLen(1))
 
 		// Find and analyze Go files
-		goFiles, _, err := client.FindSourceFiles(tempDir)
+		goFiles, _, err := files.FindSourceFiles(tempDir)
 		Expect(err).NotTo(HaveOccurred())
 
-		result, err := client.AnalyzeGoFiles(tempDir, goFiles, ruleSets)
+		// Use the new unified analyzer
+		result, err := analysis.AnalyzeGoFiles(tempDir, goFiles, ruleSets)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Check violations

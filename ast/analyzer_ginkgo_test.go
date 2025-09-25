@@ -244,7 +244,7 @@ func main() {}`
 				// Debug: Check what's actually in the database
 				rows, err := astCache.QueryRaw("SELECT last_modified FROM ast_nodes LIMIT 3")
 				Expect(err).NotTo(HaveOccurred())
-				defer rows.Close()
+				defer func() { _ = rows.Close() }()
 
 				var timestamps []string
 				for rows.Next() {

@@ -113,13 +113,13 @@ func WaitForSignal() {
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 		sig := <-sigChan
-		fmt.Fprintf(os.Stderr, "\n🛑 Received %s - initiating graceful shutdown...\n", sig)
-		fmt.Fprintf(os.Stderr, "   Press Ctrl+C again to force immediate exit\n\n")
+		_, _ = fmt.Fprintf(os.Stderr, "\n🛑 Received %s - initiating graceful shutdown...\n", sig)
+		_, _ = fmt.Fprintf(os.Stderr, "   Press Ctrl+C again to force immediate exit\n\n")
 
 		// Set up force exit on second signal
 		go func() {
 			<-sigChan
-			fmt.Fprintf(os.Stderr, "\n⚠️  Force exit\n")
+			_, _ = fmt.Fprintf(os.Stderr, "\n⚠️  Force exit\n")
 			os.Exit(1)
 		}()
 

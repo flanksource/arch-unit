@@ -298,7 +298,7 @@ func containsChar(s string, char rune) bool {
 
 func parseInt(s string) (int, error) {
 	var result int
-	fmt.Sscanf(s, "%d", &result)
+	_, _ = fmt.Sscanf(s, "%d", &result)
 	return result, nil
 }
 

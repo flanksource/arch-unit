@@ -85,7 +85,7 @@ It supports both Go and Python codebases and uses AST parsing to identify violat
 			}
 			return
 		}
-		cmd.Help()
+		_ = cmd.Help()
 	},
 }
 
@@ -109,7 +109,7 @@ func runMigrations() error {
 	if err != nil {
 		return fmt.Errorf("failed to create migration manager: %w", err)
 	}
-	defer migrationManager.Close()
+	defer func() { _ = migrationManager.Close() }()
 
 	return migrationManager.RunMigrations()
 }

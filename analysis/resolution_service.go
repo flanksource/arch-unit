@@ -101,7 +101,7 @@ func (r *ResolutionService) ResolveGitURL(ctx *ScanContext, packageName, package
 		if err := r.cacheAlias(packageName, packageType, gitURL); err != nil {
 			// Log warning but don't fail the resolution
 			if ctx != nil {
-				ctx.Warnf("failed to cache alias for %s/%s: %v", packageType, packageName, err)
+				return "", fmt.Errorf("failed to cache alias for %s/%s: %w", packageType, packageName, err)
 			}
 		}
 	}
@@ -357,7 +357,7 @@ func (r *ResolutionService) validateGitURL(gitURL string) (bool, string, error) 
 		}
 		return false, gitURL, nil // Network error = invalid
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// If we got a successful response, use the final URL
 	if resp.StatusCode < 400 {

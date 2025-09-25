@@ -204,7 +204,7 @@ func (a *GenericAnalyzer) AnalyzeFileFromPath(task *clicky.Task, filepath string
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file %s: %w", filepath, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	content, err := io.ReadAll(file)
 	if err != nil {
@@ -212,4 +212,82 @@ func (a *GenericAnalyzer) AnalyzeFileFromPath(task *clicky.Task, filepath string
 	}
 
 	return a.AnalyzeFile(task, filepath, content)
+}
+
+// AnalyzeFileWithRules analyzes a file and checks for rule violations
+func (a *GenericAnalyzer) AnalyzeFileWithRules(task *clicky.Task, filepath string, content []byte, ruleSets []models.RuleSet) (*ASTResult, error) {
+	// For rule checking, always force analysis (bypass cache)
+	// Get appropriate extractor based on file extension
+	extractor := a.getExtractor(filepath)
+	if extractor == nil {
+		return nil, nil // No extractor for this file type
+	}
+
+	// Extract AST directly
+	result, err := extractor.ExtractFile(a.cache, filepath, content)
+	if err != nil || result == nil {
+		return result, err
+	}
+
+	// If no rules provided, return AST-only result
+	if len(ruleSets) == 0 {
+		return result, nil
+	}
+
+	// Check for rule violations
+	ruleAnalyzer := NewRuleViolationAnalyzer()
+	violations, err := ruleAnalyzer.AnalyzeViolations(result, ruleSets)
+	if err != nil {
+		return nil, fmt.Errorf("failed to analyze rule violations: %w", err)
+	}
+
+	// Add violations to result
+	result.Violations = violations
+	result.ViolationCount = len(violations)
+
+	return result, nil
+}
+
+// AnalyzeGoFiles analyzes multiple Go files and returns aggregated results
+// This is a compatibility function for tests and existing code
+func AnalyzeGoFiles(rootDir string, files []string, ruleSets []models.RuleSet) (*models.AnalysisResult, error) {
+	cache := cache.MustGetASTCache()
+	analyzer := NewGenericAnalyzer(cache)
+
+	result := &models.AnalysisResult{
+		FileCount: len(files),
+	}
+
+	// Create a dummy task for logging
+	task := &clicky.Task{}
+
+	for _, file := range files {
+		// Get rules for this file
+		ruleCount := 0
+		for _, ruleSet := range ruleSets {
+			ruleCount += len(ruleSet.Rules)
+		}
+		result.RuleCount += ruleCount
+
+		// Read file content
+		content, err := os.ReadFile(file)
+		if err != nil {
+			// Skip files that can't be read
+			continue
+		}
+
+		// Analyze with rules
+		astResult, err := analyzer.AnalyzeFileWithRules(task, file, content, ruleSets)
+		if err != nil {
+			// Skip files with analysis errors
+			continue
+		}
+
+		// Add violations to overall result
+		if astResult != nil {
+			result.Violations = append(result.Violations, astResult.Violations...)
+		}
+	}
+
+	return result, nil
 }

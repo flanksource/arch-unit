@@ -244,7 +244,7 @@ func (c *Coordinator) analyzeFile(ctx flanksourceContext.Context, task *task.Tas
 
 	analysisResult, err := lang.Analyzer.AnalyzeFile(task, result.Path, content)
 	if err != nil {
-		task.FailedWithError(err)
+		_, _ = task.FailedWithError(err)
 		return result, nil
 	}
 

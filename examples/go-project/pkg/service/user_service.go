@@ -31,7 +31,7 @@ func (s *UserService) GetUser(id string) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return &User{ID: id}, nil
 }

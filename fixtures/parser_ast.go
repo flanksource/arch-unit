@@ -223,7 +223,7 @@ func parseMarkdownWithGoldmark(content string, frontMatter *FrontMatter, sourceD
 func extractNodeText(node ast.Node, source []byte) string {
 	var buf strings.Builder
 	
-	ast.Walk(node, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+	_ = ast.Walk(node, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering {
 			if text, ok := n.(*ast.Text); ok {
 				buf.Write(text.Segment.Value(source))
@@ -251,7 +251,7 @@ func extractCodeBlockContent(node *ast.FencedCodeBlock, source []byte) string {
 func extractValidationsFromList(listNode *ast.List, source []byte) []string {
 	var validations []string
 	
-	ast.Walk(listNode, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+	_ = ast.Walk(listNode, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering {
 			if listItem, ok := n.(*ast.ListItem); ok {
 				itemText := extractNodeText(listItem, source)
