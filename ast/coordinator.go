@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flanksource/arch-unit/analysis"
+	"github.com/flanksource/arch-unit/analysis/types"
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/languages"
 	"github.com/flanksource/clicky"
@@ -73,7 +73,7 @@ type TaskInfo struct {
 // FileResult represents the result of analyzing a file
 type FileResult struct {
 	Path   string
-	Result *analysis.ASTResult
+	Result *types.ASTResult
 	Error  error
 }
 
@@ -142,11 +142,15 @@ func (c *Coordinator) AnalyzeDirectory(parentTask *clicky.Task, dir string) ([]F
 			}
 		}
 
-		// Use only the filename, not the full path
+		// Use only the filename for display, but we need to pass the full path
 		fileName := filepath.Base(file)
 
 		group := langGroups[lang.Name]
-		group.Add(fileName, c.analyzeFile)
+		// Create a closure that captures the full file path
+		filePath := file
+		group.Add(fileName, func(ctx flanksourceContext.Context, task *task.Task) (FileResult, error) {
+			return c.analyzeFileWithPath(ctx, task, filePath)
+		})
 
 	}
 
@@ -209,9 +213,9 @@ func (c *Coordinator) AnalyzeDirectory(parentTask *clicky.Task, dir string) ([]F
 	return allResults, nil
 }
 
-// analyzeFile analyzes a single file
-func (c *Coordinator) analyzeFile(ctx flanksourceContext.Context, task *task.Task) (FileResult, error) {
-	result := FileResult{Path: task.Name()}
+// analyzeFileWithPath analyzes a single file with the specified path
+func (c *Coordinator) analyzeFileWithPath(ctx flanksourceContext.Context, task *task.Task, filePath string) (FileResult, error) {
+	result := FileResult{Path: filePath}
 
 	// Check cache
 	if !c.noCache && !c.shouldAnalyze(result.Path) {
@@ -249,12 +253,18 @@ func (c *Coordinator) analyzeFile(ctx flanksourceContext.Context, task *task.Tas
 	}
 
 	// Type assert the result
-	astResult, ok := analysisResult.(*analysis.ASTResult)
+	astResult, ok := analysisResult.(*types.ASTResult)
 	if !ok {
 		task.Errorf("Invalid analysis result type")
 		task.Failed()
 		result.Error = fmt.Errorf("invalid analysis result type")
 		return result, result.Error
+	}
+
+	// Check for nil result
+	if astResult == nil {
+		task.Warnf("No AST data extracted from %s", result.Path)
+		return result, nil
 	}
 
 	// Store in cache
@@ -375,7 +385,7 @@ func (c *Coordinator) filterFilesNeedingAnalysis(files []string) []string {
 }
 
 // getCachedAnalysis retrieves cached analysis for a file
-func (c *Coordinator) getCachedAnalysis(file string) (*analysis.ASTResult, error) {
+func (c *Coordinator) getCachedAnalysis(file string) (*types.ASTResult, error) {
 	// Query cached nodes for the file
 	nodes, err := c.cache.GetASTNodesByFile(file)
 	if err != nil {
@@ -383,7 +393,7 @@ func (c *Coordinator) getCachedAnalysis(file string) (*analysis.ASTResult, error
 	}
 
 	// Convert to ASTResult
-	result := &analysis.ASTResult{
+	result := &types.ASTResult{
 		FilePath: file,
 		Nodes:    nodes,
 	}
@@ -394,7 +404,7 @@ func (c *Coordinator) getCachedAnalysis(file string) (*analysis.ASTResult, error
 }
 
 // storeResults stores analysis results in the cache
-func (c *Coordinator) storeResults(file string, result *analysis.ASTResult) error {
+func (c *Coordinator) storeResults(file string, result *types.ASTResult) error {
 	// Use a single transaction for the entire operation to ensure atomicity
 	// This prevents concurrent operations from interfering with each other
 	return c.cache.StoreFileResults(file, result)

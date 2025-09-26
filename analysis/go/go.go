@@ -1,4 +1,4 @@
-package dependencies
+package _go
 
 import (
 	"bufio"
@@ -22,14 +22,11 @@ func NewGoDependencyScanner() *GoDependencyScanner {
 		BaseDependencyScanner: analysis.NewBaseDependencyScanner("go", []string{"go.mod", "go.sum"}),
 	}
 
-	// Register with the global registry
-	analysis.DefaultDependencyRegistry.Register(scanner)
-
 	return scanner
 }
 
 // ScanFile scans a go.mod file and extracts dependencies
-func (s *GoDependencyScanner) ScanFile(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *GoDependencyScanner) ScanFile(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	if !strings.HasSuffix(filepath, "go.mod") {
 		return s.scanGoSum(ctx, filepath, content)
 	}
@@ -100,7 +97,7 @@ func (s *GoDependencyScanner) ScanFile(ctx *analysis.ScanContext, filepath strin
 }
 
 // scanGoSum extracts dependency information from go.sum file
-func (s *GoDependencyScanner) scanGoSum(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *GoDependencyScanner) scanGoSum(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	if !strings.HasSuffix(filepath, "go.sum") {
 		return nil, fmt.Errorf("not a go.sum file: %s", filepath)
 	}
@@ -180,6 +177,11 @@ func (s *GoDependencyScanner) scanGoSum(ctx *analysis.ScanContext, filepath stri
 }
 
 func init() {
-	// Auto-register the scanner
-	NewGoDependencyScanner()
+	// Register Go dependency scanner
+	goDependencyScanner := NewGoDependencyScanner()
+	analysis.RegisterDependencyScanner(goDependencyScanner)
+
+	// Register Go AST extractor with DefaultExtractorRegistry
+	goExtractor := NewGoASTExtractor()
+	analysis.DefaultExtractorRegistry.Register("go", goExtractor)
 }

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/flanksource/arch-unit/analysis"
+	goAnalysis "github.com/flanksource/arch-unit/analysis/go"
 	"github.com/flanksource/arch-unit/languages"
 )
 
@@ -112,7 +113,7 @@ func (h *GoHandler) GetAnalyzer() languages.ASTAnalyzer {
 
 // GetDependencyScanner returns the dependency scanner for Go
 func (h *GoHandler) GetDependencyScanner() analysis.DependencyScanner {
-	return analysis.NewGoDependencyScanner()
+	return goAnalysis.NewGoDependencyScanner()
 }
 
 func init() {

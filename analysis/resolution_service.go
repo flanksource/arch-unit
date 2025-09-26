@@ -72,7 +72,7 @@ func ResetResolutionService() {
 
 // ResolveGitURL attempts to resolve a Git URL for the given package
 // Returns the resolved URL or empty string if none found
-func (r *ResolutionService) ResolveGitURL(ctx *ScanContext, packageName, packageType string) (string, error) {
+func (r *ResolutionService) ResolveGitURL(ctx *models.ScanContext, packageName, packageType string) (string, error) {
 	// Check cache first (if cache is available and TTL > 0)
 	if r.cache != nil && r.cacheTTL > 0 {
 		if cached, err := r.getCachedAlias(packageName, packageType); err == nil && cached != nil && !cached.IsExpiredWithTTL(r.cacheTTL) {
@@ -110,7 +110,7 @@ func (r *ResolutionService) ResolveGitURL(ctx *ScanContext, packageName, package
 }
 
 // extractGitURL uses heuristics to extract Git URLs based on package type
-func (r *ResolutionService) extractGitURL(ctx *ScanContext, packageName, packageType string) (string, error) {
+func (r *ResolutionService) extractGitURL(ctx *models.ScanContext, packageName, packageType string) (string, error) {
 	switch strings.ToLower(packageType) {
 	case "go":
 		return r.extractGoGitURL(ctx, packageName)
@@ -128,7 +128,7 @@ func (r *ResolutionService) extractGitURL(ctx *ScanContext, packageName, package
 }
 
 // extractGoGitURL extracts Git URLs for Go modules
-func (r *ResolutionService) extractGoGitURL(ctx *ScanContext, packageName string) (string, error) {
+func (r *ResolutionService) extractGoGitURL(ctx *models.ScanContext, packageName string) (string, error) {
 	// Direct GitHub/GitLab patterns
 	if strings.HasPrefix(packageName, "github.com/") {
 		return "https://" + packageName, nil
@@ -155,7 +155,7 @@ func (r *ResolutionService) extractGoGitURL(ctx *ScanContext, packageName string
 }
 
 // extractGopkgGitURL handles gopkg.in redirects
-func (r *ResolutionService) extractGopkgGitURL(ctx *ScanContext, packageName string) (string, error) {
+func (r *ResolutionService) extractGopkgGitURL(ctx *models.ScanContext, packageName string) (string, error) {
 	// gopkg.in/yaml.v3 -> github.com/go-yaml/yaml
 	// gopkg.in/user/repo.v1 -> github.com/user/repo
 
@@ -183,21 +183,21 @@ func (r *ResolutionService) extractGopkgGitURL(ctx *ScanContext, packageName str
 }
 
 // extractNpmGitURL extracts Git URLs for NPM packages (placeholder)
-func (r *ResolutionService) extractNpmGitURL(ctx *ScanContext, packageName string) (string, error) {
+func (r *ResolutionService) extractNpmGitURL(ctx *models.ScanContext, packageName string) (string, error) {
 	// This would typically involve calling the NPM registry API
 	// For now, return empty as we focus on Go packages first
 	return "", nil
 }
 
 // extractPythonGitURL extracts Git URLs for Python packages (placeholder)
-func (r *ResolutionService) extractPythonGitURL(ctx *ScanContext, packageName string) (string, error) {
+func (r *ResolutionService) extractPythonGitURL(ctx *models.ScanContext, packageName string) (string, error) {
 	// This would typically involve calling PyPI API
 	// For now, return empty as we focus on Go packages first
 	return "", nil
 }
 
 // extractDockerGitURL extracts Git URLs for Docker images
-func (r *ResolutionService) extractDockerGitURL(ctx *ScanContext, packageName string) (string, error) {
+func (r *ResolutionService) extractDockerGitURL(ctx *models.ScanContext, packageName string) (string, error) {
 	// Strip common registry prefixes
 	packageName = strings.TrimPrefix(packageName, "docker.io/")
 	packageName = strings.TrimPrefix(packageName, "index.docker.io/")
@@ -258,7 +258,7 @@ func (r *ResolutionService) extractDockerGitURL(ctx *ScanContext, packageName st
 }
 
 // extractHelmGitURL extracts Git URLs for Helm charts
-func (r *ResolutionService) extractHelmGitURL(ctx *ScanContext, packageName string) (string, error) {
+func (r *ResolutionService) extractHelmGitURL(ctx *models.ScanContext, packageName string) (string, error) {
 	// Handle common Helm chart repositories
 
 	// Flanksource charts - try individual repositories first, then fall back to monorepo
@@ -306,7 +306,7 @@ func (r *ResolutionService) extractHelmGitURL(ctx *ScanContext, packageName stri
 	return "", nil
 }
 
-func (r *ResolutionService) ValidateGitURL(ctx *ScanContext, gitURL string) (bool, string, error) {
+func (r *ResolutionService) ValidateGitURL(ctx *models.ScanContext, gitURL string) (bool, string, error) {
 	valid, finalURL, err := r.validateGitURL(gitURL)
 	if ctx != nil {
 		if gitURL != finalURL {

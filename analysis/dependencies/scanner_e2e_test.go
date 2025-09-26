@@ -9,7 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/flanksource/arch-unit/analysis"
+	"github.com/flanksource/arch-unit/models"
 )
 
 var _ = Describe("E2E Dependency Scanning", func() {
@@ -26,7 +26,7 @@ var _ = Describe("E2E Dependency Scanning", func() {
 			scanner.SetupGitSupport(tempDir)
 
 			// Create scan context with depth=2 and filter for flanksource packages
-			ctx := analysis.NewScanContext(nil, "https://github.com/flanksource/canary-checker@HEAD").
+			ctx := models.NewScanContext(nil, "https://github.com/flanksource/canary-checker@HEAD").
 				WithDepth(2).
 				WithFilter("*flanksource*")
 
@@ -145,7 +145,7 @@ var _ = Describe("E2E Dependency Scanning", func() {
 			scanner.SetupGitSupport(tempDir)
 
 			// Create scan context with depth=1 to scan immediate dependencies
-			ctx := analysis.NewScanContext(nil, projectRoot).
+			ctx := models.NewScanContext(nil, projectRoot).
 				WithDepth(1).
 				WithFilter("*flanksource*") // Filter for flanksource packages
 
@@ -208,7 +208,7 @@ var _ = Describe("E2E Dependency Scanning", func() {
 
 			// Create scan context with depth=1 to traverse through multiple dependency types
 			// Using go-getter subdirectory syntax: //chart specifies the subdirectory within the repo
-			ctx := analysis.NewScanContext(nil, "https://github.com/flanksource/mission-control-chart//chart@HEAD").
+			ctx := models.NewScanContext(nil, "https://github.com/flanksource/mission-control-chart//chart@HEAD").
 				WithDepth(1).
 				WithFilter("*flanksource*") // Filter for flanksource dependencies
 

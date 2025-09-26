@@ -1,4 +1,4 @@
-package analysis
+package _go
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flanksource/arch-unit/analysis/types"
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
 )
@@ -29,9 +30,9 @@ func NewGoASTExtractor() *GoASTExtractor {
 }
 
 // ExtractFile extracts AST information from a Go file
-func (e *GoASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath string, content []byte) (*ASTResult, error) {
+func (e *GoASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath string, content []byte) (*types.ASTResult, error) {
 	// Create result container
-	result := NewASTResult(filePath, "go")
+	result := types.NewASTResult(filePath, "go")
 
 	// Parse the Go file
 	src, err := parser.ParseFile(e.fileSet, filePath, content, parser.ParseComments)
@@ -76,7 +77,7 @@ func (e *GoASTExtractor) extractImport(imp *ast.ImportSpec) {
 }
 
 // extractDeclaration processes top-level declarations
-func (e *GoASTExtractor) extractDeclaration(cache cache.ReadOnlyCache, decl ast.Decl, result *ASTResult) error {
+func (e *GoASTExtractor) extractDeclaration(cache cache.ReadOnlyCache, decl ast.Decl, result *types.ASTResult) error {
 	switch d := decl.(type) {
 	case *ast.GenDecl:
 		return e.extractGenDecl(cache, d, result)
@@ -87,7 +88,7 @@ func (e *GoASTExtractor) extractDeclaration(cache cache.ReadOnlyCache, decl ast.
 }
 
 // extractGenDecl processes general declarations (types, variables, constants)
-func (e *GoASTExtractor) extractGenDecl(cache cache.ReadOnlyCache, decl *ast.GenDecl, result *ASTResult) error {
+func (e *GoASTExtractor) extractGenDecl(cache cache.ReadOnlyCache, decl *ast.GenDecl, result *types.ASTResult) error {
 	for _, spec := range decl.Specs {
 		switch s := spec.(type) {
 		case *ast.TypeSpec:
@@ -104,7 +105,7 @@ func (e *GoASTExtractor) extractGenDecl(cache cache.ReadOnlyCache, decl *ast.Gen
 }
 
 // extractTypeSpec processes type declarations
-func (e *GoASTExtractor) extractTypeSpec(cache cache.ReadOnlyCache, spec *ast.TypeSpec, result *ASTResult) error {
+func (e *GoASTExtractor) extractTypeSpec(cache cache.ReadOnlyCache, spec *ast.TypeSpec, result *types.ASTResult) error {
 	typeName := spec.Name.Name
 	startPos := e.fileSet.Position(spec.Pos())
 	endPos := e.fileSet.Position(spec.End())
@@ -141,7 +142,7 @@ func (e *GoASTExtractor) extractTypeSpec(cache cache.ReadOnlyCache, spec *ast.Ty
 }
 
 // extractStructFields processes struct fields
-func (e *GoASTExtractor) extractStructFields(cache cache.ReadOnlyCache, parentNode *models.ASTNode, typeName string, structType *ast.StructType, result *ASTResult) error {
+func (e *GoASTExtractor) extractStructFields(cache cache.ReadOnlyCache, parentNode *models.ASTNode, typeName string, structType *ast.StructType, result *types.ASTResult) error {
 	for _, field := range structType.Fields.List {
 		for _, name := range field.Names {
 			fieldNode := &models.ASTNode{
@@ -162,7 +163,7 @@ func (e *GoASTExtractor) extractStructFields(cache cache.ReadOnlyCache, parentNo
 }
 
 // extractInterfaceMethods processes interface methods
-func (e *GoASTExtractor) extractInterfaceMethods(cache cache.ReadOnlyCache, parentNode *models.ASTNode, typeName string, interfaceType *ast.InterfaceType, result *ASTResult) error {
+func (e *GoASTExtractor) extractInterfaceMethods(cache cache.ReadOnlyCache, parentNode *models.ASTNode, typeName string, interfaceType *ast.InterfaceType, result *types.ASTResult) error {
 	for _, method := range interfaceType.Methods.List {
 		if len(method.Names) > 0 {
 			methodName := method.Names[0].Name
@@ -192,7 +193,7 @@ func (e *GoASTExtractor) extractInterfaceMethods(cache cache.ReadOnlyCache, pare
 }
 
 // extractValueSpec processes variable and constant declarations
-func (e *GoASTExtractor) extractValueSpec(cache cache.ReadOnlyCache, spec *ast.ValueSpec, isConstant bool, result *ASTResult) error {
+func (e *GoASTExtractor) extractValueSpec(cache cache.ReadOnlyCache, spec *ast.ValueSpec, isConstant bool, result *types.ASTResult) error {
 	for _, name := range spec.Names {
 		if name.Name == "_" {
 			continue // Skip blank identifiers
@@ -214,7 +215,7 @@ func (e *GoASTExtractor) extractValueSpec(cache cache.ReadOnlyCache, spec *ast.V
 }
 
 // extractFuncDecl processes function declarations
-func (e *GoASTExtractor) extractFuncDecl(cache cache.ReadOnlyCache, decl *ast.FuncDecl, receiverType string, result *ASTResult) error {
+func (e *GoASTExtractor) extractFuncDecl(cache cache.ReadOnlyCache, decl *ast.FuncDecl, receiverType string, result *types.ASTResult) error {
 	funcName := decl.Name.Name
 	startPos := e.fileSet.Position(decl.Pos())
 	endPos := e.fileSet.Position(decl.End())
@@ -412,7 +413,7 @@ func (e *GoASTExtractor) calculateCyclomaticComplexity(body *ast.BlockStmt) int 
 }
 
 // extractFunctionCalls extracts function calls and method invocations from function body
-func (e *GoASTExtractor) extractFunctionCalls(cache cache.ReadOnlyCache, funcNode *models.ASTNode, body *ast.BlockStmt, result *ASTResult) error {
+func (e *GoASTExtractor) extractFunctionCalls(cache cache.ReadOnlyCache, funcNode *models.ASTNode, body *ast.BlockStmt, result *types.ASTResult) error {
 	ast.Inspect(body, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.CallExpr:
@@ -427,7 +428,7 @@ func (e *GoASTExtractor) extractFunctionCalls(cache cache.ReadOnlyCache, funcNod
 }
 
 // extractCallExpr processes a function call expression
-func (e *GoASTExtractor) extractCallExpr(cache cache.ReadOnlyCache, funcNode *models.ASTNode, call *ast.CallExpr, result *ASTResult) error {
+func (e *GoASTExtractor) extractCallExpr(cache cache.ReadOnlyCache, funcNode *models.ASTNode, call *ast.CallExpr, result *types.ASTResult) error {
 	callLine := e.fileSet.Position(call.Pos()).Line
 	callText := e.getCallExprText(call)
 
@@ -448,7 +449,7 @@ func (e *GoASTExtractor) extractCallExpr(cache cache.ReadOnlyCache, funcNode *mo
 }
 
 // handleSimpleFunctionCall handles calls to functions in the same package
-func (e *GoASTExtractor) handleSimpleFunctionCall(cache cache.ReadOnlyCache, funcNode *models.ASTNode, line int, text, funcName string, result *ASTResult) error {
+func (e *GoASTExtractor) handleSimpleFunctionCall(cache cache.ReadOnlyCache, funcNode *models.ASTNode, line int, text, funcName string, result *types.ASTResult) error {
 	// Try to find the function in the current package using cache lookup
 	targetKey := fmt.Sprintf("%s/%s:%s", e.filePath, "", funcName) // Empty type name for package-level functions
 	if targetID, exists := cache.GetASTId(targetKey); exists {
@@ -476,7 +477,7 @@ func (e *GoASTExtractor) handleSimpleFunctionCall(cache cache.ReadOnlyCache, fun
 }
 
 // handleSelectorCall handles method calls and package function calls
-func (e *GoASTExtractor) handleSelectorCall(cache cache.ReadOnlyCache, funcNode *models.ASTNode, line int, text string, sel *ast.SelectorExpr, result *ASTResult) error {
+func (e *GoASTExtractor) handleSelectorCall(cache cache.ReadOnlyCache, funcNode *models.ASTNode, line int, text string, sel *ast.SelectorExpr, result *types.ASTResult) error {
 	methodName := sel.Sel.Name
 
 	switch x := sel.X.(type) {
@@ -516,7 +517,7 @@ func (e *GoASTExtractor) handleSelectorCall(cache cache.ReadOnlyCache, funcNode 
 }
 
 // handleLibraryCall processes calls to external libraries
-func (e *GoASTExtractor) handleLibraryCall(funcNode *models.ASTNode, line int, text, pkgPath, className, methodName string, result *ASTResult) error {
+func (e *GoASTExtractor) handleLibraryCall(funcNode *models.ASTNode, line int, text, pkgPath, className, methodName string, result *types.ASTResult) error {
 	// Determine framework/library type
 	framework := e.classifyLibrary(pkgPath)
 
@@ -557,7 +558,7 @@ func (e *GoASTExtractor) classifyLibrary(pkgPath string) string {
 }
 
 // storeGenericCall stores a generic call relationship
-func (e *GoASTExtractor) storeGenericCall(funcNode *models.ASTNode, line int, text string, result *ASTResult) error {
+func (e *GoASTExtractor) storeGenericCall(funcNode *models.ASTNode, line int, text string, result *types.ASTResult) error {
 	rel := &models.ASTRelationship{
 		FromASTID:        0, // Will be filled when funcNode gets its ID
 		ToASTID:          nil,

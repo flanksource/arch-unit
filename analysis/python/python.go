@@ -1,4 +1,4 @@
-package dependencies
+package python
 
 import (
 	"bufio"
@@ -13,6 +13,16 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
+func init() {
+	// Register Python dependency scanner
+	pythonDependencyScanner := NewPythonDependencyScanner()
+	analysis.RegisterDependencyScanner(pythonDependencyScanner)
+
+	// Register Python AST extractor
+	pythonExtractor := NewPythonASTExtractor()
+	analysis.RegisterExtractor("python", pythonExtractor)
+}
+
 // PythonDependencyScanner scans Python dependencies from various file formats
 type PythonDependencyScanner struct {
 	*analysis.BaseDependencyScanner
@@ -26,14 +36,11 @@ func NewPythonDependencyScanner() *PythonDependencyScanner {
 				"pyproject.toml", "setup.py", "setup.cfg", "poetry.lock"}),
 	}
 
-	// Register with the global registry
-	analysis.DefaultDependencyRegistry.Register(scanner)
-
 	return scanner
 }
 
 // ScanFile scans a Python dependency file and extracts dependencies
-func (s *PythonDependencyScanner) ScanFile(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *PythonDependencyScanner) ScanFile(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	filename := strings.ToLower(filepath)
 
 	switch {
@@ -57,7 +64,7 @@ func (s *PythonDependencyScanner) ScanFile(ctx *analysis.ScanContext, filepath s
 }
 
 // scanRequirementsTxt scans requirements.txt format files
-func (s *PythonDependencyScanner) scanRequirementsTxt(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *PythonDependencyScanner) scanRequirementsTxt(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning Python requirements from %s", filepath)
 
 	var dependencies []*models.Dependency
@@ -111,7 +118,7 @@ func (s *PythonDependencyScanner) scanRequirementsTxt(ctx *analysis.ScanContext,
 }
 
 // scanPipfile scans Pipfile format
-func (s *PythonDependencyScanner) scanPipfile(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *PythonDependencyScanner) scanPipfile(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning Pipfile from %s", filepath)
 
 	var pipfile struct {
@@ -172,7 +179,7 @@ func (s *PythonDependencyScanner) scanPipfile(ctx *analysis.ScanContext, filepat
 }
 
 // scanPipfileLock scans Pipfile.lock format
-func (s *PythonDependencyScanner) scanPipfileLock(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *PythonDependencyScanner) scanPipfileLock(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning Pipfile.lock from %s", filepath)
 
 	var lockfile struct {
@@ -219,7 +226,7 @@ func (s *PythonDependencyScanner) scanPipfileLock(ctx *analysis.ScanContext, fil
 }
 
 // scanPyprojectToml scans pyproject.toml format
-func (s *PythonDependencyScanner) scanPyprojectToml(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *PythonDependencyScanner) scanPyprojectToml(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning pyproject.toml from %s", filepath)
 
 	var pyproject struct {
@@ -318,7 +325,7 @@ func (s *PythonDependencyScanner) scanPyprojectToml(ctx *analysis.ScanContext, f
 }
 
 // scanPoetryLock scans poetry.lock format
-func (s *PythonDependencyScanner) scanPoetryLock(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *PythonDependencyScanner) scanPoetryLock(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning poetry.lock from %s", filepath)
 
 	var lockfile struct {
@@ -361,7 +368,7 @@ func (s *PythonDependencyScanner) scanPoetryLock(ctx *analysis.ScanContext, file
 }
 
 // scanSetupPy scans setup.py files (basic parsing)
-func (s *PythonDependencyScanner) scanSetupPy(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *PythonDependencyScanner) scanSetupPy(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning setup.py from %s", filepath)
 
 	// This is a simplified parser - setup.py is Python code and can be complex
@@ -408,7 +415,7 @@ func (s *PythonDependencyScanner) scanSetupPy(ctx *analysis.ScanContext, filepat
 }
 
 // scanSetupCfg scans setup.cfg files
-func (s *PythonDependencyScanner) scanSetupCfg(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *PythonDependencyScanner) scanSetupCfg(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning setup.cfg from %s", filepath)
 
 	var dependencies []*models.Dependency
@@ -477,9 +484,4 @@ func (s *PythonDependencyScanner) scanSetupCfg(ctx *analysis.ScanContext, filepa
 
 	ctx.Debugf("Found %d Python dependencies in setup.cfg", len(dependencies))
 	return dependencies, nil
-}
-
-func init() {
-	// Auto-register the scanner
-	NewPythonDependencyScanner()
 }

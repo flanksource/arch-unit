@@ -106,12 +106,12 @@ func (tb *TreeBuilder) getDependencyKey(dep *models.Dependency) string {
 // countRepositories counts unique git repositories in dependencies
 func (tb *TreeBuilder) countRepositories(deps []*models.Dependency) int {
 	repoSet := make(map[string]bool)
-	
+
 	for _, dep := range deps {
 		if dep.Git != "" {
 			repoSet[dep.Git] = true
 		}
 	}
-	
+
 	return len(repoSet)
 }

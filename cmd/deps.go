@@ -5,6 +5,7 @@ import (
 
 	"github.com/flanksource/arch-unit/analysis"
 	"github.com/flanksource/arch-unit/analysis/dependencies"
+	goAnalysis "github.com/flanksource/arch-unit/analysis/go"
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/task"
@@ -157,8 +158,8 @@ func performDependencyScan(ctx clicky.Context, t *clicky.Task, path string) (*mo
 		}
 	}
 
-	// Add our enhanced Go scanner with resolver
-	goScanner := analysis.NewGoDependencyScannerWithResolver(resolver)
+	// Add Go scanner (standard version for now)
+	goScanner := goAnalysis.NewGoDependencyScanner()
 	registry.Register(goScanner)
 
 	// Add enhanced Helm scanner with resolver
@@ -178,7 +179,7 @@ func performDependencyScan(ctx clicky.Context, t *clicky.Task, path string) (*mo
 	}
 
 	// Create scan context with all configuration
-	scanCtx := analysis.NewScanContext(t, path).
+	scanCtx := models.NewScanContext(t, path).
 		WithDepth(depsDepth).
 		WithIndirect(depsIndirect).
 		WithFilter(dependencies.ParseFilters(depsFilters))

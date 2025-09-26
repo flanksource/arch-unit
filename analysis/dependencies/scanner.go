@@ -54,12 +54,12 @@ func NewScannerWithRegistry(registry *analysis.DependencyRegistry) *Scanner {
 // ScanPath scans a path (local directory or git URL) for dependencies with optional depth traversal
 func (s *Scanner) ScanPath(task *clicky.Task, pathOrURL string, maxDepth int) (*models.ScanResult, error) {
 	// Create a scan context with the provided configuration
-	ctx := analysis.NewScanContext(task, pathOrURL).WithDepth(maxDepth)
+	ctx := models.NewScanContext(task, pathOrURL).WithDepth(maxDepth)
 	return s.ScanWithContext(ctx, pathOrURL)
 }
 
 // ScanWithContext performs scanning with a configured context using the new walker
-func (s *Scanner) ScanWithContext(ctx *analysis.ScanContext, pathOrURL string) (*models.ScanResult, error) {
+func (s *Scanner) ScanWithContext(ctx *models.ScanContext, pathOrURL string) (*models.ScanResult, error) {
 	if ctx.MaxDepth < 0 {
 		ctx.MaxDepth = 0 // Default to no depth traversal
 	}
@@ -189,7 +189,7 @@ func (s *Scanner) getDependencyKey(dep *models.Dependency) string {
 // ScanWithDepth performs depth-based dependency scanning using the walker
 func (s *Scanner) ScanWithDepth(task *clicky.Task, dir string, maxDepth int) (*git.DependencyTree, error) {
 	// Create scan context
-	ctx := analysis.NewScanContext(task, dir).WithDepth(maxDepth)
+	ctx := models.NewScanContext(task, dir).WithDepth(maxDepth)
 
 	// Use the new walker
 	walker := NewDependencyWalker(s, ctx)

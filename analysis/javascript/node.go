@@ -1,4 +1,4 @@
-package dependencies
+package javascript
 
 import (
 	"encoding/json"
@@ -6,19 +6,20 @@ import (
 	"strings"
 
 	"github.com/flanksource/arch-unit/analysis"
+	"github.com/flanksource/arch-unit/analysis/dependencies"
 	"github.com/flanksource/arch-unit/models"
 	"gopkg.in/yaml.v3"
 )
 
 // NodeDependencyScanner scans Node.js/JavaScript dependencies
 type NodeDependencyScanner struct {
-	*analysis.BaseDependencyScanner
+	*dependencies.BaseDependencyScanner
 }
 
 // NewNodeDependencyScanner creates a new Node.js dependency scanner
 func NewNodeDependencyScanner() *NodeDependencyScanner {
 	scanner := &NodeDependencyScanner{
-		BaseDependencyScanner: analysis.NewBaseDependencyScanner("node",
+		BaseDependencyScanner: dependencies.NewBaseDependencyScanner("node",
 			[]string{"package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"}),
 	}
 
@@ -29,7 +30,7 @@ func NewNodeDependencyScanner() *NodeDependencyScanner {
 }
 
 // ScanFile scans a Node.js dependency file and extracts dependencies
-func (s *NodeDependencyScanner) ScanFile(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *NodeDependencyScanner) ScanFile(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	filename := strings.ToLower(filepath)
 
 	switch {
@@ -47,7 +48,7 @@ func (s *NodeDependencyScanner) ScanFile(ctx *analysis.ScanContext, filepath str
 }
 
 // scanPackageJson scans package.json files
-func (s *NodeDependencyScanner) scanPackageJson(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *NodeDependencyScanner) scanPackageJson(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning Node.js dependencies from %s", filepath)
 
 	var packageJson struct {
@@ -79,7 +80,7 @@ func (s *NodeDependencyScanner) scanPackageJson(ctx *analysis.ScanContext, filep
 }
 
 // scanPackageLockJson scans package-lock.json files
-func (s *NodeDependencyScanner) scanPackageLockJson(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *NodeDependencyScanner) scanPackageLockJson(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning Node.js lock file from %s", filepath)
 
 	var lockFile struct {
@@ -145,7 +146,7 @@ func (s *NodeDependencyScanner) scanPackageLockJson(ctx *analysis.ScanContext, f
 }
 
 // scanYarnLock scans yarn.lock files
-func (s *NodeDependencyScanner) scanYarnLock(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *NodeDependencyScanner) scanYarnLock(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning Yarn lock file from %s", filepath)
 
 	// Yarn lock files have a custom format, we'll do basic parsing
@@ -212,7 +213,7 @@ func (s *NodeDependencyScanner) scanYarnLock(ctx *analysis.ScanContext, filepath
 }
 
 // scanPnpmLock scans pnpm-lock.yaml files
-func (s *NodeDependencyScanner) scanPnpmLock(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *NodeDependencyScanner) scanPnpmLock(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning pnpm lock file from %s", filepath)
 
 	var lockFile struct {

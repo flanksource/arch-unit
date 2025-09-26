@@ -10,6 +10,13 @@ import (
 	"github.com/flanksource/commons/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	// Import language packages to trigger init() registration
+	_ "github.com/flanksource/arch-unit/analysis/go"
+	_ "github.com/flanksource/arch-unit/analysis/java"
+	_ "github.com/flanksource/arch-unit/analysis/javascript"
+	_ "github.com/flanksource/arch-unit/analysis/markdown"
+	_ "github.com/flanksource/arch-unit/analysis/python"
 )
 
 var (
@@ -37,9 +44,19 @@ code dependencies and method calls based on rules defined in .ARCHUNIT files.
 
 It supports both Go and Python codebases and uses AST parsing to identify violations.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Apply clicky flags first
+		clicky.Flags.UseFlags()
+
 		// Run migrations before any command execution
 		if err := runMigrations(); err != nil {
 			logger.Errorf("Failed to run migrations: %v", err)
+			os.Exit(1)
+		}
+
+		// Test database write access
+		if err := cache.TestWriteAccess(); err != nil {
+			logger.Errorf("Database write access test failed: %v", err)
+			logger.Errorf("Please check file permissions on ~/.cache/arch-unit/ directory and available disk space")
 			os.Exit(1)
 		}
 	},

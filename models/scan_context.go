@@ -1,7 +1,6 @@
-package analysis
+package models
 
 import (
-	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/clicky"
 )
 
@@ -42,7 +41,7 @@ func (ctx *ScanContext) WithFilter(filter string) *ScanContext {
 }
 
 // FilterDeps is an alias for Filter for compatibility
-func (ctx *ScanContext) Matches(dep *models.Dependency) bool {
+func (ctx *ScanContext) Matches(dep *Dependency) bool {
 	if ctx == nil {
 		return true // If no context, don't filter
 	}
@@ -50,7 +49,7 @@ func (ctx *ScanContext) Matches(dep *models.Dependency) bool {
 }
 
 // FilterDeps is an alias for Filter for compatibility
-func (ctx *ScanContext) FilterDeps(deps []*models.Dependency) []*models.Dependency {
+func (ctx *ScanContext) FilterDeps(deps []*Dependency) []*Dependency {
 	return ctx.Filter(deps)
 }
 
@@ -75,11 +74,11 @@ func (ctx *ScanContext) Debugf(format string, args ...interface{}) {
 	}
 }
 
-func (ctx *ScanContext) Filter(deps []*models.Dependency) []*models.Dependency {
+func (ctx *ScanContext) Filter(deps []*Dependency) []*Dependency {
 	if ctx == nil || ctx.filter == "" {
 		return deps
 	}
-	var filtered []*models.Dependency
+	var filtered []*Dependency
 	for _, d := range deps {
 		if d.Matches(ctx.filter) {
 			filtered = append(filtered, d)

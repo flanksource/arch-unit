@@ -21,7 +21,7 @@ import (
 
 // ASTCache manages cached AST data and relationships using GORM
 type ASTCache struct {
-	db *gorm.DB
+	db DBInterface
 }
 
 var (
@@ -115,10 +115,10 @@ func newASTCacheWithPath(cacheDir string) (*ASTCache, error) {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	// Use the existing GORM database instance
-	db, err := NewGormDBWithPath(cacheDir)
+	// Use the dual-pool GORM database instance
+	db, err := newDualPoolGormDBWithPath(cacheDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database with GORM: %w", err)
+		return nil, fmt.Errorf("failed to open database with dual-pool GORM: %w", err)
 	}
 
 	cache := &ASTCache{db: db}
@@ -263,7 +263,7 @@ func (c *ASTCache) UpdateFileMetadata(filePath string) error {
 	}
 
 	// Use Clauses to handle upsert (INSERT ... ON CONFLICT DO UPDATE)
-	if err := c.db.Clauses(clause.OnConflict{
+	if err := c.db.GetWriteDB().Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "file_path"}},
 		DoUpdates: clause.AssignmentColumns([]string{"file_hash", "file_size", "last_modified", "last_analyzed", "analysis_version"}),
 	}).Create(metadata).Error; err != nil {
@@ -275,11 +275,24 @@ func (c *ASTCache) UpdateFileMetadata(filePath string) error {
 
 // StoreASTNode stores an AST node and returns its ID
 func (c *ASTCache) StoreASTNode(node *models.ASTNode) (int64, error) {
+	// Check for nil node
+	if node == nil {
+		return 0, fmt.Errorf("cannot store nil AST node")
+	}
+
+	// Check for nil cache or database connection
+	if c == nil {
+		return 0, fmt.Errorf("ASTCache is nil")
+	}
+	if c.db == nil {
+		return 0, fmt.Errorf("database connection is nil")
+	}
+
 	// GORM handles JSON serialization automatically with the gorm:"serializer:json" tag
 	// No need to manually marshal parameters and return values
 
 	// Use Save to insert or update (equivalent to INSERT OR REPLACE)
-	if err := c.db.Save(node).Error; err != nil {
+	if err := c.db.Save(node); err != nil {
 		return 0, fmt.Errorf("failed to save AST node: %w", err)
 	}
 
@@ -291,7 +304,7 @@ func (c *ASTCache) GetASTNode(id int64) (*models.ASTNode, error) {
 	var node models.ASTNode
 
 	// Use GORM's First method to find by ID
-	if err := c.db.First(&node, id).Error; err != nil {
+	if err := c.db.First(&node, id); err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, sql.ErrNoRows // Maintain compatibility with existing error handling
 		}
@@ -306,8 +319,8 @@ func (c *ASTCache) GetASTNode(id int64) (*models.ASTNode, error) {
 func (c *ASTCache) GetASTNodesByFile(filePath string) ([]*models.ASTNode, error) {
 	var nodes []*models.ASTNode
 
-	// Use GORM's Where and Find methods with ordering
-	if err := c.db.Where("file_path = ?", filePath).Order("start_line").Find(&nodes).Error; err != nil {
+	// Use protected GORM's Where and Find methods with ordering
+	if err := c.db.GetReadDB().Where("file_path = ?", filePath).Order("start_line").Find(&nodes).Error; err != nil {
 		return nil, fmt.Errorf("failed to get AST nodes by file: %w", err)
 	}
 
@@ -317,6 +330,14 @@ func (c *ASTCache) GetASTNodesByFile(filePath string) ([]*models.ASTNode, error)
 
 // StoreASTRelationship stores a relationship between AST nodes
 func (c *ASTCache) StoreASTRelationship(fromID int64, toID *int64, lineNo int, relType, text string) error {
+	// Check for nil cache or database connection
+	if c == nil {
+		return fmt.Errorf("ASTCache is nil")
+	}
+	if c.db == nil {
+		return fmt.Errorf("database connection is nil")
+	}
+
 	relationship := &models.ASTRelationship{
 		FromASTID:        fromID,
 		ToASTID:          toID,
@@ -325,7 +346,7 @@ func (c *ASTCache) StoreASTRelationship(fromID int64, toID *int64, lineNo int, r
 		Text:             text,
 	}
 
-	if err := c.db.Create(relationship).Error; err != nil {
+	if err := c.db.Create(relationship); err != nil {
 		return fmt.Errorf("failed to store AST relationship: %w", err)
 	}
 
@@ -351,6 +372,14 @@ func (c *ASTCache) GetASTRelationships(astID int64, relType string) ([]*models.A
 
 // StoreLibraryNode stores a library node and returns its ID
 func (c *ASTCache) StoreLibraryNode(pkg, class, method, field, nodeType, language, framework string) (int64, error) {
+	// Check for nil cache or database connection
+	if c == nil {
+		return 0, fmt.Errorf("ASTCache is nil")
+	}
+	if c.db == nil {
+		return 0, fmt.Errorf("database connection is nil")
+	}
+
 	node := &models.LibraryNode{
 		Package:   pkg,
 		Class:     class,
@@ -363,7 +392,12 @@ func (c *ASTCache) StoreLibraryNode(pkg, class, method, field, nodeType, languag
 
 	// Try to find existing node first
 	var existing models.LibraryNode
-	result := c.db.Where("package = ? AND class = ? AND method = ? AND field = ?",
+	readDB := c.db.GetReadDB()
+	if readDB == nil {
+		return 0, fmt.Errorf("failed to get read database connection")
+	}
+
+	result := readDB.Where("package = ? AND class = ? AND method = ? AND field = ?",
 		pkg, class, method, field).First(&existing)
 
 	if result.Error == nil {
@@ -373,8 +407,8 @@ func (c *ASTCache) StoreLibraryNode(pkg, class, method, field, nodeType, languag
 		return 0, fmt.Errorf("failed to check existing library node: %w", result.Error)
 	}
 
-	// Create new node
-	if err := c.db.Create(node).Error; err != nil {
+	// Create new node using the interface
+	if err := c.db.Create(node); err != nil {
 		return 0, fmt.Errorf("failed to create library node: %w", err)
 	}
 
@@ -383,6 +417,14 @@ func (c *ASTCache) StoreLibraryNode(pkg, class, method, field, nodeType, languag
 
 // StoreLibraryRelationship stores a relationship between AST node and library node
 func (c *ASTCache) StoreLibraryRelationship(astID, libraryID int64, lineNo int, relType, text string) error {
+	// Check for nil cache or database connection
+	if c == nil {
+		return fmt.Errorf("ASTCache is nil")
+	}
+	if c.db == nil {
+		return fmt.Errorf("database connection is nil")
+	}
+
 	relationship := &models.LibraryRelationship{
 		ASTID:            astID,
 		LibraryID:        libraryID,
@@ -391,7 +433,7 @@ func (c *ASTCache) StoreLibraryRelationship(astID, libraryID int64, lineNo int, 
 		Text:             text,
 	}
 
-	if err := c.db.Create(relationship).Error; err != nil {
+	if err := c.db.Create(relationship); err != nil {
 		return fmt.Errorf("failed to store library relationship: %w", err)
 	}
 
@@ -456,8 +498,27 @@ func (c *ASTCache) QueryRaw(query string, args ...interface{}) (*sql.Rows, error
 }
 
 // GetDB returns the underlying GORM database instance
+// Deprecated: Use GetReadQuery() for read operations or GetWriteQuery() for write operations
 func (c *ASTCache) GetDB() *gorm.DB {
-	return c.db
+	// For backward compatibility, we need to access the raw DB
+	// This is not ideal but maintains compatibility
+	if dualPool, ok := c.db.(*DualPoolGormDB); ok {
+		return dualPool.getRawDB()
+	}
+	if protectedDB, ok := c.db.(*ProtectedGormDB); ok {
+		return protectedDB.getRawDB()
+	}
+	panic("unsupported database interface type")
+}
+
+// GetReadQuery returns a GORM database for read operations
+func (c *ASTCache) GetReadQuery() *gorm.DB {
+	return c.db.GetReadDB()
+}
+
+// GetWriteQuery returns a GORM database for write operations
+func (c *ASTCache) GetWriteQuery() *gorm.DB {
+	return c.db.GetWriteDB()
 }
 
 // GetASTId looks up the database ID for a node by its key
@@ -558,7 +619,8 @@ func (c *ASTCache) CountExternalCalls(nodeID int64) (int, error) {
 	return int(count), nil
 }
 
-// StoreFileResults stores all analysis results for a file in a single transaction
+// StoreFileResults stores all analysis results for a file using an update-first approach
+// This preserves node IDs across re-analysis cycles and only cleans up orphaned nodes at the end
 func (c *ASTCache) StoreFileResults(file string, result interface{}) error {
 	// Import cycle prevention - accept interface{} and type assert
 	type astResult struct {
@@ -591,37 +653,72 @@ func (c *ASTCache) StoreFileResults(file string, result interface{}) error {
 		}
 	}
 
-	// Use GORM transaction
+	// Use protected GORM transaction
 	return c.db.Transaction(func(tx *gorm.DB) error {
-		// Delete existing data for the file first
-		if err := c.deleteFileDataInTx(tx, file); err != nil {
-			return fmt.Errorf("failed to delete existing file data: %w", err)
-		}
+		// Phase 1: Setup tracking for existing nodes
+		validNodeIDs := make(map[int64]bool)
+		nodeIDMap := make(map[int64]int64) // Map analysis IDs to database IDs
 
-		// Store new nodes and build ID mapping
-		nodeIDMap := make(map[int64]int64) // Map old IDs to new IDs
-		for _, node := range r.Nodes {
-			oldID := node.ID
-			node.ID = 0 // Clear ID so GORM creates a new one
+		// Phase 2: Update-first processing of nodes
+		for _, newNode := range r.Nodes {
+			analysisID := newNode.ID // Store the original analysis ID
+			newNode.ID = 0          // Clear for database operations
 
-			// GORM handles JSON serialization automatically
-			if err := tx.Create(node).Error; err != nil {
-				return fmt.Errorf("failed to store node: %w", err)
+			// Try to find existing node by natural key
+			existing, err := c.findExistingNodeByNaturalKey(tx, newNode)
+			if err != nil {
+				return fmt.Errorf("failed to find existing node: %w", err)
 			}
 
-			// Map old ID to new ID for relationship updates
-			if oldID > 0 {
-				nodeIDMap[oldID] = node.ID
+			if existing != nil {
+				// Update existing node, preserving its ID
+				if err := c.updateExistingNode(tx, existing, newNode); err != nil {
+					return fmt.Errorf("failed to update existing node: %w", err)
+				}
+
+				// Track that this node is still valid
+				validNodeIDs[existing.ID] = true
+				nodeIDMap[analysisID] = existing.ID
+			} else {
+				// Create new node
+				if err := tx.Create(newNode).Error; err != nil {
+					return fmt.Errorf("failed to create new node: %w", err)
+				}
+
+				// Track the new node
+				validNodeIDs[newNode.ID] = true
+				nodeIDMap[analysisID] = newNode.ID
 			}
 		}
 
-		// Store relationships with updated IDs
+		// Phase 3: Clear existing relationships for the file before recreating them
+		// We need to clear all relationships first since the structure might have changed significantly
+		var existingNodeIDs []int64
+		if err := tx.Model(&models.ASTNode{}).Where("file_path = ?", file).Pluck("id", &existingNodeIDs).Error; err != nil {
+			return fmt.Errorf("failed to get existing node IDs for relationship cleanup: %w", err)
+		}
+
+		if len(existingNodeIDs) > 0 {
+			// Delete existing AST relationships for this file
+			if err := tx.Where("from_ast_id IN ? OR to_ast_id IN ?", existingNodeIDs, existingNodeIDs).Delete(&models.ASTRelationship{}).Error; err != nil {
+				return fmt.Errorf("failed to delete existing AST relationships: %w", err)
+			}
+
+			// Delete existing library relationships for this file
+			if err := tx.Where("ast_id IN ?", existingNodeIDs).Delete(&models.LibraryRelationship{}).Error; err != nil {
+				return fmt.Errorf("failed to delete existing library relationships: %w", err)
+			}
+		}
+
+		// Phase 4: Store new relationships with proper ID mapping
 		for _, rel := range r.Relationships {
 			fromID := nodeIDMap[rel.FromASTID]
 			var toID *int64
 			if rel.ToASTID != nil && *rel.ToASTID > 0 {
-				newToID := nodeIDMap[*rel.ToASTID]
-				toID = &newToID
+				dbID := nodeIDMap[*rel.ToASTID]
+				if dbID > 0 {
+					toID = &dbID
+				}
 			}
 
 			relationship := &models.ASTRelationship{
@@ -637,10 +734,10 @@ func (c *ASTCache) StoreFileResults(file string, result interface{}) error {
 			}
 		}
 
-		// Store library dependencies
+		// Phase 5: Store library relationships
 		for _, lib := range r.Libraries {
 			if lib.LibraryNode != nil {
-				// Find or create library node
+				// Find or create library node (this part stays the same)
 				var libraryNode models.LibraryNode
 				result := tx.Where("package = ? AND class = ? AND method = ? AND field = ?",
 					lib.LibraryNode.Package, lib.LibraryNode.Class,
@@ -657,7 +754,7 @@ func (c *ASTCache) StoreFileResults(file string, result interface{}) error {
 					return fmt.Errorf("failed to find library node: %w", result.Error)
 				}
 
-				// Store library relationship if we have an AST ID
+				// Store library relationship with proper ID mapping
 				if lib.ASTID > 0 {
 					astID := nodeIDMap[lib.ASTID]
 					if astID > 0 {
@@ -677,7 +774,12 @@ func (c *ASTCache) StoreFileResults(file string, result interface{}) error {
 			}
 		}
 
-		// Update file metadata
+		// Phase 6: Cleanup orphaned nodes (nodes that existed before but aren't in the new analysis)
+		if err := c.cleanupOrphanedNodes(tx, file, validNodeIDs); err != nil {
+			return fmt.Errorf("failed to cleanup orphaned nodes: %w", err)
+		}
+
+		// Phase 7: Update file metadata (same as before)
 		fileInfo, err := os.Stat(file)
 		if err != nil {
 			return fmt.Errorf("failed to stat file: %w", err)
@@ -697,8 +799,11 @@ func (c *ASTCache) StoreFileResults(file string, result interface{}) error {
 			AnalysisVersion: "1.0",
 		}
 
-		// Use Save to insert or update (equivalent to INSERT OR REPLACE)
-		if err := tx.Save(fileMetadata).Error; err != nil {
+		// Use proper upsert with conflict resolution
+		if err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "file_path"}},
+			DoUpdates: clause.AssignmentColumns([]string{"file_hash", "file_size", "last_modified", "last_analyzed", "analysis_version"}),
+		}).Create(fileMetadata).Error; err != nil {
 			return fmt.Errorf("failed to update file metadata: %w", err)
 		}
 
@@ -777,4 +882,97 @@ func (c *ASTCache) FindByLine(file string, line int) *models.ASTNode {
 	}
 
 	return &node
+}
+
+// findExistingNodeByNaturalKey finds an existing AST node by its natural key components
+func (c *ASTCache) findExistingNodeByNaturalKey(tx *gorm.DB, node *models.ASTNode) (*models.ASTNode, error) {
+	var existing models.ASTNode
+
+	query := tx.Where("file_path = ? AND package_name = ? AND type_name = ? AND method_name = ? AND field_name = ?",
+		node.FilePath,
+		node.PackageName,
+		node.TypeName,
+		node.MethodName,
+		node.FieldName)
+
+	err := query.First(&existing).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil // Not found is not an error
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to find existing node: %w", err)
+	}
+
+	return &existing, nil
+}
+
+// updateExistingNode updates an existing node with new data while preserving its ID
+func (c *ASTCache) updateExistingNode(tx *gorm.DB, existing *models.ASTNode, newNode *models.ASTNode) error {
+	// Preserve the original ID and created timestamp
+	originalID := existing.ID
+
+	// Copy all the new data to the existing node
+	*existing = *newNode
+	existing.ID = originalID // Restore the original ID
+
+	// Update the node in database
+	if err := tx.Save(existing).Error; err != nil {
+		return fmt.Errorf("failed to update existing node: %w", err)
+	}
+
+	return nil
+}
+
+// getExistingNodesForFile retrieves all existing AST nodes for a file
+func (c *ASTCache) getExistingNodesForFile(tx *gorm.DB, filePath string) (map[int64]*models.ASTNode, error) {
+	var nodes []*models.ASTNode
+
+	if err := tx.Where("file_path = ?", filePath).Find(&nodes).Error; err != nil {
+		return nil, fmt.Errorf("failed to get existing nodes: %w", err)
+	}
+
+	// Build a map for quick lookup
+	nodeMap := make(map[int64]*models.ASTNode)
+	for _, node := range nodes {
+		nodeMap[node.ID] = node
+	}
+
+	return nodeMap, nil
+}
+
+// cleanupOrphanedNodes removes nodes that are no longer present in the new analysis
+func (c *ASTCache) cleanupOrphanedNodes(tx *gorm.DB, filePath string, validNodeIDs map[int64]bool) error {
+	// Find all existing nodes for the file
+	var existingNodes []*models.ASTNode
+	if err := tx.Where("file_path = ?", filePath).Find(&existingNodes).Error; err != nil {
+		return fmt.Errorf("failed to find existing nodes for cleanup: %w", err)
+	}
+
+	// Identify orphaned nodes (exist in DB but not in validNodeIDs)
+	var orphanedNodeIDs []int64
+	for _, node := range existingNodes {
+		if !validNodeIDs[node.ID] {
+			orphanedNodeIDs = append(orphanedNodeIDs, node.ID)
+		}
+	}
+
+	if len(orphanedNodeIDs) == 0 {
+		return nil // No cleanup needed
+	}
+
+	// Delete relationships involving orphaned nodes
+	if err := tx.Where("from_ast_id IN ? OR to_ast_id IN ?", orphanedNodeIDs, orphanedNodeIDs).Delete(&models.ASTRelationship{}).Error; err != nil {
+		return fmt.Errorf("failed to delete orphaned AST relationships: %w", err)
+	}
+
+	if err := tx.Where("ast_id IN ?", orphanedNodeIDs).Delete(&models.LibraryRelationship{}).Error; err != nil {
+		return fmt.Errorf("failed to delete orphaned library relationships: %w", err)
+	}
+
+	// Delete the orphaned nodes themselves
+	if err := tx.Where("id IN ?", orphanedNodeIDs).Delete(&models.ASTNode{}).Error; err != nil {
+		return fmt.Errorf("failed to delete orphaned nodes: %w", err)
+	}
+
+	return nil
 }

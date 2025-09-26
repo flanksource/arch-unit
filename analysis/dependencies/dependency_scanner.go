@@ -1,4 +1,4 @@
-package analysis
+package dependencies
 
 import (
 	"github.com/flanksource/arch-unit/models"
@@ -7,7 +7,7 @@ import (
 // DependencyScanner is the interface for language-specific dependency scanners
 type DependencyScanner interface {
 	// ScanFile scans a dependency file and returns dependencies
-	ScanFile(ctx *ScanContext, filepath string, content []byte) ([]*models.Dependency, error)
+	ScanFile(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error)
 
 	// SupportedFiles returns patterns for files this scanner can process
 	// e.g., ["go.mod", "go.sum"] for Go, ["package.json", "package-lock.json"] for Node

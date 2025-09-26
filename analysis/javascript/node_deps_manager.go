@@ -1,4 +1,4 @@
-package analysis
+package javascript
 
 import (
 	"encoding/json"

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/flanksource/arch-unit/analysis/types"
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/clicky"
@@ -22,30 +23,40 @@ type GenericAnalyzer struct {
 func NewGenericAnalyzer(astCache *cache.ASTCache) *GenericAnalyzer {
 	return &GenericAnalyzer{
 		cache: astCache,
-		extractors: map[string]Extractor{
-			".go": NewGoASTExtractor(),
-			".py": NewPythonASTExtractor(),
-			// TODO: Add other extractors after refactoring:
-			// ".js":   NewJavaScriptASTExtractor(),
-			// ".ts":   NewTypeScriptASTExtractor(),
-			// ".tsx":  NewTypeScriptASTExtractor(),
-			// ".jsx":  NewJavaScriptASTExtractor(),
-			// ".md":   NewMarkdownASTExtractor(),
-		},
+		// extractors will be looked up from the registry as needed
+		extractors: make(map[string]Extractor),
 	}
 }
 
 // AnalyzeFile analyzes a single file using the appropriate extractor and manages all DB operations
-func (a *GenericAnalyzer) AnalyzeFile(task *clicky.Task, filepath string, content []byte) (*ASTResult, error) {
+func (a *GenericAnalyzer) AnalyzeFile(task *clicky.Task, filepath string, content []byte) (*types.ASTResult, error) {
 	// Check if file needs re-analysis
 	needsAnalysis, err := a.cache.NeedsReanalysis(filepath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check if file needs analysis: %w", err)
 	}
 
+
 	if !needsAnalysis {
-		task.Debugf("File %s is up to date, skipping analysis", filepath)
-		return nil, nil // File is up to date
+		task.Debugf("File %s is up to date, retrieving from cache", filepath)
+		cachedResult, err := a.getCachedASTResult(filepath)
+		if err != nil {
+			task.Warnf("Failed to retrieve cached data for %s: %v, forcing fresh analysis", filepath, err)
+			needsAnalysis = true
+		} else if cachedResult != nil {
+			task.Debugf("Successfully retrieved cached AST data for %s: %d nodes, %d relationships",
+				filepath, len(cachedResult.Nodes), len(cachedResult.Relationships))
+			return cachedResult, nil
+		} else {
+			task.Debugf("No cached AST data found for %s, forcing fresh analysis", filepath)
+			needsAnalysis = true
+		}
+	}
+
+	// Continue with fresh analysis if needed
+	if !needsAnalysis {
+		// This shouldn't happen, but just in case
+		return nil, nil
 	}
 
 	// Get appropriate extractor based on file extension
@@ -55,27 +66,34 @@ func (a *GenericAnalyzer) AnalyzeFile(task *clicky.Task, filepath string, conten
 		return nil, nil // No extractor for this file type
 	}
 
-	task.Debugf("Starting analysis of %s", filepath)
+	task.Debugf("Starting fresh analysis of %s", filepath)
 
-	// Clear existing AST data for the file
-	if err := a.cache.DeleteASTForFile(filepath); err != nil {
-		return nil, fmt.Errorf("failed to clear existing AST data: %w", err)
-	}
 
 	// Extract AST using the appropriate extractor (pure operation with read-only cache)
+	task.Debugf("Calling extractor for %s (type: %T)", filepath, extractor)
 	result, err := extractor.ExtractFile(a.cache, filepath, content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract AST from %s: %w", filepath, err)
 	}
 
 	if result == nil {
-		task.Debugf("No AST data extracted from %s", filepath)
+		task.Warnf("Extractor returned nil result for %s (this may indicate the extractor failed silently)", filepath)
 		return nil, nil
 	}
+
+
+	task.Debugf("Extracted AST data from %s: %d nodes, %d relationships, %d libraries",
+		filepath, len(result.Nodes), len(result.Relationships), len(result.Libraries))
 
 	// Store all nodes and build node ID map
 	nodeMap := make(map[string]int64)
 	for _, node := range result.Nodes {
+		// Skip nil nodes and log a warning
+		if node == nil {
+			task.Warnf("Skipping nil AST node found in results for %s", filepath)
+			continue
+		}
+
 		nodeID, err := a.cache.StoreASTNode(node)
 		if err != nil {
 			return nil, fmt.Errorf("failed to store AST node: %w", err)
@@ -108,14 +126,14 @@ func (a *GenericAnalyzer) AnalyzeFile(task *clicky.Task, filepath string, conten
 
 		// Parse library info from Text field
 		libInfo := a.parseLibraryInfo(libRel.Text)
-		
+
 		// Store or get library node
 		libraryID, err := a.cache.StoreLibraryNode(
-			libInfo["pkg"], 
-			libInfo["class"], 
-			libInfo["method"], 
-			"", 
-			models.NodeTypeMethod, 
+			libInfo["pkg"],
+			libInfo["class"],
+			libInfo["method"],
+			"",
+			models.NodeTypeMethod,
 			"go", // TODO: make this dynamic based on file type
 			libInfo["framework"],
 		)
@@ -134,7 +152,7 @@ func (a *GenericAnalyzer) AnalyzeFile(task *clicky.Task, filepath string, conten
 		return nil, fmt.Errorf("failed to update file metadata: %w", err)
 	}
 
-	task.Infof("Analyzed %s: %d nodes, %d relationships, %d libraries", 
+	task.Infof("Analyzed %s: %d nodes, %d relationships, %d libraries",
 		filepath, len(result.Nodes), len(result.Relationships), len(result.Libraries))
 
 	return result, nil
@@ -142,8 +160,19 @@ func (a *GenericAnalyzer) AnalyzeFile(task *clicky.Task, filepath string, conten
 
 // getExtractor returns the appropriate extractor for the given file path
 func (a *GenericAnalyzer) getExtractor(filepath string) Extractor {
+	// Check cache first
 	ext := strings.ToLower(filepath[strings.LastIndex(filepath, "."):])
-	return a.extractors[ext]
+	if extractor, exists := a.extractors[ext]; exists {
+		return extractor
+	}
+
+	// Look up in registry and cache the result
+	if extractor, _, found := DefaultExtractorRegistry.GetExtractorForFile(filepath); found {
+		a.extractors[ext] = extractor
+		return extractor
+	}
+
+	return nil
 }
 
 // findNodeForRelationship finds the source node for a relationship
@@ -173,33 +202,33 @@ func (a *GenericAnalyzer) findNodeForLibraryRelationship(libRel *models.LibraryR
 // parseLibraryInfo parses library information from the text field
 func (a *GenericAnalyzer) parseLibraryInfo(text string) map[string]string {
 	info := make(map[string]string)
-	
+
 	// Extract information from text like "call() (pkg=fmt;class=;method=Println;framework=stdlib)"
 	startIdx := strings.Index(text, "(pkg=")
 	if startIdx == -1 {
 		return info
 	}
-	
+
 	endIdx := strings.LastIndex(text, ")")
 	if endIdx == -1 {
 		return info
 	}
-	
+
 	infoStr := text[startIdx+1 : endIdx] // Skip "(" and ")"
 	pairs := strings.Split(infoStr, ";")
-	
+
 	for _, pair := range pairs {
 		parts := strings.SplitN(pair, "=", 2)
 		if len(parts) == 2 {
 			info[parts[0]] = parts[1]
 		}
 	}
-	
+
 	return info
 }
 
 // Convenience method to analyze a file from file path
-func (a *GenericAnalyzer) AnalyzeFileFromPath(task *clicky.Task, filepath string) (*ASTResult, error) {
+func (a *GenericAnalyzer) AnalyzeFileFromPath(task *clicky.Task, filepath string) (*types.ASTResult, error) {
 	file, err := os.Open(filepath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file %s: %w", filepath, err)
@@ -215,7 +244,7 @@ func (a *GenericAnalyzer) AnalyzeFileFromPath(task *clicky.Task, filepath string
 }
 
 // AnalyzeFileWithRules analyzes a file and checks for rule violations
-func (a *GenericAnalyzer) AnalyzeFileWithRules(task *clicky.Task, filepath string, content []byte, ruleSets []models.RuleSet) (*ASTResult, error) {
+func (a *GenericAnalyzer) AnalyzeFileWithRules(task *clicky.Task, filepath string, content []byte, ruleSets []models.RuleSet) (*types.ASTResult, error) {
 	// For rule checking, always force analysis (bypass cache)
 	// Get appropriate extractor based on file extension
 	extractor := a.getExtractor(filepath)
@@ -287,6 +316,60 @@ func AnalyzeGoFiles(rootDir string, files []string, ruleSets []models.RuleSet) (
 		if astResult != nil {
 			result.Violations = append(result.Violations, astResult.Violations...)
 		}
+	}
+
+	return result, nil
+}
+
+// getCachedASTResult retrieves AST data from cache and reconstructs it as types.ASTResult
+func (a *GenericAnalyzer) getCachedASTResult(filepath string) (*types.ASTResult, error) {
+	// Get file nodes from cache
+	nodes, err := a.cache.GetASTNodesByFile(filepath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cached nodes: %w", err)
+	}
+
+	// If no nodes exist, there's no cached data
+	if len(nodes) == 0 {
+		return nil, nil
+	}
+
+	// Create ASTResult from cached data
+	result := types.NewASTResult(filepath, "go") // TODO: detect language from file extension
+
+	// Add all cached nodes
+	for _, node := range nodes {
+		result.AddNode(node)
+	}
+
+	// Get relationships for each node
+	for _, node := range nodes {
+		// Get all relationships for this node (as source)
+		nodeRelationships, err := a.cache.GetASTRelationships(node.ID, "")
+		if err != nil {
+			// Log warning but continue
+			fmt.Printf("Warning: failed to get relationships for node %d: %v\n", node.ID, err)
+		} else {
+			for _, rel := range nodeRelationships {
+				result.AddRelationship(rel)
+			}
+		}
+
+		// Get library relationships for this node
+		libRelationships, err := a.cache.GetLibraryRelationships(node.ID, "")
+		if err != nil {
+			// Log warning but continue
+			fmt.Printf("Warning: failed to get library relationships for node %d: %v\n", node.ID, err)
+		} else {
+			for _, libRel := range libRelationships {
+				result.AddLibrary(libRel)
+			}
+		}
+	}
+
+	// Set package name from first node if available
+	if len(nodes) > 0 && nodes[0].PackageName != "" {
+		result.PackageName = nodes[0].PackageName
 	}
 
 	return result, nil

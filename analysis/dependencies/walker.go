@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/flanksource/arch-unit/analysis"
 	"github.com/flanksource/arch-unit/git"
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/clicky"
@@ -15,7 +14,7 @@ import (
 // DependencyWalker handles recursive dependency traversal with task-based processing
 type DependencyWalker struct {
 	scanner   *Scanner
-	ctx       *analysis.ScanContext
+	ctx       *models.ScanContext
 	visited   sync.Map // map[string]bool - thread-safe visited tracking
 	taskGroup task.TypedGroup[[]*models.Dependency]
 	allDeps   sync.Map // map[string]*models.Dependency - all discovered dependencies
@@ -29,7 +28,7 @@ type WalkResult struct {
 }
 
 // NewDependencyWalker creates a new dependency walker
-func NewDependencyWalker(scanner *Scanner, ctx *analysis.ScanContext) *DependencyWalker {
+func NewDependencyWalker(scanner *Scanner, ctx *models.ScanContext) *DependencyWalker {
 	return &DependencyWalker{
 		scanner: scanner,
 		ctx:     ctx,

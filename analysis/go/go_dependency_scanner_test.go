@@ -1,4 +1,4 @@
-package analysis
+package _go
 
 import (
 	. "github.com/onsi/ginkgo/v2"

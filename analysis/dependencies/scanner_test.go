@@ -7,24 +7,23 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/flanksource/arch-unit/analysis"
 	"github.com/flanksource/arch-unit/models"
 )
 
 // MockScanner implements DependencyScanner for testing
 type MockScanner struct {
-	*analysis.BaseDependencyScanner
+	*BaseDependencyScanner
 	deps []*models.Dependency
 }
 
 func NewMockScanner(language string, deps []*models.Dependency) *MockScanner {
 	return &MockScanner{
-		BaseDependencyScanner: analysis.NewBaseDependencyScanner(language, []string{"test.txt"}),
+		BaseDependencyScanner: NewBaseDependencyScanner(language, []string{"test.txt"}),
 		deps:                  deps,
 	}
 }
 
-func (m *MockScanner) ScanFile(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (m *MockScanner) ScanFile(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	return m.deps, nil
 }
 

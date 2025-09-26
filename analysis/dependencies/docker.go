@@ -48,7 +48,7 @@ func NewDockerDependencyScannerWithResolver(resolver *analysis.ResolutionService
 }
 
 // ScanFile scans a Docker-related file and extracts dependencies
-func (s *DockerDependencyScanner) ScanFile(ctx *analysis.ScanContext, filePath string, content []byte) ([]*models.Dependency, error) {
+func (s *DockerDependencyScanner) ScanFile(ctx *models.ScanContext, filePath string, content []byte) ([]*models.Dependency, error) {
 	filename := strings.ToLower(filePath)
 
 	if strings.Contains(filename, "dockerfile") || strings.HasSuffix(filename, ".dockerfile") {
@@ -80,7 +80,7 @@ func makeRelativePath(path string, scanRoot string) string {
 }
 
 // scanDockerfile scans Dockerfile for base images and other dependencies
-func (s *DockerDependencyScanner) scanDockerfile(ctx *analysis.ScanContext, filePath string, content []byte) ([]*models.Dependency, error) {
+func (s *DockerDependencyScanner) scanDockerfile(ctx *models.ScanContext, filePath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning Docker dependencies from %s", filePath)
 
 	// Make path relative for source tracking
@@ -172,7 +172,7 @@ func (s *DockerDependencyScanner) scanDockerfile(ctx *analysis.ScanContext, file
 }
 
 // scanDockerCompose scans docker-compose files for service images
-func (s *DockerDependencyScanner) scanDockerCompose(ctx *analysis.ScanContext, filePath string, content []byte) ([]*models.Dependency, error) {
+func (s *DockerDependencyScanner) scanDockerCompose(ctx *models.ScanContext, filePath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning Docker Compose file from %s", filePath)
 
 	// Make path relative for source tracking
@@ -262,7 +262,7 @@ func (s *DockerDependencyScanner) buildImageLineMap(content []byte) map[string]i
 }
 
 // parseDockerImage parses a Docker image reference into a dependency
-func (s *DockerDependencyScanner) parseDockerImage(ctx *analysis.ScanContext, image string) *models.Dependency {
+func (s *DockerDependencyScanner) parseDockerImage(ctx *models.ScanContext, image string) *models.Dependency {
 	dep := &models.Dependency{
 		Type: models.DependencyTypeDocker,
 	}

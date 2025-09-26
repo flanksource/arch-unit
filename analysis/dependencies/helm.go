@@ -11,6 +11,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func init() {
+	analysis.RegisterDependencyScanner(NewHelmDependencyScanner())
+}
+
 // HelmDependencyScanner scans Helm chart dependencies
 type HelmDependencyScanner struct {
 	*analysis.BaseDependencyScanner
@@ -24,9 +28,6 @@ func NewHelmDependencyScanner() *HelmDependencyScanner {
 			[]string{"Chart.yaml", "Chart.lock", "requirements.yaml", "requirements.lock", "values.yaml", "*values.yaml", "values-*.yaml"}),
 	}
 
-	// Register with the global registry
-	analysis.DefaultDependencyRegistry.Register(scanner)
-
 	return scanner
 }
 
@@ -38,14 +39,12 @@ func NewHelmDependencyScannerWithResolver(resolver *analysis.ResolutionService) 
 		resolver: resolver,
 	}
 
-	// Register with the global registry
-	analysis.DefaultDependencyRegistry.Register(scanner)
 
 	return scanner
 }
 
 // ScanFile scans a Helm chart file and extracts dependencies
-func (s *HelmDependencyScanner) ScanFile(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *HelmDependencyScanner) ScanFile(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	filename := path.Base(strings.ToLower(filepath))
 
 	switch {
@@ -65,7 +64,7 @@ func (s *HelmDependencyScanner) ScanFile(ctx *analysis.ScanContext, filepath str
 }
 
 // scanChartYaml scans Chart.yaml for dependencies (Helm v3)
-func (s *HelmDependencyScanner) scanChartYaml(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *HelmDependencyScanner) scanChartYaml(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning Helm chart from %s", filepath)
 
 	var chart struct {
@@ -136,7 +135,7 @@ func (s *HelmDependencyScanner) scanChartYaml(ctx *analysis.ScanContext, filepat
 }
 
 // scanChartLock scans Chart.lock for resolved dependencies (Helm v3)
-func (s *HelmDependencyScanner) scanChartLock(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *HelmDependencyScanner) scanChartLock(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning Helm lock file from %s", filepath)
 
 	var lock struct {
@@ -183,7 +182,7 @@ func (s *HelmDependencyScanner) scanChartLock(ctx *analysis.ScanContext, filepat
 }
 
 // scanRequirementsYaml scans requirements.yaml for dependencies (Helm v2)
-func (s *HelmDependencyScanner) scanRequirementsYaml(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *HelmDependencyScanner) scanRequirementsYaml(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning Helm v2 requirements from %s", filepath)
 
 	var requirements struct {
@@ -241,7 +240,7 @@ func (s *HelmDependencyScanner) scanRequirementsYaml(ctx *analysis.ScanContext, 
 }
 
 // scanRequirementsLock scans requirements.lock for resolved dependencies (Helm v2)
-func (s *HelmDependencyScanner) scanRequirementsLock(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *HelmDependencyScanner) scanRequirementsLock(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning Helm v2 lock file from %s", filepath)
 
 	var lock struct {
@@ -292,7 +291,7 @@ func (s *HelmDependencyScanner) scanRequirementsLock(ctx *analysis.ScanContext, 
 }
 
 // scanValuesYaml scans values.yaml files for Docker image references
-func (s *HelmDependencyScanner) scanValuesYaml(ctx *analysis.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
+func (s *HelmDependencyScanner) scanValuesYaml(ctx *models.ScanContext, filepath string, content []byte) ([]*models.Dependency, error) {
 	ctx.Debugf("Scanning Docker images from Helm values file %s", filepath)
 
 	var valuesData interface{}
@@ -339,7 +338,7 @@ func (s *HelmDependencyScanner) extractGlobalConfig(data interface{}) GlobalConf
 }
 
 // scanForImages recursively scans YAML data for image references
-func (s *HelmDependencyScanner) scanForImages(ctx *analysis.ScanContext, data interface{}, path, filepath string, global GlobalConfig, dependencies *[]*models.Dependency) {
+func (s *HelmDependencyScanner) scanForImages(ctx *models.ScanContext, data interface{}, path, filepath string, global GlobalConfig, dependencies *[]*models.Dependency) {
 	switch v := data.(type) {
 	case map[string]interface{}:
 		for key, value := range v {
@@ -383,7 +382,7 @@ func (s *HelmDependencyScanner) isImageKey(key string) bool {
 }
 
 // processImageValue processes a direct image value (e.g., "nginx:1.21")
-func (s *HelmDependencyScanner) processImageValue(ctx *analysis.ScanContext, value interface{}, path, filepath string, global GlobalConfig, dependencies *[]*models.Dependency) {
+func (s *HelmDependencyScanner) processImageValue(ctx *models.ScanContext, value interface{}, path, filepath string, global GlobalConfig, dependencies *[]*models.Dependency) {
 	if imageStr, ok := value.(string); ok && imageStr != "" {
 		// Skip template variables and empty values
 		if strings.Contains(imageStr, "{{") || imageStr == "" {
@@ -397,7 +396,7 @@ func (s *HelmDependencyScanner) processImageValue(ctx *analysis.ScanContext, val
 }
 
 // processImageObject processes an image object with repository/tag structure
-func (s *HelmDependencyScanner) processImageObject(ctx *analysis.ScanContext, value interface{}, path, filepath string, global GlobalConfig, dependencies *[]*models.Dependency) {
+func (s *HelmDependencyScanner) processImageObject(ctx *models.ScanContext, value interface{}, path, filepath string, global GlobalConfig, dependencies *[]*models.Dependency) {
 	if imageMap, ok := value.(map[string]interface{}); ok {
 		repository := ""
 		tag := ""
@@ -455,7 +454,7 @@ func (s *HelmDependencyScanner) resolveImageWithGlobal(image string, global Glob
 }
 
 // createDockerDependency creates a Docker dependency from an image reference
-func (s *HelmDependencyScanner) createDockerDependency(ctx *analysis.ScanContext, image, filepath, sourcePath string) *models.Dependency {
+func (s *HelmDependencyScanner) createDockerDependency(ctx *models.ScanContext, image, filepath, sourcePath string) *models.Dependency {
 	dep := &models.Dependency{
 		Name:   image,
 		Type:   models.DependencyTypeDocker,
@@ -491,7 +490,7 @@ func (s *HelmDependencyScanner) buildPath(currentPath, key string) string {
 }
 
 // parseHelmRepository converts Helm repository URLs to Git URLs where possible
-func (s *HelmDependencyScanner) parseHelmRepository(ctx *analysis.ScanContext, repository, chartName string) string {
+func (s *HelmDependencyScanner) parseHelmRepository(ctx *models.ScanContext, repository, chartName string) string {
 	// Handle file:// URLs (local charts)
 	if strings.HasPrefix(repository, "file://") {
 		return ""
@@ -523,7 +522,7 @@ func (s *HelmDependencyScanner) detectGitHubFromOCI(ociURL string) string {
 }
 
 // detectGitHubRepository uses heuristics to detect GitHub repositories for Helm charts
-func (s *HelmDependencyScanner) detectGitHubRepository(ctx *analysis.ScanContext, repository, chartName string) string {
+func (s *HelmDependencyScanner) detectGitHubRepository(ctx *models.ScanContext, repository, chartName string) string {
 	// First try to extract GitHub URL directly
 	if githubRepo := s.extractGitHubRepoFromURL(repository); githubRepo != "" {
 		return githubRepo
@@ -682,9 +681,4 @@ func (s *HelmDependencyScanner) findDependencyLine(content []byte, dependencyNam
 
 	// Fallback: estimate based on dependencies section start + index
 	return 10 + fallbackIdx*4 // Rough estimate assuming dependencies start around line 10 and each takes ~4 lines
-}
-
-func init() {
-	// Auto-register the scanner
-	NewHelmDependencyScanner()
 }

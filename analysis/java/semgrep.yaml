@@ -1,0 +1,32 @@
+rules:
+  - id: java-spring-routes
+    languages:
+      - java
+    severity: ERROR
+    message: |
+      {
+        "file_path": "$FILE",
+        "package_name": "$PACKAGE",
+        "type_name": "$CONTROLLER",
+        "method_name": "$METHOD",
+        "node_type": "method",
+        "start_line": "$START_LINE",
+        "end_line": "$END_LINE",
+        "summary": "Spring $HTTPMETHOD endpoint: $PATH with auth: $AUTHZ"
+      }
+    patterns:
+      - pattern-inside: |-
+          @Controller
+          public class $CONTROLLER { ... }
+      - pattern-either:
+          - pattern: |-
+              @RequestMapping(method = $HTTPMETHOD)
+              @Authorize($AUTHZ)
+              public $RETURNTYPE $METHOD(...) { ...}
+          - pattern: |-
+              @RequestMapping(method = $HTTPMETHOD, value = $PATH)
+              @Authorize($AUTHZ)
+              public $RETURNTYPE $METHOD(...) { ...}
+          - pattern: |-
+              @RequestMapping(method = $HTTPMETHOD)
+              public $RETURNTYPE $METHOD(...) { ...}

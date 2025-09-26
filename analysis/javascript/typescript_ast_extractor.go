@@ -1,8 +1,7 @@
-package analysis
+package javascript
 
 import (
 	"context"
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,30 +10,31 @@ import (
 	"strings"
 	"time"
 
+	_ "embed"
+
+	"github.com/flanksource/arch-unit/analysis"
+	"github.com/flanksource/arch-unit/analysis/types"
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
 	flanksourceContext "github.com/flanksource/commons/context"
 )
 
-//go:embed javascript_ast_extractor.js
-var javascriptASTExtractorScript string
-
-// JavaScriptASTExtractor extracts AST information from JavaScript source files
-type JavaScriptASTExtractor struct {
+// TypeScriptASTExtractor extracts AST information from TypeScript source files
+type TypeScriptASTExtractor struct {
 	filePath    string
 	packageName string
 	depsManager *NodeDependenciesManager
 }
 
-// NewJavaScriptASTExtractor creates a new JavaScript AST extractor
-func NewJavaScriptASTExtractor() *JavaScriptASTExtractor {
-	return &JavaScriptASTExtractor{
+// NewTypeScriptASTExtractor creates a new TypeScript AST extractor
+func NewTypeScriptASTExtractor() *TypeScriptASTExtractor {
+	return &TypeScriptASTExtractor{
 		depsManager: NewNodeDependenciesManager(),
 	}
 }
 
-// JavaScriptASTNode represents a node in JavaScript AST
-type JavaScriptASTNode struct {
+// TypeScriptASTNode represents a node in TypeScript AST
+type TypeScriptASTNode struct {
 	Type                 string               `json:"type"`
 	Name                 string               `json:"name"`
 	StartLine            int                  `json:"start_line"`
@@ -46,21 +46,23 @@ type JavaScriptASTNode struct {
 	CyclomaticComplexity int                  `json:"cyclomatic_complexity"`
 	Parent               string               `json:"parent"`
 	IsAsync              bool                 `json:"is_async"`
-	IsGenerator          bool                 `json:"is_generator"`
-	IsArrow              bool                 `json:"is_arrow"`
-	ExportType           string               `json:"export_type"` // "default", "named", ""
+	IsGeneric            bool                 `json:"is_generic"`
+	IsAbstract           bool                 `json:"is_abstract"`
+	IsReadonly           bool                 `json:"is_readonly"`
+	TypeParams           []string             `json:"type_params"`
+	Modifiers            []string             `json:"modifiers"`
 }
 
-// JavaScriptImport represents an import in JavaScript
-type JavaScriptImport struct {
-	Source   string   `json:"source"`
-	Imported []string `json:"imported"`
-	Line     int      `json:"line"`
-	Type     string   `json:"type"` // "import", "require"
+// TypeScriptImport represents an import in TypeScript
+type TypeScriptImport struct {
+	Source    string   `json:"source"`
+	Imported  []string `json:"imported"`
+	TypesOnly bool     `json:"types_only"`
+	Line      int      `json:"line"`
 }
 
-// JavaScriptRelationship represents a relationship between JavaScript entities
-type JavaScriptRelationship struct {
+// TypeScriptRelationship represents a relationship between TypeScript entities
+type TypeScriptRelationship struct {
 	FromEntity string `json:"from_entity"`
 	ToEntity   string `json:"to_entity"`
 	Type       string `json:"type"`
@@ -68,53 +70,53 @@ type JavaScriptRelationship struct {
 	Text       string `json:"text"`
 }
 
-// JavaScriptASTResult contains the complete AST analysis result
-type JavaScriptASTResult struct {
+// TypeScriptASTResult contains the complete AST analysis result
+type TypeScriptASTResult struct {
 	Module        string                   `json:"module"`
-	Nodes         []JavaScriptASTNode      `json:"nodes"`
-	Imports       []JavaScriptImport       `json:"imports"`
-	Relationships []JavaScriptRelationship `json:"relationships"`
+	Nodes         []TypeScriptASTNode      `json:"nodes"`
+	Imports       []TypeScriptImport       `json:"imports"`
+	Relationships []TypeScriptRelationship `json:"relationships"`
 }
 
-// ExtractFile extracts AST information from a JavaScript file
-func (e *JavaScriptASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath string, content []byte) (*ASTResult, error) {
+// ExtractFile extracts AST information from a TypeScript file
+func (e *TypeScriptASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath string, content []byte) (*types.ASTResult, error) {
 	e.filePath = filePath
 
 	// Extract package name from file path or package.json
 	e.packageName = e.extractPackageName(filePath)
 
-	result := &ASTResult{
+	result := &types.ASTResult{
 		Nodes:         []*models.ASTNode{},
 		Relationships: []*models.ASTRelationship{},
 	}
 
-	// Run JavaScript AST extraction (write content to temp file for external tool)
-	tempFile, err := os.CreateTemp("", "js_extract_*.js")
+	// Run TypeScript AST extraction (write content to temp file for external tool)
+	tempFile, err := os.CreateTemp("", "ts_extract_*.ts")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer func() { _ = os.Remove(tempFile.Name()) }()
+	defer os.Remove(tempFile.Name())
 
 	if _, err := tempFile.Write(content); err != nil {
 		return nil, fmt.Errorf("failed to write content to temp file: %w", err)
 	}
 	_ = tempFile.Close()
 
-	jsResult, err := e.runJavaScriptASTExtraction(tempFile.Name())
+	tsResult, err := e.runTypeScriptASTExtraction(tempFile.Name())
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract JavaScript AST: %w", err)
+		return nil, fmt.Errorf("failed to extract TypeScript AST: %w", err)
 	}
 
-	// Convert JavaScript nodes to AST nodes
+	// Convert TypeScript nodes to AST nodes
 	nodeMap := make(map[string]string) // fullName -> node key
-	for _, node := range jsResult.Nodes {
+	for _, node := range tsResult.Nodes {
 		astNode := &models.ASTNode{
 			FilePath:             filePath,
 			PackageName:          e.packageName,
 			TypeName:             "",
 			MethodName:           "",
 			FieldName:            "",
-			NodeType:             e.mapJavaScriptNodeType(node.Type),
+			NodeType:             e.mapTypeScriptNodeType(node.Type),
 			StartLine:            node.StartLine,
 			EndLine:              node.EndLine,
 			LineCount:            node.EndLine - node.StartLine + 1,
@@ -126,9 +128,9 @@ func (e *JavaScriptASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath
 
 		// Set appropriate fields based on node type
 		switch node.Type {
-		case "class":
+		case "class", "interface", "enum", "type":
 			astNode.TypeName = node.Name
-		case "method":
+		case "method", "constructor":
 			if node.Parent != "" {
 				astNode.TypeName = node.Parent
 				astNode.MethodName = node.Name
@@ -137,7 +139,7 @@ func (e *JavaScriptASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath
 			}
 		case "function":
 			astNode.MethodName = node.Name
-		case "variable", "property":
+		case "variable", "property", "field":
 			if node.Parent != "" {
 				astNode.TypeName = node.Parent
 			}
@@ -153,7 +155,7 @@ func (e *JavaScriptASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath
 	}
 
 	// Convert relationships
-	for _, rel := range jsResult.Relationships {
+	for _, rel := range tsResult.Relationships {
 		fromKey, fromExists := nodeMap[rel.FromEntity]
 		if !fromExists {
 			continue
@@ -193,7 +195,7 @@ func (e *JavaScriptASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath
 }
 
 // extractPackageName extracts package name from file path or package.json
-func (e *JavaScriptASTExtractor) extractPackageName(filePath string) string {
+func (e *TypeScriptASTExtractor) extractPackageName(filePath string) string {
 	dir := filepath.Dir(filePath)
 
 	// Look for package.json
@@ -226,51 +228,53 @@ func (e *JavaScriptASTExtractor) extractPackageName(filePath string) string {
 	return "main"
 }
 
-// runJavaScriptASTExtraction runs the JavaScript AST extraction script
-func (e *JavaScriptASTExtractor) runJavaScriptASTExtraction(filePath string) (*JavaScriptASTResult, error) {
+// runTypeScriptASTExtraction runs the TypeScript AST extraction script
+func (e *TypeScriptASTExtractor) runTypeScriptASTExtraction(filePath string) (*TypeScriptASTResult, error) {
 	// Create parser script with proper module resolution
 	ctx := flanksourceContext.NewContext(context.Background())
-	scriptPath, err := e.depsManager.CreateParserScript(ctx, javascriptASTExtractorScript, "javascript")
+	scriptPath, err := e.depsManager.CreateParserScript(ctx, typescriptASTExtractorScript, "typescript")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create parser script: %w", err)
 	}
-	defer func() { _ = os.Remove(scriptPath) }()
+	defer os.Remove(scriptPath)
 
 	// Execute the script with Node.js
 	cmd := exec.Command("node", scriptPath, filePath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("JavaScript AST extraction failed: %w - output: %s", err, string(output))
+		return nil, fmt.Errorf("TypeScript AST extraction failed: %w - output: %s", err, string(output))
 	}
 
 	// Parse JSON output
-	var result JavaScriptASTResult
+	var result TypeScriptASTResult
 	if err := json.Unmarshal(output, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse JavaScript AST JSON: %w", err)
+		return nil, fmt.Errorf("failed to parse TypeScript AST JSON: %w", err)
 	}
 
 	return &result, nil
 }
 
-// mapJavaScriptNodeType maps JavaScript node types to generic AST node types
-func (e *JavaScriptASTExtractor) mapJavaScriptNodeType(jsType string) string {
-	switch jsType {
-	case "class":
+// mapTypeScriptNodeType maps TypeScript node types to generic AST node types
+func (e *TypeScriptASTExtractor) mapTypeScriptNodeType(tsType string) string {
+	switch tsType {
+	case "class", "interface", "enum", "type":
 		return models.NodeTypeType
-	case "function", "method":
+	case "function", "method", "constructor":
 		return models.NodeTypeMethod
-	case "variable", "property":
+	case "variable", "property", "field":
 		return models.NodeTypeField
 	default:
 		return models.NodeTypeVariable
 	}
 }
 
-// mapRelationshipType maps JavaScript relationship types to generic relationship types
-func (e *JavaScriptASTExtractor) mapRelationshipType(jsRelType string) string {
-	switch jsRelType {
+// mapRelationshipType maps TypeScript relationship types to generic relationship types
+func (e *TypeScriptASTExtractor) mapRelationshipType(tsRelType string) string {
+	switch tsRelType {
 	case "extends":
 		return models.RelationshipExtends
+	case "implements":
+		return models.RelationshipImplements
 	case "calls":
 		return models.RelationshipCall
 	case "imports":
@@ -282,8 +286,8 @@ func (e *JavaScriptASTExtractor) mapRelationshipType(jsRelType string) string {
 	}
 }
 
-// getNodeFullName returns the full qualified name of a JavaScript node
-func (e *JavaScriptASTExtractor) getNodeFullName(node JavaScriptASTNode) string {
+// getNodeFullName returns the full qualified name of a TypeScript node
+func (e *TypeScriptASTExtractor) getNodeFullName(node TypeScriptASTNode) string {
 	parts := []string{e.packageName}
 
 	if node.Parent != "" {
@@ -292,4 +296,13 @@ func (e *JavaScriptASTExtractor) getNodeFullName(node JavaScriptASTNode) string 
 
 	parts = append(parts, node.Name)
 	return strings.Join(parts, ".")
+}
+
+//go:embed typescript_ast_extractor.js
+var typescriptASTExtractorScript string
+
+func init() {
+	// Register TypeScript AST extractor
+	tsExtractor := NewTypeScriptASTExtractor()
+	analysis.RegisterExtractor("typescript", tsExtractor)
 }

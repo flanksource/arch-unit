@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/flanksource/arch-unit/analysis/types"
 	"github.com/flanksource/arch-unit/models"
 )
 
@@ -16,7 +17,7 @@ func NewRuleViolationAnalyzer() *RuleViolationAnalyzer {
 }
 
 // AnalyzeViolations checks AST results against rules and returns violations
-func (r *RuleViolationAnalyzer) AnalyzeViolations(astResult *ASTResult, ruleSets []models.RuleSet) ([]models.Violation, error) {
+func (r *RuleViolationAnalyzer) AnalyzeViolations(astResult *types.ASTResult, ruleSets []models.RuleSet) ([]models.Violation, error) {
 	if astResult == nil || len(astResult.Nodes) == 0 {
 		return nil, nil
 	}
@@ -62,7 +63,7 @@ func (r *RuleViolationAnalyzer) getRulesForFile(filePath string, ruleSets []mode
 }
 
 // checkCallRelationship checks if a call relationship violates any rules
-func (r *RuleViolationAnalyzer) checkCallRelationship(astResult *ASTResult, relationship *models.ASTRelationship, rules *models.RuleSet) *models.Violation {
+func (r *RuleViolationAnalyzer) checkCallRelationship(astResult *types.ASTResult, relationship *models.ASTRelationship, rules *models.RuleSet) *models.Violation {
 	// Find the caller and called nodes
 	var callerNode, calledNode *models.ASTNode
 
@@ -146,7 +147,7 @@ func (r *RuleViolationAnalyzer) checkCallRelationship(astResult *ASTResult, rela
 }
 
 // checkLibraryCallRelationship checks if a library call relationship violates any rules
-func (r *RuleViolationAnalyzer) checkLibraryCallRelationship(astResult *ASTResult, libRel *models.LibraryRelationship, rules *models.RuleSet) *models.Violation {
+func (r *RuleViolationAnalyzer) checkLibraryCallRelationship(astResult *types.ASTResult, libRel *models.LibraryRelationship, rules *models.RuleSet) *models.Violation {
 	// Parse library relationship text to extract package and method info
 	// Format: "fmt.Println() (pkg=fmt;class=;method=Println;framework=stdlib)"
 	text := libRel.Text

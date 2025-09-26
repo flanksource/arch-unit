@@ -1,4 +1,4 @@
-package analysis
+package python
 
 import (
 	"encoding/json"
@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flanksource/arch-unit/analysis/types"
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
 )
@@ -66,9 +67,9 @@ type PythonASTResult struct {
 }
 
 // ExtractFile extracts AST information from a Python file
-func (e *PythonASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath string, content []byte) (*ASTResult, error) {
+func (e *PythonASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath string, content []byte) (*types.ASTResult, error) {
 	// Create result container
-	result := NewASTResult(filePath, "python")
+	result := types.NewASTResult(filePath, "python")
 
 	e.filePath = filePath
 
@@ -128,7 +129,7 @@ func (e *PythonASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath str
 	// Convert relationships
 	for _, rel := range pythonResult.Relationships {
 		astRel := &models.ASTRelationship{
-			FromASTID:        0, // Will be filled by analyzer
+			FromASTID:        0,   // Will be filled by analyzer
 			ToASTID:          nil, // Will be resolved by analyzer if possible
 			LineNo:           rel.Line,
 			RelationshipType: models.RelationshipType(e.mapRelationshipType(rel.Type)),
@@ -258,4 +259,3 @@ if __name__ == "__main__":
     }
     print(json.dumps(result))
 `
-
