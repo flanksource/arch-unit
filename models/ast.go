@@ -628,12 +628,27 @@ type DirectoryTreeNode struct {
 	Children []api.TreeNode
 }
 
+// MultiRootTreeNode represents multiple root directories without a wrapper
+type MultiRootTreeNode struct {
+	Children []api.TreeNode
+}
+
 func (d *DirectoryTreeNode) Pretty() api.Text {
-	return clicky.Text("📁", "text-blue-600").Append(" "+d.Path, "text-blue-600 font-medium")
+	return clicky.Text("📁", "text-blue-600").Append(" "+filepath.Base(d.Path), "text-blue-600 font-medium")
 }
 
 func (d *DirectoryTreeNode) GetChildren() []api.TreeNode {
 	return d.Children
+}
+
+// MultiRootTreeNode implements TreeNode interface
+func (m *MultiRootTreeNode) Pretty() api.Text {
+	// Return empty text since we don't want to display the root node
+	return api.Text{}
+}
+
+func (m *MultiRootTreeNode) GetChildren() []api.TreeNode {
+	return m.Children
 }
 
 // FileTreeNode represents a source file in the hierarchy
@@ -754,6 +769,242 @@ func BuildASTNodeTree(nodes []*ASTNode) api.TreeNode {
 		total:        len(nodes),
 		availableIDs: availableIDs,
 	}
+}
+
+// BuildHierarchicalASTTree creates a filesystem-aware hierarchical tree
+func BuildHierarchicalASTTree(nodes []*ASTNode, config DisplayConfig, workingDir string) api.TreeNode {
+	if len(nodes) == 0 {
+		return &MultiRootTreeNode{Children: []api.TreeNode{}}
+	}
+
+	// Group nodes by directory structure
+	dirMap := make(map[string]*DirectoryTreeNode)
+	fileMap := make(map[string]*FileTreeNode)
+	packageMap := make(map[string]*PackageTreeNode)
+
+	// Build the hierarchy
+	for _, node := range nodes {
+		// Convert absolute file path to relative path from working directory
+		relFilePath, err := filepath.Rel(workingDir, node.FilePath)
+		if err != nil {
+			// Fallback to original path if conversion fails
+			relFilePath = node.FilePath
+		}
+
+		// Extract directory path from relative file path
+		dirPath := filepath.Dir(relFilePath)
+		if dirPath == "." {
+			dirPath = ""
+		}
+
+		// Ensure directory structure exists
+		ensureDirectoryStructure(dirPath, dirMap, config)
+
+		// Ensure file exists in directory
+		ensureFileInDirectory(relFilePath, dirPath, fileMap, dirMap, config)
+
+		// Create a copy of the node with relative file path for package handling
+		nodeWithRelPath := *node
+		nodeWithRelPath.FilePath = relFilePath
+
+		// Ensure package exists in file
+		ensurePackageInFile(&nodeWithRelPath, fileMap, packageMap, dirMap, config)
+
+		// Add the AST node to its package (filtered by config)
+		addASTNodeToPackage(&nodeWithRelPath, packageMap, fileMap, dirMap, config)
+	}
+
+	// Collect all root-level nodes with comprehensive hoisting
+	var rootChildren []api.TreeNode
+
+	if config.ShowDirs {
+		// Start with directories and apply hoisting logic
+		if rootDir, exists := dirMap[""]; exists {
+			for _, child := range rootDir.Children {
+				hoistedChildren := hoistChildrenFromHiddenLevels(child, config)
+				rootChildren = append(rootChildren, hoistedChildren...)
+			}
+		}
+	} else {
+		// If not showing directories, start from files and apply hoisting
+		for _, fileNode := range fileMap {
+			hoistedChildren := hoistChildrenFromHiddenLevels(fileNode, config)
+			rootChildren = append(rootChildren, hoistedChildren...)
+		}
+	}
+
+	// Return children directly without a root wrapper
+	return &MultiRootTreeNode{Children: rootChildren}
+}
+
+// Helper functions for hierarchical tree building
+
+// ensureDirectoryStructure creates directory nodes for the given path
+func ensureDirectoryStructure(dirPath string, dirMap map[string]*DirectoryTreeNode, config DisplayConfig) {
+	if !config.ShowDirs || dirPath == "" {
+		return
+	}
+
+	// Create directory if it doesn't exist
+	if _, exists := dirMap[dirPath]; !exists {
+		dirMap[dirPath] = &DirectoryTreeNode{
+			Path:     dirPath,
+			Children: []api.TreeNode{},
+		}
+
+		// Ensure parent directories exist
+		parentDir := filepath.Dir(dirPath)
+		if parentDir != "." && parentDir != dirPath {
+			ensureDirectoryStructure(parentDir, dirMap, config)
+			// Add this directory to its parent
+			if parent, exists := dirMap[parentDir]; exists {
+				parent.Children = append(parent.Children, dirMap[dirPath])
+			}
+		} else {
+			// This is a root-level directory, add to empty string key
+			if _, exists := dirMap[""]; !exists {
+				dirMap[""] = &DirectoryTreeNode{Path: ".", Children: []api.TreeNode{}}
+			}
+			dirMap[""].Children = append(dirMap[""].Children, dirMap[dirPath])
+		}
+	}
+}
+
+// ensureFileInDirectory creates file nodes and links them to directories
+func ensureFileInDirectory(filePath, dirPath string, fileMap map[string]*FileTreeNode, dirMap map[string]*DirectoryTreeNode, config DisplayConfig) {
+	if !config.ShowFiles {
+		return
+	}
+
+	if _, exists := fileMap[filePath]; !exists {
+		fileMap[filePath] = &FileTreeNode{
+			FilePath: filePath,
+			Children: []api.TreeNode{},
+		}
+
+		// Add file to its directory
+		if config.ShowDirs {
+			if dir, exists := dirMap[dirPath]; exists {
+				dir.Children = append(dir.Children, fileMap[filePath])
+			}
+		}
+	}
+}
+
+// ensurePackageInFile creates package nodes and links them to files or directories
+func ensurePackageInFile(node *ASTNode, fileMap map[string]*FileTreeNode, packageMap map[string]*PackageTreeNode, dirMap map[string]*DirectoryTreeNode, config DisplayConfig) {
+	if !config.ShowPackages || node.PackageName == "" {
+		return
+	}
+
+	packageKey := node.FilePath + ":" + node.PackageName
+	if _, exists := packageMap[packageKey]; !exists {
+		packageMap[packageKey] = &PackageTreeNode{
+			PackageName: node.PackageName,
+			Children:    []api.TreeNode{},
+		}
+
+		// Add package to its file if showing files
+		if config.ShowFiles {
+			if file, exists := fileMap[node.FilePath]; exists {
+				file.Children = append(file.Children, packageMap[packageKey])
+			}
+		} else {
+			// If not showing files, hoist package directly to its directory
+			dirPath := filepath.Dir(node.FilePath)
+			if dirPath == "." {
+				dirPath = ""
+			}
+			if dir, exists := dirMap[dirPath]; exists {
+				dir.Children = append(dir.Children, packageMap[packageKey])
+			}
+		}
+	}
+}
+
+// addASTNodeToPackage adds AST nodes to their packages, files, or directories based on display config
+func addASTNodeToPackage(node *ASTNode, packageMap map[string]*PackageTreeNode, fileMap map[string]*FileTreeNode, dirMap map[string]*DirectoryTreeNode, config DisplayConfig) {
+	packageKey := node.FilePath + ":" + node.PackageName
+
+	// Filter nodes based on type and config
+	shouldShow := false
+	switch node.NodeType {
+	case NodeTypeType:
+		shouldShow = config.ShowTypes
+	case NodeTypeMethod:
+		shouldShow = config.ShowMethods
+	case NodeTypeField, NodeTypeVariable:
+		// Both struct fields and global variables are "field-like" data elements
+		shouldShow = config.ShowFields
+	default:
+		shouldShow = true // Show unknown types by default
+	}
+
+	if shouldShow {
+		if config.ShowPackages {
+			// Normal case: add to package
+			if pkg, exists := packageMap[packageKey]; exists {
+				pkg.Children = append(pkg.Children, node)
+			}
+		} else if config.ShowFiles {
+			// Hoist to file level when packages are hidden
+			if file, exists := fileMap[node.FilePath]; exists {
+				file.Children = append(file.Children, node)
+			}
+		} else {
+			// Hoist to directory level when both packages and files are hidden
+			dirPath := filepath.Dir(node.FilePath)
+			if dirPath == "." {
+				dirPath = ""
+			}
+			if dir, exists := dirMap[dirPath]; exists {
+				dir.Children = append(dir.Children, node)
+			}
+		}
+	}
+}
+
+// hoistChildrenFromHiddenLevels recursively collects children from hidden intermediate levels
+func hoistChildrenFromHiddenLevels(node api.TreeNode, config DisplayConfig) []api.TreeNode {
+	var result []api.TreeNode
+
+	switch n := node.(type) {
+	case *DirectoryTreeNode:
+		// Always include directories if we're showing them
+		if config.ShowDirs {
+			result = append(result, n)
+		} else {
+			// If not showing directories, hoist their children
+			for _, child := range n.Children {
+				result = append(result, hoistChildrenFromHiddenLevels(child, config)...)
+			}
+		}
+	case *FileTreeNode:
+		// Include files only if showing them
+		if config.ShowFiles {
+			result = append(result, n)
+		} else {
+			// If not showing files, hoist their children
+			for _, child := range n.Children {
+				result = append(result, hoistChildrenFromHiddenLevels(child, config)...)
+			}
+		}
+	case *PackageTreeNode:
+		// Include packages only if showing them
+		if config.ShowPackages {
+			result = append(result, n)
+		} else {
+			// If not showing packages, hoist their children
+			for _, child := range n.Children {
+				result = append(result, hoistChildrenFromHiddenLevels(child, config)...)
+			}
+		}
+	default:
+		// For AST nodes and other types, always include them
+		result = append(result, n)
+	}
+
+	return result
 }
 
 // ClearNodeHierarchy cleans up the global registry

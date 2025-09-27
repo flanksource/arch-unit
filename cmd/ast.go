@@ -221,6 +221,34 @@ func init() {
 	astCmd.Flags().IntVar(&astThreshold, "threshold", 0, "Complexity threshold filter")
 	astCmd.Flags().IntVar(&astDepth, "depth", 1, "Relationship traversal depth")
 	astCmd.Flags().StringVar(&astQuery, "query", "", "AQL query to execute")
+
+	// New hierarchical display flags
+	astCmd.Flags().BoolVar(&astShowDirs, "dirs", true, "Show directory structure in tree")
+	astCmd.Flags().BoolVar(&astShowFiles, "files", true, "Show individual files in tree")
+	astCmd.Flags().BoolVar(&astShowPackages, "packages", true, "Show package nodes in tree")
+	astCmd.Flags().BoolVar(&astShowTypes, "types", true, "Show type definitions in tree")
+	astCmd.Flags().BoolVar(&astShowMethods, "methods", true, "Show methods in tree")
+	astCmd.Flags().BoolVar(&astShowParams, "params", false, "Show method parameters in tree")
+	astCmd.Flags().BoolVar(&astShowImports, "imports", false, "Show import statements in tree")
+	astCmd.Flags().BoolVar(&astShowLineNo, "line-no", true, "Show line numbers in tree")
+	astCmd.Flags().BoolVar(&astShowFileStats, "file-stats", false, "Show file-level statistics")
+}
+
+// getDisplayConfigFromFlags converts command-line flags to DisplayConfig
+func getDisplayConfigFromFlags() models.DisplayConfig {
+	return models.DisplayConfig{
+		ShowDirs:       astShowDirs,
+		ShowFiles:      astShowFiles,
+		ShowPackages:   astShowPackages,
+		ShowTypes:      astShowTypes,
+		ShowMethods:    astShowMethods,
+		ShowFields:     astShowFields, // Reuse existing flag
+		ShowParams:     astShowParams,
+		ShowImports:    astShowImports,
+		ShowLineNo:     astShowLineNo,
+		ShowFileStats:  astShowFileStats,
+		ShowComplexity: astShowComplexity, // Reuse existing flag
+	}
 }
 
 func runAST(cmd *cobra.Command, args []string) error {
@@ -679,8 +707,11 @@ func outputNodesTemplate(nodes []*models.ASTNode, workingDir string) error {
 
 // outputNodesTree outputs nodes in tree format using clicky.Format
 func outputNodesTree(astCache *cache.ASTCache, nodes []*models.ASTNode, pattern string, workingDir string) error {
-	// Build tree structure using the existing BuildASTNodeTree
-	tree := models.BuildASTNodeTree(nodes)
+	// Get display configuration from flags
+	config := getDisplayConfigFromFlags()
+
+	// Build hierarchical tree structure with filesystem awareness
+	tree := models.BuildHierarchicalASTTree(nodes, config, workingDir)
 
 	// Use clicky.Format to handle coloring properly
 	output, err := clicky.Format(tree, clicky.FormatOptions{
