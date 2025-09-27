@@ -2,8 +2,11 @@ package models
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/bmatcuk/doublestar/v4"
 )
 
 // AQL AST models for Architecture Query Language
@@ -73,7 +76,8 @@ type AQLPattern struct {
 	Type       string `json:"type,omitempty" yaml:"type,omitempty"`
 	Method     string `json:"method,omitempty" yaml:"method,omitempty"`
 	Field      string `json:"field,omitempty" yaml:"field,omitempty"`
-	Metric     string `json:"metric,omitempty" yaml:"metric,omitempty"` // "cyclomatic", "parameters", "lines"
+	FilePath   string `json:"file_path,omitempty" yaml:"file_path,omitempty"` // Doublestar glob pattern for file paths
+	Metric     string `json:"metric,omitempty" yaml:"metric,omitempty"`       // "cyclomatic", "parameters", "lines"
 	IsWildcard bool   `json:"is_wildcard" yaml:"is_wildcard"`
 	Original   string `json:"original" yaml:"original"` // Original pattern text
 }
@@ -144,48 +148,64 @@ func (p *AQLPattern) String() string {
 	if p == nil {
 		return ""
 	}
-	
+
 	if p.Original != "" {
 		return p.Original
 	}
 
-	// Handle special case for simple wildcard
-	if p.Package == "*" && p.Type == "*" && p.Method == "*" && p.Field == "" && p.Metric == "" {
-		return "*"
+	// Start with file path if present
+	var result string
+	if p.FilePath != "" {
+		result = "@" + p.FilePath
 	}
 
-	// Build pattern using appropriate notation
-	var result string
-	
-	// Special cases for dot notation
-	if p.Package != "" && p.Type != "" && p.Method == "*" && p.Field == "" && p.Metric == "" {
-		// Package.Type format (e.g., "pkg.*", "*.UserService")
-		if p.Package == "*" {
-			result = "*." + p.Type
-		} else if p.Type == "*" {
-			result = p.Package + ".*"
+	// Handle special case for simple wildcard
+	if p.Package == "*" && p.Type == "*" && p.Method == "*" && p.Field == "" && p.Metric == "" {
+		if p.FilePath != "" {
+			result += ":*"
 		} else {
-			result = p.Package + "." + p.Type
+			return "*"
 		}
-	} else if p.Package == "*" && p.Type != "" && p.Type != "*" && p.Method != "" && p.Method != "*" {
-		// Special case for "*.Type:Method" format
-		result = "*." + p.Type + ":" + p.Method
 	} else {
-		// Fall back to colon notation
-		parts := []string{}
-		if p.Package != "" {
-			parts = append(parts, p.Package)
+		// Build AST pattern using appropriate notation
+		var astPattern string
+
+		// Special cases for dot notation
+		if p.Package != "" && p.Type != "" && p.Method == "*" && p.Field == "" && p.Metric == "" {
+			// Package.Type format (e.g., "pkg.*", "*.UserService")
+			if p.Package == "*" {
+				astPattern = "*." + p.Type
+			} else if p.Type == "*" {
+				astPattern = p.Package + ".*"
+			} else {
+				astPattern = p.Package + "." + p.Type
+			}
+		} else if p.Package == "*" && p.Type != "" && p.Type != "*" && p.Method != "" && p.Method != "*" {
+			// Special case for "*.Type:Method" format
+			astPattern = "*." + p.Type + ":" + p.Method
+		} else {
+			// Fall back to colon notation
+			parts := []string{}
+			if p.Package != "" {
+				parts = append(parts, p.Package)
+			}
+			if p.Type != "" {
+				parts = append(parts, p.Type)
+			}
+			if p.Method != "" {
+				parts = append(parts, p.Method)
+			}
+			if p.Field != "" {
+				parts = append(parts, p.Field)
+			}
+			astPattern = strings.Join(parts, ":")
 		}
-		if p.Type != "" {
-			parts = append(parts, p.Type)
+
+		if p.FilePath != "" && astPattern != "" {
+			result += ":" + astPattern
+		} else if astPattern != "" {
+			result = astPattern
 		}
-		if p.Method != "" {
-			parts = append(parts, p.Method)
-		}
-		if p.Field != "" {
-			parts = append(parts, p.Field)
-		}
-		result = strings.Join(parts, ":")
 	}
 
 	if p.Metric != "" {
@@ -214,6 +234,36 @@ func ParsePattern(pattern string) (*AQLPattern, error) {
 	p := &AQLPattern{
 		Original:   pattern,
 		IsWildcard: strings.Contains(pattern, "*"),
+	}
+
+	// Check for file path patterns using @ prefix or path() function
+	if strings.HasPrefix(pattern, "@") {
+		// Handle @file_pattern:ast_pattern format
+		if colonIndex := strings.Index(pattern, ":"); colonIndex != -1 {
+			p.FilePath = pattern[1:colonIndex] // Remove @ prefix
+			pattern = pattern[colonIndex+1:]  // Continue with AST pattern
+		} else {
+			// Only file path pattern, no AST pattern
+			p.FilePath = pattern[1:] // Remove @ prefix
+			pattern = "*"           // Default to match all AST nodes
+		}
+	} else if strings.HasPrefix(pattern, "path(") {
+		// Handle path(file_pattern) format
+		closeIndex := strings.Index(pattern, ")")
+		if closeIndex == -1 {
+			return nil, fmt.Errorf("invalid path() pattern format: missing closing parenthesis: %s", pattern)
+		}
+		p.FilePath = pattern[5:closeIndex] // Extract content between path( and )
+
+		// Check for remaining AST pattern after path()
+		remaining := strings.TrimSpace(pattern[closeIndex+1:])
+		if strings.HasPrefix(remaining, "AND") {
+			pattern = strings.TrimSpace(remaining[3:]) // Remove "AND"
+		} else if remaining != "" {
+			return nil, fmt.Errorf("invalid syntax after path(): %s", remaining)
+		} else {
+			pattern = "*" // Default to match all AST nodes
+		}
 	}
 
 	// Check for metric access (e.g., "*.cyclomatic")
@@ -331,6 +381,13 @@ func ParsePattern(pattern string) (*AQLPattern, error) {
 
 // Matches checks if an AST node matches this pattern
 func (p *AQLPattern) Matches(node *ASTNode) bool {
+	// Check file path pattern first if specified
+	if p.FilePath != "" && p.FilePath != "*" {
+		if !matchesFilePath(node.FilePath, p.FilePath) {
+			return false
+		}
+	}
+
 	if p.Package != "" && p.Package != "*" {
 		if !matchesWildcard(node.PackageName, p.Package) {
 			return false
@@ -356,6 +413,25 @@ func (p *AQLPattern) Matches(node *ASTNode) bool {
 	}
 
 	return true
+}
+
+// matchesFilePath performs doublestar glob matching on file paths
+func matchesFilePath(filePath, pattern string) bool {
+	if pattern == "*" {
+		return true
+	}
+
+	// Try exact doublestar match
+	if match, err := doublestar.Match(pattern, filePath); err == nil && match {
+		return true
+	}
+
+	// Try matching against relative path (basename)
+	if match, err := doublestar.Match(pattern, filepath.Base(filePath)); err == nil && match {
+		return true
+	}
+
+	return false
 }
 
 // GetMetricValue extracts the metric value from an AST node

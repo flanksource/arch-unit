@@ -11,6 +11,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/flanksource/arch-unit/analysis"
+	"github.com/flanksource/arch-unit/analysis/types"
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/clicky"
@@ -142,13 +143,21 @@ func (a *Analyzer) AnalyzeFiles() error {
 		}
 
 		// Use generic analyzer (it handles caching internally)
-		// Create a simple task for the analyzer
-		task := &clicky.Task{}
-		result, err := genericAnalyzer.AnalyzeFile(task, file.path, content)
+		// Create a proper task for the analyzer
+		var result *types.ASTResult
+		task := clicky.StartTask("analyze-file", func(ctx flanksourceContext.Context, t *clicky.Task) (*types.ASTResult, error) {
+			var err error
+			result, err = genericAnalyzer.AnalyzeFile(t, file.path, content)
+			if err != nil {
+				return nil, fmt.Errorf("❌ Failed to analyze %s: %v", relPath, err)
+			}
+			return result, nil
+		})
 
+		result, err = task.GetResult()
 		if err != nil {
 			errorCount++
-			return fmt.Errorf("❌ Failed to analyze %s: %v", relPath, err)
+			return err
 		}
 
 		if result == nil {
@@ -323,8 +332,13 @@ func (a *Analyzer) processSourceFiles(ctx flanksourceContext.Context, sourceFile
 			return fmt.Errorf("Failed to read file %s: %v", file.path, err)
 		}
 		// Use generic analyzer (it handles caching internally)
-		task := &clicky.Task{}
-		_, err = genericAnalyzer.AnalyzeFile(task, file.path, content)
+		task := clicky.StartTask("analyze-file", func(ctx flanksourceContext.Context, t *clicky.Task) (*types.ASTResult, error) {
+			return genericAnalyzer.AnalyzeFile(t, file.path, content)
+		})
+
+		if _, err := task.GetResult(); err != nil {
+			return fmt.Errorf("Failed to analyze file %s: %v", file.path, err)
+		}
 
 		processedFiles++
 

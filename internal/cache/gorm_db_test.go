@@ -24,7 +24,7 @@ func TestTestWriteAccess(t *testing.T) {
 
 		// Set the global instance
 		ResetGormDB()
-		gormInstance = db
+		gormInstance = db.GetWriteDB()
 		gormOnce = sync.Once{} // Reset to prevent re-initialization
 
 		err = TestWriteAccess()
@@ -110,7 +110,7 @@ func TestTestWriteAccessWithNonExistentDB(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set the global instance
-	gormInstance = db
+	gormInstance = db.GetWriteDB()
 	gormOnce = sync.Once{} // Reset to prevent re-initialization
 
 	err = TestWriteAccess()

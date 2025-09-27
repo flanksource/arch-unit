@@ -15,6 +15,7 @@ import (
 	"github.com/flanksource/arch-unit/parser"
 	"github.com/flanksource/arch-unit/query"
 	"github.com/flanksource/clicky"
+	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
 	"github.com/spf13/cobra"
 )
@@ -25,11 +26,23 @@ var (
 	astShowCalls      bool
 	astShowLibraries  bool
 	astShowComplexity bool
+	astShowFields     bool
 	astCachedOnly     bool
 	astRebuildCache   bool
 	astThreshold      int
 	astDepth          int
 	astQuery          string
+
+	// New display configuration flags
+	astShowDirs       bool
+	astShowFiles      bool
+	astShowPackages   bool
+	astShowTypes      bool
+	astShowMethods    bool
+	astShowParams     bool
+	astShowImports    bool
+	astShowLineNo     bool
+	astShowFileStats  bool
 )
 
 var astCmd = &cobra.Command{
@@ -41,17 +54,31 @@ The ast command provides detailed information about code structure, relationship
 complexity metrics, and dependencies using powerful pattern matching.
 
 PATTERN SYNTAX:
-  Patterns use the format: package:type:method:field
+  AST Patterns use the format: package:type:method:field
+  File Path Patterns use doublestar glob syntax with @ prefix or path() function
+  Combined Patterns: @file_pattern:ast_pattern or path(file_pattern) AND ast_pattern
   - Use wildcards (*) for any component
   - Omit components to match any value
   - Components are matched hierarchically
 
 PATTERN EXAMPLES:
-  Basic Patterns:
+  Basic AST Patterns:
     "*"                    # All nodes
     "Controller*"          # Types starting with "Controller"
     "*Service"             # Types ending with "Service"
     "models.*"             # All nodes in "models" package
+
+  File Path Patterns:
+    "@**/*.go"             # All Go files in any directory
+    "@src/**/*.go"         # Go files in src directory and subdirectories
+    "@controllers/*.go"    # Go files directly in controllers directory
+    "path(**/*.py)"        # All Python files (function syntax)
+
+  Combined File Path + AST Patterns:
+    "@**/*.go:Service*"                    # Service types in any Go file
+    "@controllers/**/*.go:*Controller*"    # Controller types in controllers directory
+    "@src/**/*.go:api:UserService"         # UserService in api package, src directory
+    "path(internal/**/*.go) AND Service*"  # Service types in internal directory
 
   Package Patterns:
     "controllers"          # All nodes in controllers package
@@ -82,6 +109,12 @@ PATTERN EXAMPLES:
     "len(*) > 40"                 # Find nodes with long names
     "imports(*) > 10"             # Find modules with many imports
     "calls(*) > 5"                # Find methods with many external calls
+
+  File Path + Metric Queries:
+    "lines(@src/**/*.go:Service*) > 100"      # Large Service classes in src directory
+    "cyclomatic(@**/*.go:*Handler*) >= 15"   # Complex handlers in any Go file
+    "params(@controllers/**/*.go:*) > 5"     # Methods with many params in controllers
+    "lines(@internal/**/*.go:*) < 20"       # Small functions in internal packages
 
 AVAILABLE NODE TYPES:
   - package: Package declarations
@@ -145,7 +178,18 @@ COMMAND EXAMPLES:
   arch-unit ast --query "imports(*) > 10"
   arch-unit ast --query "calls(*:*:*) > 5"
 
-  # File filtering examples
+  # File path pattern examples
+  arch-unit ast "@**/*.go:Service*"                          # All Service types in Go files
+  arch-unit ast "@src/**/*.go:*Controller*" --format table   # Controllers in src directory
+  arch-unit ast "@internal/**/*.go:api:UserService"          # UserService in api package, internal dir
+  arch-unit ast "path(controllers/**/*.go) AND *Handler*"    # Handler types in controllers directory
+
+  # File path + metric queries
+  arch-unit ast --query "lines(@src/**/*.go:Service*) > 100"      # Large services in src
+  arch-unit ast --query "cyclomatic(@**/*.go:*Handler*) >= 15"   # Complex handlers
+  arch-unit ast --query "params(@controllers/**/*.go:*) > 5"     # Methods with many params
+
+  # File filtering examples (legacy - use file path patterns instead)
   arch-unit ast --include "*.go" --exclude "*_test.go"        # Only Go files, no tests
   arch-unit ast --include "src/**/*.py" --include "lib/**/*.py" # Python files in specific dirs
   arch-unit ast --exclude "vendor/**" --exclude "node_modules/**" # Exclude vendor dirs
@@ -171,6 +215,7 @@ func init() {
 	astCmd.Flags().BoolVar(&astShowCalls, "calls", false, "Show call relationships")
 	astCmd.Flags().BoolVar(&astShowLibraries, "libraries", false, "Show external library dependencies")
 	astCmd.Flags().BoolVar(&astShowComplexity, "complexity", false, "Show complexity metrics")
+	astCmd.Flags().BoolVar(&astShowFields, "fields", false, "Show field nodes in AST output")
 	astCmd.Flags().BoolVar(&astCachedOnly, "cached-only", false, "Show only cached results, don't analyze new files")
 	astCmd.Flags().BoolVar(&astRebuildCache, "rebuild-cache", false, "Rebuild the entire AST cache")
 	astCmd.Flags().IntVar(&astThreshold, "threshold", 0, "Complexity threshold filter")
@@ -388,11 +433,17 @@ func analyzeFiles(astCache *cache.ASTCache, workingDir string) error {
 		}
 
 		// Use generic analyzer
-		task := &clicky.Task{}
-		_, err = genericAnalyzer.AnalyzeFile(task, file.path, content)
+		task := clicky.StartTask("analyze-file", func(ctx flanksourceContext.Context, t *clicky.Task) (bool, error) {
+			_, err := genericAnalyzer.AnalyzeFile(t, file.path, content)
+			if err != nil {
+				return false, fmt.Errorf("Failed to extract AST from %s: %v", file.path, err)
+			}
+			return true, nil
+		})
 
-		if err != nil {
-			return fmt.Errorf("Failed to extract AST from %s: %v", file.path, err)
+		// Wait for task completion
+		if _, err := task.GetResult(); err != nil {
+			return err
 		}
 	}
 
@@ -626,120 +677,24 @@ func outputNodesTemplate(nodes []*models.ASTNode, workingDir string) error {
 	return nil
 }
 
-// outputNodesTree outputs nodes in tree format grouped by file and class
+// outputNodesTree outputs nodes in tree format using clicky.Format
 func outputNodesTree(astCache *cache.ASTCache, nodes []*models.ASTNode, pattern string, workingDir string) error {
+	// Build tree structure using the existing BuildASTNodeTree
+	tree := models.BuildASTNodeTree(nodes)
+
+	// Use clicky.Format to handle coloring properly
+	output, err := clicky.Format(tree, clicky.FormatOptions{
+		Format:  "tree",
+		NoColor: clicky.Flags.FormatOptions.NoColor,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to format AST tree: %w", err)
+	}
+
 	fmt.Printf("AST Nodes matching pattern: %s\n", pattern)
 	fmt.Printf("Found %d nodes:\n\n", len(nodes))
 
-	// Group nodes by file -> class -> node type
-	fileGroups := make(map[string]map[string]map[string][]*models.ASTNode)
-
-	for _, node := range nodes {
-		relPath := node.FilePath
-		if strings.HasPrefix(node.FilePath, workingDir+"/") {
-			relPath = strings.TrimPrefix(node.FilePath, workingDir+"/")
-		}
-
-		if fileGroups[relPath] == nil {
-			fileGroups[relPath] = make(map[string]map[string][]*models.ASTNode)
-		}
-
-		className := node.TypeName
-		if className == "" {
-			className = "package-level"
-		}
-
-		if fileGroups[relPath][className] == nil {
-			fileGroups[relPath][className] = make(map[string][]*models.ASTNode)
-		}
-
-		nodeType := string(node.NodeType)
-		fileGroups[relPath][className][nodeType] = append(fileGroups[relPath][className][nodeType], node)
-	}
-
-	// Display grouped output
-	fileCount := 0
-	totalFiles := len(fileGroups)
-
-	for fileName, classGroups := range fileGroups {
-		fileCount++
-		isLastFile := fileCount == totalFiles
-		filePrefix := "├── "
-		if isLastFile {
-			filePrefix = "└── "
-		}
-
-		fmt.Printf("%s📁 %s\n", filePrefix, fileName)
-
-		classCount := 0
-		totalClasses := len(classGroups)
-
-		for className, nodeTypeGroups := range classGroups {
-			classCount++
-			isLastClass := classCount == totalClasses
-
-			classPrefix := "│   ├── "
-			childPrefix := "│   │   "
-			if isLastFile {
-				classPrefix = "    ├── "
-				childPrefix = "    │   "
-			}
-			if isLastClass {
-				classPrefix = strings.Replace(classPrefix, "├── ", "└── ", 1)
-				childPrefix = strings.Replace(childPrefix, "│   ", "    ", 1)
-			}
-
-			if className == "package-level" {
-				fmt.Printf("%s📦 %s\n", classPrefix, className)
-			} else {
-				fmt.Printf("%s🏗️  %s\n", classPrefix, className)
-			}
-
-			// Display methods, fields, types, variables in compact format
-			for nodeType, nodeList := range nodeTypeGroups {
-				if len(nodeList) == 0 {
-					continue
-				}
-
-				var items []string
-				for _, node := range nodeList {
-					name := node.MethodName
-					if name == "" {
-						name = node.FieldName
-					}
-					if name == "" {
-						name = node.TypeName
-					}
-
-					item := fmt.Sprintf("%s:%d", name, node.StartLine)
-					if astShowComplexity && node.CyclomaticComplexity > 0 {
-						item += fmt.Sprintf("(c:%d)", node.CyclomaticComplexity)
-					}
-					items = append(items, item)
-				}
-
-				if len(items) > 0 {
-					icon := "🔧"
-					switch nodeType {
-					case "method":
-						icon = "⚡"
-					case "field":
-						icon = "📊"
-					case "type":
-						icon = "🏷️"
-					case "variable":
-						icon = "📝"
-					}
-
-					fmt.Printf("%s%s %-8s %s\n", childPrefix, icon, nodeType+":", strings.Join(items, ", "))
-				}
-			}
-		}
-
-		if !isLastFile {
-			fmt.Println("│")
-		}
-	}
+	fmt.Print(output)
 
 	return nil
 }
@@ -750,4 +705,88 @@ func outputJSON(data interface{}) error {
 	encoder := jsonenc.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(data)
+}
+
+// isValidFilePath checks if the argument is a valid file path (rather than an AQL pattern)
+func isValidFilePath(arg, workingDir string) bool {
+	resolvedPath, err := resolveFilePath(arg, workingDir)
+	if err != nil {
+		return false
+	}
+
+	// Check if it's a regular file
+	info, err := os.Stat(resolvedPath)
+	if err != nil {
+		return false
+	}
+
+	return info.Mode().IsRegular()
+}
+
+// resolveFilePath resolves a file path argument to an absolute path
+func resolveFilePath(arg, workingDir string) (string, error) {
+	// If already absolute, verify it exists
+	if filepath.IsAbs(arg) {
+		if _, err := os.Stat(arg); err == nil {
+			return arg, nil
+		}
+		return "", fmt.Errorf("file not found: %s", arg)
+	}
+
+	// Try relative to working directory first
+	absPath := filepath.Join(workingDir, arg)
+	if _, err := os.Stat(absPath); err == nil {
+		return absPath, nil
+	}
+
+	// Try relative to current directory
+	if cwd, err := os.Getwd(); err == nil {
+		cwdPath := filepath.Join(cwd, arg)
+		if _, err := os.Stat(cwdPath); err == nil {
+			return cwdPath, nil
+		}
+	}
+
+	return "", fmt.Errorf("file not found: %s", arg)
+}
+
+// queryASTByFilePath queries and displays AST nodes for a specific file
+func queryASTByFilePath(astCache *cache.ASTCache, filePath, workingDir string) error {
+	// Resolve the file path to absolute path
+	resolvedPath, err := resolveFilePath(filePath, workingDir)
+	if err != nil {
+		return err
+	}
+
+	// Query AST nodes for the specific file
+	nodes, err := astCache.GetASTNodesByFile(resolvedPath)
+	if err != nil {
+		return fmt.Errorf("failed to get AST nodes for file %s: %w", filePath, err)
+	}
+
+	if len(nodes) == 0 {
+		// Check if file needs analysis
+		needsAnalysis, err := astCache.NeedsReanalysis(resolvedPath)
+		if err != nil {
+			return fmt.Errorf("failed to check file analysis status: %w", err)
+		}
+
+		if needsAnalysis {
+			logger.Infof("No AST data found for file: %s", filePath)
+			logger.Infof("Run 'arch-unit ast' to analyze files first, then try again.")
+			return nil
+		}
+
+		logger.Infof("File %s has been analyzed but contains no AST nodes", filePath)
+		return nil
+	}
+
+	// Display the nodes using existing display functionality
+	// Use relative path for display if possible
+	displayPath := filePath
+	if strings.HasPrefix(resolvedPath, workingDir+"/") {
+		displayPath = strings.TrimPrefix(resolvedPath, workingDir+"/")
+	}
+
+	return displayNodes(astCache, nodes, displayPath, workingDir)
 }

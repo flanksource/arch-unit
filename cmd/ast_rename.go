@@ -12,7 +12,6 @@ import (
 
 var (
 	renameDryRun   bool
-	renameNoColor  bool
 	renameShowDiff bool
 	renameBackup   bool
 )
@@ -68,7 +67,6 @@ func init() {
 	astCmd.AddCommand(astRenameCmd)
 
 	astRenameCmd.Flags().BoolVar(&renameDryRun, "dry-run", false, "Preview changes without modifying files")
-	astRenameCmd.Flags().BoolVar(&renameNoColor, "no-color", false, "Disable colored output")
 	astRenameCmd.Flags().BoolVar(&renameShowDiff, "show-diff", false, "Show detailed diff of changes")
 	astRenameCmd.Flags().BoolVar(&renameBackup, "backup", false, "Create backup files (.bak) before modification")
 }
@@ -99,7 +97,7 @@ func runASTRename(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create renamer
-	renamer := ast.NewRenamer(workingDir, renameNoColor)
+	renamer := ast.NewRenamer(workingDir, clicky.Flags.FormatOptions.NoColor)
 
 	// Find the node to rename
 	logger.Debugf("Finding node to rename: %s", oldName)

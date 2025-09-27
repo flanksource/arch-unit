@@ -3,21 +3,12 @@ package ast
 import (
 	"fmt"
 
-	"github.com/charmbracelet/lipgloss"
+	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
 )
 
-func init() {
-	// Register AST-specific renderers
-	api.RegisterRenderFunc("ast_complexity", RenderComplexity)
-	api.RegisterRenderFunc("ast_members", RenderMembers)
-	api.RegisterRenderFunc("ast_relationship", RenderRelationship)
-	api.RegisterRenderFunc("ast_library", RenderLibrary)
-	api.RegisterRenderFunc("fixture_status", RenderFixtureStatus)
-}
-
 // RenderComplexity renders cyclomatic complexity with color coding
-func RenderComplexity(value interface{}, field api.PrettyField, theme api.Theme) string {
+func RenderComplexity(value interface{}, field api.PrettyField, theme api.Theme) api.Text {
 	var complexity int
 	switch v := value.(type) {
 	case int:
@@ -27,133 +18,158 @@ func RenderComplexity(value interface{}, field api.PrettyField, theme api.Theme)
 	case float64:
 		complexity = int(v)
 	default:
-		return fmt.Sprintf("%v", value)
+		return clicky.Textf("%v", value)
 	}
 
 	// Color based on complexity thresholds
-	style := lipgloss.NewStyle()
+	var style string
 	switch {
 	case complexity > 15:
-		style = style.Foreground(theme.Error).Bold(true)
+		style = "text-red-600 font-bold"
 	case complexity > 10:
-		style = style.Foreground(theme.Error)
+		style = "text-red-600"
 	case complexity > 5:
-		style = style.Foreground(theme.Warning)
+		style = "text-yellow-600"
 	case complexity > 0:
-		style = style.Foreground(theme.Success)
+		style = "text-green-600"
 	default:
-		style = style.Foreground(theme.Muted)
+		style = "text-gray-400"
 	}
 
-	return style.Render(fmt.Sprintf("%d", complexity))
+	text := clicky.Textf("%d", complexity)
+	text.Style = style
+	return text
 }
 
-// RenderMembers renders a list of members in compact format
-func RenderMembers(value interface{}, field api.PrettyField, theme api.Theme) string {
-	switch v := value.(type) {
-	case []MemberInfo:
-		if len(v) == 0 {
-			return ""
-		}
+// // RenderMembers renders a list of members in compact format
+// func RenderMembers(value interface{}, field api.PrettyField, theme api.Theme) api.Text {
+// 	switch v := value.(type) {
+// 	case []MemberInfo:
+// 		if len(v) == 0 {
+// 			return clicky.Text("")
+// 		}
 
-		var items []string
-		for _, member := range v {
-			item := fmt.Sprintf("%s:%d", member.Name, member.Line)
-			if member.Complexity > 0 {
-				// Color the complexity part
-				complexityStr := fmt.Sprintf("(c:%d)", member.Complexity)
-				style := lipgloss.NewStyle()
-				if member.Complexity > 10 {
-					style = style.Foreground(theme.Error)
-				} else if member.Complexity > 5 {
-					style = style.Foreground(theme.Warning)
-				} else {
-					style = style.Foreground(theme.Success)
-				}
-				item += style.Render(complexityStr)
-			}
-			items = append(items, item)
-		}
+// 		parts := make([]api.Text, 0, len(v)*2) // Pre-allocate for members + separators
+// 		for i, member := range v {
+// 			if i > 0 {
+// 				parts = append(parts, clicky.Text(", "))
+// 			}
 
-		// Join with comma and space
-		result := ""
-		for i, item := range items {
-			if i > 0 {
-				result += ", "
-			}
-			result += item
-		}
-		return result
+// 			// Add member name and line
+// 			memberText := clicky.Textf("%s:%d", member.Name, member.Line)
+// 			parts = append(parts, memberText)
 
-	case []interface{}:
-		// Handle generic slice
-		var items []string
-		for _, item := range v {
-			if m, ok := item.(map[string]interface{}); ok {
-				name := fmt.Sprintf("%v", m["name"])
-				line := 0
-				if l, ok := m["line"].(int); ok {
-					line = l
-				}
-				complexity := 0
-				if c, ok := m["complexity"].(int); ok {
-					complexity = c
-				}
+// 			// Add complexity with appropriate styling
+// 			if member.Complexity > 0 {
+// 				complexityStyle := ""
+// 				switch {
+// 				case member.Complexity > 10:
+// 					complexityStyle = "text-red-600"
+// 				case member.Complexity > 5:
+// 					complexityStyle = "text-yellow-600"
+// 				default:
+// 					complexityStyle = "text-green-600"
+// 				}
 
-				itemStr := fmt.Sprintf("%s:%d", name, line)
-				if complexity > 0 {
-					itemStr += fmt.Sprintf("(c:%d)", complexity)
-				}
-				items = append(items, itemStr)
-			} else {
-				items = append(items, fmt.Sprintf("%v", item))
-			}
-		}
+// 				complexityText := clicky.Textf("(c:%d)", member.Complexity)
+// 				complexityText.Style = complexityStyle
+// 				parts = append(parts, complexityText)
+// 			}
+// 		}
 
-		result := ""
-		for i, item := range items {
-			if i > 0 {
-				result += ", "
-			}
-			result += item
-		}
-		return result
+// 		// Combine all parts
+// 		result := parts[0]
+// 		for _, part := range parts[1:] {
+// 			result = result.Append(part)
+// 		}
+// 		return result
 
-	default:
-		return fmt.Sprintf("%v", value)
-	}
-}
+// 	case []interface{}:
+// 		var parts []api.Text
+// 		for i, item := range v {
+// 			if i > 0 {
+// 				parts = append(parts, clicky.Text(", "))
+// 			}
+
+// 			if m, ok := item.(map[string]interface{}); ok {
+// 				name := fmt.Sprintf("%v", m["name"])
+// 				line := 0
+// 				if l, ok := m["line"].(int); ok {
+// 					line = l
+// 				}
+// 				complexity := 0
+// 				if c, ok := m["complexity"].(int); ok {
+// 					complexity = c
+// 				}
+
+// 				memberText := clicky.Textf("%s:%d", name, line)
+// 				parts = append(parts, memberText)
+
+// 				if complexity > 0 {
+// 					complexityStyle := ""
+// 					switch {
+// 					case complexity > 10:
+// 						complexityStyle = "text-red-600"
+// 					case complexity > 5:
+// 						complexityStyle = "text-yellow-600"
+// 					default:
+// 						complexityStyle = "text-green-600"
+// 					}
+
+// 					complexityText := clicky.Textf("(c:%d)", complexity)
+// 					complexityText.Style = complexityStyle
+// 					parts = append(parts, complexityText)
+// 				}
+// 			} else {
+// 				parts = append(parts, clicky.Textf("%v", item))
+// 			}
+// 		}
+
+// 		if len(parts) == 0 {
+// 			return clicky.Text("")
+// 		}
+
+// 		result := parts[0]
+// 		for _, part := range parts[1:] {
+// 			result = result.Append(part)
+// 		}
+// 		return result
+
+// 	default:
+// 		return clicky.Textf("%v", value)
+// 	}
+// }
 
 // RenderFixtureStatus renders fixture test status with color coding and icons
-func RenderFixtureStatus(value interface{}, field api.PrettyField, theme api.Theme) string {
+func RenderFixtureStatus(value interface{}, field api.PrettyField, theme api.Theme) api.Text {
 	status, ok := value.(string)
 	if !ok {
-		return fmt.Sprintf("%v", value)
+		return clicky.Textf("%v", value)
 	}
 
-	var style lipgloss.Style
+	var styleClass string
 	var icon string
 
 	switch status {
 	case "PASS":
-		style = lipgloss.NewStyle().Foreground(theme.Success).Bold(true)
+		styleClass = "text-green-600 font-bold"
 		icon = "✅ "
 	case "FAIL":
-		style = lipgloss.NewStyle().Foreground(theme.Error).Bold(true)
+		styleClass = "text-red-600 font-bold"
 		icon = "❌ "
 	case "SKIP":
-		style = lipgloss.NewStyle().Foreground(theme.Warning).Bold(true)
+		styleClass = "text-yellow-600 font-bold"
 		icon = "⏭️ "
 	default:
-		style = lipgloss.NewStyle().Foreground(theme.Muted)
+		styleClass = "text-gray-400"
 		icon = "🔍 "
 	}
 
-	return icon + style.Render(status)
+	return clicky.Text(icon).Append(status, styleClass)
 }
 
 // RenderRelationship renders a call relationship
-func RenderRelationship(value interface{}, field api.PrettyField, theme api.Theme) string {
+func RenderRelationship(value interface{}, field api.PrettyField, theme api.Theme) api.Text {
 	switch v := value.(type) {
 	case map[string]interface{}:
 		target := fmt.Sprintf("%v", v["target"])
@@ -174,19 +190,18 @@ func RenderRelationship(value interface{}, field api.PrettyField, theme api.Them
 			arrow = "↗"
 		}
 
-		style := lipgloss.NewStyle().Foreground(theme.Info)
-		return fmt.Sprintf("%s %s (line %d)", arrow, style.Render(target), line)
+		return clicky.Text(arrow+" ").Append(target, "text-blue-600").Printf(" (line %d)", line)
 
 	case string:
-		return v
+		return clicky.Text(v)
 
 	default:
-		return fmt.Sprintf("%v", value)
+		return clicky.Textf("%v", value)
 	}
 }
 
 // RenderLibrary renders an external library dependency
-func RenderLibrary(value interface{}, field api.PrettyField, theme api.Theme) string {
+func RenderLibrary(value interface{}, field api.PrettyField, theme api.Theme) api.Text {
 	switch v := value.(type) {
 	case map[string]interface{}:
 		lib := fmt.Sprintf("%v", v["library"])
@@ -196,21 +211,19 @@ func RenderLibrary(value interface{}, field api.PrettyField, theme api.Theme) st
 		}
 
 		// Style library name
-		style := lipgloss.NewStyle().Foreground(theme.Secondary).Italic(true)
-		result := style.Render(lib)
+		libText := clicky.Text(lib)
+		libText.Style = "text-purple-600 italic"
 
 		if count > 0 {
-			countStyle := lipgloss.NewStyle().Foreground(theme.Muted)
-			result += countStyle.Render(fmt.Sprintf(" (%d calls)", count))
+			return libText.PrintfWithStyle(" (%d calls)", "text-gray-400", count)
 		}
 
-		return result
+		return libText
 
 	case string:
-		style := lipgloss.NewStyle().Foreground(theme.Secondary).Italic(true)
-		return style.Render(v)
+		return clicky.Text(v, "text-purple-600 italic")
 
 	default:
-		return fmt.Sprintf("%v", value)
+		return clicky.Textf("%v", value)
 	}
 }

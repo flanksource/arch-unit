@@ -413,18 +413,29 @@ func (e *AQLEngine) findMatchingNodes(pattern *models.AQLPattern) ([]*models.AST
 	}
 	defer func() { _ = rows.Close() }()
 
-	var nodes []*models.ASTNode
+	var allNodes []*models.ASTNode
 	for rows.Next() {
 		var node models.ASTNode
 		err := rows.Scan(&node.ID, &node.FilePath, &node.PackageName, &node.TypeName,
 			&node.MethodName, &node.FieldName, &node.NodeType, &node.StartLine,
-			&node.EndLine, &node.CyclomaticComplexity, &node.ParameterCount, 
+			&node.EndLine, &node.CyclomaticComplexity, &node.ParameterCount,
 			&node.ReturnCount, &node.LineCount, &node.LastModified)
 		if err != nil {
 			return nil, err
 		}
-		nodes = append(nodes, &node)
+		allNodes = append(allNodes, &node)
 	}
 
-	return nodes, nil
+	// Filter by file path pattern if specified
+	if pattern.FilePath != "" && pattern.FilePath != "*" {
+		var filteredNodes []*models.ASTNode
+		for _, node := range allNodes {
+			if pattern.Matches(node) {
+				filteredNodes = append(filteredNodes, node)
+			}
+		}
+		return filteredNodes, nil
+	}
+
+	return allNodes, nil
 }

@@ -49,7 +49,6 @@ func (m *NodeDependenciesManager) EnsureDependencies(ctx flanksourceContext.Cont
 func (m *NodeDependenciesManager) installDependencies(ctx flanksourceContext.Context) error {
 	// Create .arch-unit directory if it doesn't exist
 	archUnitDir := filepath.Dir(m.baseDir)
-	ctx.Infof("Creating .arch-unit directory...")
 
 	if err := os.MkdirAll(archUnitDir, 0755); err != nil {
 		ctx.Errorf("Failed to create directory: %v", err)
@@ -58,11 +57,9 @@ func (m *NodeDependenciesManager) installDependencies(ctx flanksourceContext.Con
 
 	// Check if package.json exists
 	packageJSONPath := filepath.Join(archUnitDir, "package.json")
-	ctx.Infof("Checking package.json...")
 
 	if _, err := os.Stat(packageJSONPath); os.IsNotExist(err) {
 		// Create package.json
-		ctx.Infof("Creating package.json with dependencies...")
 
 		packageJSON := map[string]interface{}{
 			"name":        "arch-unit-parsers",
@@ -91,17 +88,10 @@ func (m *NodeDependenciesManager) installDependencies(ctx flanksourceContext.Con
 		}
 	}
 
-	// Check if node_modules exists and has the required packages
-	ctx.Infof("Checking existing packages...")
-
 	if m.checkDependenciesInstalled() {
-		ctx.Infof("Dependencies already installed")
 		ctx.Debugf("Node.js dependencies already installed in %s", m.baseDir)
 		return nil
 	}
-
-	// Install dependencies
-	ctx.Infof("Installing packages with npm...")
 
 	cmd := exec.Command("npm", "install", "--no-save", "--no-audit", "--no-fund")
 	cmd.Dir = archUnitDir
@@ -122,16 +112,10 @@ func (m *NodeDependenciesManager) installDependencies(ctx flanksourceContext.Con
 		}
 	}
 
-	// Verify installation
-	ctx.Infof("Verifying installation...")
-
 	if !m.checkDependenciesInstalled() {
 		ctx.Errorf("Dependencies not properly installed")
 		return fmt.Errorf("dependencies were not properly installed")
 	}
-
-	ctx.Infof("✓ TypeScript, Acorn, and Babel parsers installed")
-	ctx.Infof("Node.js dependencies installed successfully")
 	return nil
 }
 
@@ -176,7 +160,7 @@ const Module = require('module');
 const originalResolveFilename = Module._resolveFilename;
 Module._resolveFilename = function(request, parent, isMain) {
 	// For our parser dependencies, resolve from .arch-unit/node_modules
-	if (request === 'typescript' || request === 'acorn' || request === 'acorn-walk' || 
+	if (request === 'typescript' || request === 'acorn' || request === 'acorn-walk' ||
 	    request.startsWith('@babel/')) {
 		try {
 			return originalResolveFilename.call(this, request, {

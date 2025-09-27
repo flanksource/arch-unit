@@ -198,8 +198,18 @@ func (e *TypeScriptASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath
 func (e *TypeScriptASTExtractor) extractPackageName(filePath string) string {
 	dir := filepath.Dir(filePath)
 
-	// Look for package.json
-	for currentDir := dir; currentDir != "/" && currentDir != ""; currentDir = filepath.Dir(currentDir) {
+	// Look for package.json with iteration limit to prevent infinite loops
+	maxIterations := 20
+	iteration := 0
+	for currentDir := dir; currentDir != "/" && currentDir != "" && currentDir != "." && iteration < maxIterations; currentDir = filepath.Dir(currentDir) {
+		iteration++
+
+		// Additional safety check - if we haven't moved up, break
+		parentDir := filepath.Dir(currentDir)
+		if parentDir == currentDir {
+			break
+		}
+
 		packageJSONPath := filepath.Join(currentDir, "package.json")
 		if data, err := os.ReadFile(packageJSONPath); err == nil {
 			var packageJSON map[string]interface{}

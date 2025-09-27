@@ -31,7 +31,9 @@ func (s *GoDependencyScanner) ScanFile(ctx *models.ScanContext, filepath string,
 		return s.scanGoSum(ctx, filepath, content)
 	}
 
-	ctx.Debugf("Scanning Go dependencies from %s", filepath)
+	if ctx != nil {
+		ctx.Debugf("Scanning Go dependencies from %s", filepath)
+	}
 
 	// Parse go.mod file
 	modFile, err := modfile.Parse(filepath, content, nil)
@@ -42,34 +44,35 @@ func (s *GoDependencyScanner) ScanFile(ctx *models.ScanContext, filepath string,
 	var dependencies []*models.Dependency
 
 	// Extract module dependencies
-	for _, require := range modFile.Require {
-		// Skip indirect dependencies if needed
+	for lineNo, require := range modFile.Require {
+		// Determine dependency type
+		depType := models.DependencyTypeGo
+		if strings.HasPrefix(require.Mod.Path, "golang.org/x/") {
+			depType = models.DependencyTypeStdlib
+		}
+
 		dep := &models.Dependency{
 			Name:    require.Mod.Path,
 			Version: require.Mod.Version,
-			Type:    models.DependencyTypeGo,
+			Type:    depType,
+			Source:  fmt.Sprintf("go.mod:%d", lineNo+1), // Line numbers are 1-based
 		}
 
-		// Extract organization and project from module path
-		// e.g., github.com/org/project -> org/project
+		// Note: Git URL resolution should be handled by a resolver service, not here
+		// This follows the pattern where dependency scanners extract dependency info
+		// and resolvers handle URL resolution
 		if strings.HasPrefix(require.Mod.Path, "github.com/") {
-			parts := strings.Split(require.Mod.Path, "/")
-			if len(parts) >= 3 {
-				dep.Git = fmt.Sprintf("https://%s", require.Mod.Path)
-				// Provide packages based on the module structure
-				dep.Package = []string{require.Mod.Path}
-			}
-		} else if strings.HasPrefix(require.Mod.Path, "golang.org/x/") {
-			// Standard extended library
-			dep.Git = fmt.Sprintf("https://github.com/golang/%s",
-				strings.TrimPrefix(require.Mod.Path, "golang.org/x/"))
+			// Provide packages based on the module structure
+			dep.Package = []string{require.Mod.Path}
 		}
 
-		if !ctx.Matches(dep) {
+		if ctx != nil && !ctx.Matches(dep) {
 			continue
 		}
 		dependencies = append(dependencies, dep)
-		ctx.Debugf("Found dependency: %s@%s", dep.Name, dep.Version)
+		if ctx != nil {
+			ctx.Debugf("Found dependency: %s@%s", dep.Name, dep.Version)
+		}
 	}
 
 	// Extract replace directives as they affect actual dependencies
@@ -80,19 +83,27 @@ func (s *GoDependencyScanner) ScanFile(ctx *models.ScanContext, filepath string,
 				// Update with replacement info
 				if replace.New.Version != "" {
 					dep.Version = replace.New.Version
+				} else if replace.New.Path != replace.Old.Path {
+					// Local path replacement (no version specified)
+					dep.Version = fmt.Sprintf("local:%s", replace.New.Path)
 				}
-				if replace.New.Path != replace.Old.Path {
-					// Track the original name
+				if replace.New.Path != replace.Old.Path && replace.New.Version != "" {
+					// Only change name if it's a different module with a version
+					// For local paths, keep the original name
 					dep.Name = replace.New.Path
 				}
-				ctx.Debugf("Replaced %s with %s@%s",
-					replace.Old.Path, replace.New.Path, replace.New.Version)
+				if ctx != nil {
+					ctx.Debugf("Replaced %s with %s@%s",
+						replace.Old.Path, replace.New.Path, replace.New.Version)
+				}
 				break
 			}
 		}
 	}
 
-	ctx.Debugf("Found %d Go dependencies", len(dependencies))
+	if ctx != nil {
+		ctx.Debugf("Found %d Go dependencies", len(dependencies))
+	}
 	return dependencies, nil
 }
 
@@ -102,7 +113,9 @@ func (s *GoDependencyScanner) scanGoSum(ctx *models.ScanContext, filepath string
 		return nil, fmt.Errorf("not a go.sum file: %s", filepath)
 	}
 
-	ctx.Debugf("Scanning Go checksums from %s", filepath)
+	if ctx != nil {
+		ctx.Debugf("Scanning Go checksums from %s", filepath)
+	}
 
 	// go.sum contains checksums but not full dependency info
 	// We'll extract unique modules for reference
@@ -137,15 +150,11 @@ func (s *GoDependencyScanner) scanGoSum(ctx *models.ScanContext, filepath string
 		}
 
 		if strings.HasPrefix(module, "github.com/") {
-			dep.Git = fmt.Sprintf("https://%s", module)
 			dep.Package = []string{module}
-		} else if strings.HasPrefix(module, "golang.org/x/") {
-			// Standard extended library - consistent with go.mod scanner
-			dep.Git = fmt.Sprintf("https://github.com/golang/%s",
-				strings.TrimPrefix(module, "golang.org/x/"))
 		}
+		// Note: Git URL resolution should be handled by a resolver service, not here
 
-		if ctx.Matches(dep) {
+		if ctx != nil && ctx.Matches(dep) {
 			continue
 		}
 
@@ -172,7 +181,9 @@ func (s *GoDependencyScanner) scanGoSum(ctx *models.ScanContext, filepath string
 		result = append(result, dep)
 	}
 
-	ctx.Debugf("Found %d unique modules in go.sum", len(result))
+	if ctx != nil {
+		ctx.Debugf("Found %d unique modules in go.sum", len(result))
+	}
 	return result, nil
 }
 

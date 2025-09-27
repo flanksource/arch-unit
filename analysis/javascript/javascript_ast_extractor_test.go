@@ -1,8 +1,6 @@
 package javascript
 
 import (
-	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,12 +58,22 @@ var _ = Describe("JavaScript AST Extractor", func() {
 
 				Expect(result).NotTo(BeNil())
 				Expect(result.Nodes).NotTo(BeEmpty(), "Should extract JavaScript nodes")
-
-				// Print JSON ASTResult
-				jsonBytes, err := json.MarshalIndent(result, "", "  ")
-				Expect(err).NotTo(HaveOccurred())
-				fmt.Printf("JavaScript ASTResult JSON:\n%s\n", string(jsonBytes))
 			})
+		})
+	})
+
+	Describe("extractPackageName", func() {
+		It("should not hang on deep directory traversal", func() {
+			extractor := NewJavaScriptASTExtractor()
+
+			// Create a deeply nested temp directory path to test the iteration limit
+			deepPath := "/tmp/very/deep/nested/directory/structure/that/goes/beyond/normal/depth/limits/for/testing/purposes/only/file.js"
+
+			// This should complete quickly without hanging
+			packageName := extractor.extractPackageName(deepPath)
+
+			// Should return a fallback name since no package.json will be found
+			Expect(packageName).NotTo(BeEmpty())
 		})
 	})
 
@@ -108,11 +116,6 @@ var _ = Describe("JavaScript AST Extractor", func() {
 
 					Expect(result).NotTo(BeNil())
 					Expect(result.Nodes).NotTo(BeEmpty(), "Should extract TypeScript nodes")
-
-					// Print JSON ASTResult
-					jsonBytes, err := json.MarshalIndent(result, "", "  ")
-					Expect(err).NotTo(HaveOccurred())
-					fmt.Printf("TypeScript ASTResult JSON:\n%s\n", string(jsonBytes))
 				})
 			})
 		})

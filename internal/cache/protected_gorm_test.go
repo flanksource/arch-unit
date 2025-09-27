@@ -16,7 +16,7 @@ func TestProtectedGormDB_ConcurrentReads(t *testing.T) {
 	db, err := NewGormDBWithPath(tempDir)
 	require.NoError(t, err)
 
-	protectedDB := NewProtectedGormDB(db)
+	protectedDB := NewProtectedGormDB(db.GetWriteDB())
 
 	// Create some test data
 	testNode := &models.ASTNode{
@@ -64,7 +64,7 @@ func TestProtectedGormDB_ConcurrentWrites(t *testing.T) {
 	db, err := NewGormDBWithPath(tempDir)
 	require.NoError(t, err)
 
-	protectedDB := NewProtectedGormDB(db)
+	protectedDB := NewProtectedGormDB(db.GetWriteDB())
 
 	// Test concurrent writes
 	const numWriters = 5
@@ -104,7 +104,7 @@ func TestProtectedGormDB_MixedReadWrite(t *testing.T) {
 	db, err := NewGormDBWithPath(tempDir)
 	require.NoError(t, err)
 
-	protectedDB := NewProtectedGormDB(db)
+	protectedDB := NewProtectedGormDB(db.GetWriteDB())
 
 	// Create initial test data
 	for i := 0; i < 5; i++ {
@@ -185,7 +185,7 @@ func TestProtectedGormDB_Transaction(t *testing.T) {
 	db, err := NewGormDBWithPath(tempDir)
 	require.NoError(t, err)
 
-	protectedDB := NewProtectedGormDB(db)
+	protectedDB := NewProtectedGormDB(db.GetWriteDB())
 
 	// Test successful transaction
 	err = protectedDB.Transaction(func(tx *gorm.DB) error {
@@ -225,7 +225,7 @@ func TestProtectedQuery_AutoUnlock(t *testing.T) {
 	db, err := NewGormDBWithPath(tempDir)
 	require.NoError(t, err)
 
-	protectedDB := NewProtectedGormDB(db)
+	protectedDB := NewProtectedGormDB(db.GetWriteDB())
 
 	// Create test data
 	testNode := &models.ASTNode{
@@ -262,7 +262,7 @@ func TestProtectedQuery_ManualUnlock(t *testing.T) {
 	db, err := NewGormDBWithPath(tempDir)
 	require.NoError(t, err)
 
-	protectedDB := NewProtectedGormDB(db)
+	protectedDB := NewProtectedGormDB(db.GetWriteDB())
 
 	// Test manual unlock
 	query := protectedDB.WithReadLock()

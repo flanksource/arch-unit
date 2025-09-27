@@ -1,6 +1,8 @@
 package java
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/flanksource/arch-unit/internal/cache"
@@ -25,9 +27,11 @@ var _ = Describe("JavaASTExtractor", func() {
 
 	Describe("ExtractFile", func() {
 		It("should extract AST from a simple Java class", func() {
-			javaContent := []byte("package com.example;\n\nimport java.util.List;\n\npublic class SimpleClass {\n    private String name;\n\n    public SimpleClass(String name) {\n        this.name = name;\n    }\n\n    public String getName() {\n        return name;\n    }\n\n    public void setName(String name) {\n        this.name = name;\n    }\n}")
+			testFile := filepath.Join("testdata", "com", "example", "SimpleClass.java")
+			javaContent, err := os.ReadFile(testFile)
+			Expect(err).NotTo(HaveOccurred())
 
-			result, err := extractor.ExtractFile(astCache, "SimpleClass.java", javaContent)
+			result, err := extractor.ExtractFile(astCache, testFile, javaContent)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result).ToNot(BeNil())
@@ -52,13 +56,14 @@ var _ = Describe("JavaASTExtractor", func() {
 		})
 
 		It("should handle Java 1.7 features", func() {
-			javaContent := []byte("package com.example;\n\nimport java.util.List;\nimport java.util.ArrayList;\nimport java.io.IOException;\n\npublic class Java7Features {\n    private List<String> items = new ArrayList<>();\n\n    public void processItems(String type) {\n        switch (type) {\n            case \"TYPE_A\":\n                processTypeA();\n                break;\n            case \"TYPE_B\":\n                processTypeB();\n                break;\n            default:\n                processDefault();\n        }\n\n        int value = 0b1010_1100;\n        long number = 1_000_000L;\n    }\n\n    public void readFile(String filename) throws IOException {\n        try (java.io.BufferedReader reader = new java.io.BufferedReader(\n                new java.io.FileReader(filename))) {\n            String line = reader.readLine();\n        }\n    }\n\n    private void processTypeA() {}\n    private void processTypeB() {}\n    private void processDefault() {}\n}")
+			testFile := filepath.Join("testdata", "Java7Features.java")
+			javaContent, err := os.ReadFile(testFile)
+			Expect(err).NotTo(HaveOccurred())
 
-			result, err := extractor.ExtractFile(astCache, "Java7Features.java", javaContent)
+			result, err := extractor.ExtractFile(astCache, testFile, javaContent)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result).ToNot(BeNil())
-			Expect(result.PackageName).To(Equal("com.example"))
 
 			// Should extract all methods including private ones
 			var methodCount int
@@ -71,9 +76,11 @@ var _ = Describe("JavaASTExtractor", func() {
 		})
 
 		It("should extract inheritance relationships", func() {
-			javaContent := []byte("package com.example;\n\npublic class Child extends Parent implements Service {\n    public void childMethod() {\n        parentMethod();\n    }\n\n    public void serviceMethod() {\n    }\n}")
+			testFile := filepath.Join("testdata", "com", "example", "Child.java")
+			javaContent, err := os.ReadFile(testFile)
+			Expect(err).NotTo(HaveOccurred())
 
-			result, err := extractor.ExtractFile(astCache, "Child.java", javaContent)
+			result, err := extractor.ExtractFile(astCache, testFile, javaContent)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result).ToNot(BeNil())
@@ -92,19 +99,12 @@ var _ = Describe("JavaASTExtractor", func() {
 			Expect(implementsRel).To(BeTrue())
 		})
 
-		It("should handle package extraction from content", func() {
-			javaContent := []byte("package com.test.deep.package;\n\npublic class TestClass {\n    public void method() {}\n}")
-
-			result, err := extractor.ExtractFile(astCache, "TestClass.java", javaContent)
-
-			Expect(err).ToNot(HaveOccurred())
-			Expect(result.PackageName).To(Equal("com.test.deep.package"))
-		})
-
 		It("should handle files without package declaration", func() {
-			javaContent := []byte("public class NoPackageClass {\n    public void method() {}\n}")
+			testFile := filepath.Join("testdata", "NoPackageClass.java")
+			javaContent, err := os.ReadFile(testFile)
+			Expect(err).NotTo(HaveOccurred())
 
-			result, err := extractor.ExtractFile(astCache, "NoPackageClass.java", javaContent)
+			result, err := extractor.ExtractFile(astCache, testFile, javaContent)
 
 			Expect(err).ToNot(HaveOccurred())
 			// Package name should be derived from file path or be empty

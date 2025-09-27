@@ -858,7 +858,7 @@ func (c *ASTCache) GetDependencyAlias(packageName, packageType string) (*models.
 // StoreDependencyAlias stores a dependency alias in the cache
 func (c *ASTCache) StoreDependencyAlias(alias *models.DependencyAlias) error {
 	// Use Save to insert or update (equivalent to INSERT OR REPLACE)
-	if err := c.db.Save(alias).Error; err != nil {
+	if err := c.db.Save(alias); err != nil {
 		return fmt.Errorf("failed to store dependency alias: %w", err)
 	}
 	return nil

@@ -34,7 +34,7 @@ func NewTestDB() (*TestDB, error) {
 	}
 
 	return &TestDB{
-		db:      db,
+		db:      db.GetWriteDB(),
 		tempDir: tempDir,
 	}, nil
 }

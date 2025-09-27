@@ -71,6 +71,7 @@ func (a *Analyzer) QueryPattern(pattern string) ([]*models.ASTNode, error) {
 		logger.Debugf("  Type: %q", aqlPattern.Type)
 		logger.Debugf("  Method: %q", aqlPattern.Method)
 		logger.Debugf("  Field: %q", aqlPattern.Field)
+		logger.Debugf("  FilePath: %q", aqlPattern.FilePath)
 		logger.Debugf("  Metric: %q", aqlPattern.Metric)
 		logger.Debugf("  IsWildcard: %t", aqlPattern.IsWildcard)
 	}
@@ -112,6 +113,17 @@ func (a *Analyzer) QueryPattern(pattern string) ([]*models.ASTNode, error) {
 	err = query.Find(&nodes).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to query AST nodes: %w", err)
+	}
+
+	// Filter by file path pattern if specified
+	if aqlPattern.FilePath != "" && aqlPattern.FilePath != "*" {
+		var filteredNodes []*models.ASTNode
+		for _, node := range nodes {
+			if aqlPattern.Matches(node) {
+				filteredNodes = append(filteredNodes, node)
+			}
+		}
+		nodes = filteredNodes
 	}
 
 	// Log verbose results

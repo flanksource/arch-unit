@@ -87,24 +87,10 @@ func (e *JavaASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath strin
 	// Extract package name from file content or path
 	e.packageName = e.extractPackageName(filePath, content)
 
-	result := &types.ASTResult{
-		Nodes:         []*models.ASTNode{},
-		Relationships: []*models.ASTRelationship{},
-	}
+	result := types.NewASTResult(filePath, "java")
+	result.PackageName = e.packageName
 
-	// Run Java AST extraction (write content to temp file for external tool)
-	tempFile, err := os.CreateTemp("", "java_extract_*.java")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer func() { _ = os.Remove(tempFile.Name()) }()
-
-	if _, err := tempFile.Write(content); err != nil {
-		return nil, fmt.Errorf("failed to write content to temp file: %w", err)
-	}
-	_ = tempFile.Close()
-
-	javaResult, err := e.runJavaASTExtraction(tempFile.Name())
+	javaResult, err := e.runJavaASTExtraction(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract Java AST: %w", err)
 	}
@@ -162,17 +148,48 @@ func (e *JavaASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath strin
 
 	// Process relationships
 	for _, rel := range javaResult.Relationships {
-		fromKey := nodeMap[rel.FromNode]
-		toKey := nodeMap[rel.ToNode]
+		// For inheritance relationships, we need to find the actual node IDs
+		var fromNodeID int64
+		var toNodeID *int64
 
-		if fromKey != "" && toKey != "" {
-			relationship := &models.ASTRelationship{
-				LineNo:           rel.Line,
-				RelationshipType: e.mapRelationshipType(rel.Type),
+		// Find the from node by matching the relationship's fromNode against our nodeMap
+		for fullName, nodeKey := range nodeMap {
+			if fullName == rel.FromNode {
+				// Find the actual node with this key
+				for _, node := range result.Nodes {
+					if node.Key() == nodeKey {
+						fromNodeID = node.ID
+						break
+					}
+				}
+				break
 			}
-
-			result.AddRelationship(relationship)
 		}
+
+		// Find the to node (may be external, so it's optional)
+		// For inheritance, the ToNode might be a simple class name without package
+		// Try to find it in our nodes first, otherwise leave as nil (external reference)
+		for fullName, nodeKey := range nodeMap {
+			if fullName == rel.ToNode || strings.HasSuffix(fullName, "."+rel.ToNode) {
+				// Find the actual node with this key
+				for _, node := range result.Nodes {
+					if node.Key() == nodeKey {
+						toNodeID = &node.ID
+						break
+					}
+				}
+				break
+			}
+		}
+
+		relationship := &models.ASTRelationship{
+			FromASTID:        fromNodeID,
+			ToASTID:          toNodeID,
+			LineNo:           rel.Line,
+			RelationshipType: e.mapRelationshipType(rel.Type),
+		}
+
+		result.AddRelationship(relationship)
 	}
 
 	// Process imports

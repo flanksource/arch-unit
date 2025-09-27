@@ -1,8 +1,6 @@
 package _go
 
 import (
-	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -23,10 +21,6 @@ var _ = Describe("Go AST Extractor", func() {
 		astCache = cache.MustGetASTCache()
 	})
 
-	AfterEach(func() {
-		// AST cache is now a singleton, no need to close
-	})
-
 	Context("when extracting from a Go file", func() {
 		var testFile string
 
@@ -42,11 +36,6 @@ var _ = Describe("Go AST Extractor", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result).NotTo(BeNil())
 			Expect(result.Nodes).NotTo(BeEmpty())
-
-			// Print JSON ASTResult
-			jsonBytes, err := json.MarshalIndent(result, "", "  ")
-			Expect(err).NotTo(HaveOccurred())
-			fmt.Printf("Go ASTResult JSON:\n%s\n", string(jsonBytes))
 		})
 
 		It("should find expected structs, methods, and functions", func() {
@@ -57,11 +46,6 @@ var _ = Describe("Go AST Extractor", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result).NotTo(BeNil())
 			Expect(result.Nodes).NotTo(BeEmpty())
-
-			// Print JSON ASTResult for detailed analysis
-			jsonBytes, err := json.MarshalIndent(result, "", "  ")
-			Expect(err).NotTo(HaveOccurred())
-			fmt.Printf("Go Detailed ASTResult JSON:\n%s\n", string(jsonBytes))
 
 			nodes := result.Nodes
 

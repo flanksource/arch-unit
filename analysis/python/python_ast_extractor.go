@@ -1,6 +1,7 @@
 package python
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -245,17 +246,5 @@ func (e *PythonASTExtractor) mapRelationshipType(pythonRelType string) string {
 }
 
 // pythonASTExtractorScript is the embedded Python script for AST extraction
-const pythonASTExtractorScript = `
-# Placeholder Python script for AST extraction
-import sys
-import json
-
-if __name__ == "__main__":
-    # Return empty result for now
-    result = {
-        'nodes': [],
-        'imports': [],
-        'relationships': []
-    }
-    print(json.dumps(result))
-`
+//go:embed python_ast_extractor.py
+var pythonASTExtractorScript string

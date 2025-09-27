@@ -5,13 +5,13 @@ import (
 
 	"github.com/flanksource/arch-unit/ast"
 	"github.com/flanksource/arch-unit/internal/cache"
+	"github.com/flanksource/clicky"
 	"github.com/flanksource/commons/logger"
 	"github.com/spf13/cobra"
 )
 
 var (
 	viewFormat  string
-	viewNoColor bool
 	viewContext int
 )
 
@@ -41,7 +41,6 @@ func init() {
 	astCmd.AddCommand(astViewCmd)
 
 	astViewCmd.Flags().StringVar(&viewFormat, "format", "tree", "Output format: tree, plain, json")
-	astViewCmd.Flags().BoolVar(&viewNoColor, "no-color", false, "Disable colored output")
 	astViewCmd.Flags().IntVar(&viewContext, "context", 2, "Number of context lines to show around each node")
 }
 
@@ -80,7 +79,7 @@ func runASTView(cmd *cobra.Command, args []string) error {
 	logger.Infof("Found %d nodes matching pattern", len(nodes))
 
 	// Create source viewer
-	viewer := ast.NewSourceViewer(workingDir, viewNoColor)
+	viewer := ast.NewSourceViewer(workingDir, clicky.Flags.FormatOptions.NoColor)
 
 	// View source for all nodes
 	views, err := viewer.ViewMultipleNodes(nodes)

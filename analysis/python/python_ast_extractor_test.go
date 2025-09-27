@@ -1,8 +1,6 @@
 package python
 
 import (
-	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -44,11 +42,6 @@ var _ = Describe("Python AST Extractor", func() {
 			Expect(result).NotTo(BeNil())
 			Expect(result).To(BeAssignableToTypeOf(&types.ASTResult{}))
 			Expect(result.Nodes).NotTo(BeEmpty())
-
-			// Print JSON ASTResult
-			jsonBytes, err := json.MarshalIndent(result, "", "  ")
-			Expect(err).NotTo(HaveOccurred())
-			fmt.Printf("Python ASTResult JSON:\n%s\n", string(jsonBytes))
 		})
 
 		It("should find expected classes, methods, and functions", func() {
@@ -59,11 +52,6 @@ var _ = Describe("Python AST Extractor", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result).NotTo(BeNil())
 			Expect(result.Nodes).NotTo(BeEmpty())
-
-			// Print JSON ASTResult for detailed analysis
-			jsonBytes, err := json.MarshalIndent(result, "", "  ")
-			Expect(err).NotTo(HaveOccurred())
-			fmt.Printf("Python Detailed ASTResult JSON:\n%s\n", string(jsonBytes))
 
 			nodes := result.Nodes
 

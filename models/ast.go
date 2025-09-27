@@ -4,6 +4,7 @@ package models
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -436,40 +437,72 @@ func (n *ASTNode) GetSignature() string {
 
 func (n *ASTNode) Pretty() api.Text {
 	icon := ""
+	nameStyle := ""
+
 	switch n.NodeType {
 	case NodeTypePackage:
 		icon = "📦"
+		nameStyle = "text-blue-600 font-semibold"
 	case NodeTypeType:
-		icon = "●"
-	case NodeTypeMethod:
-		icon = "λ"
-	case NodeTypeField:
 		icon = "🏷️"
+		nameStyle = "text-purple-600 font-medium"
+	case NodeTypeMethod:
+		icon = "⚡"
+		nameStyle = "text-green-600"
+	case NodeTypeField:
+		icon = "📊"
+		nameStyle = "text-amber-600"
+	case NodeTypeVariable:
+		icon = "📝"
+		nameStyle = "text-gray-600"
 	}
 
-	content := clicky.Text(icon)
-	if n.PackageName != "" {
-		content = content.Append(n.PackageName)
-	}
-	if n.TypeName != "" {
-		if !content.IsEmpty() {
-			content = content.Append(".", "text-gray-500")
+	// Show only current level name, not full path
+	var displayName string
+	switch n.NodeType {
+	case NodeTypePackage:
+		displayName = n.PackageName
+	case NodeTypeType:
+		displayName = n.TypeName
+	case NodeTypeMethod:
+		displayName = n.MethodName
+	case NodeTypeField:
+		displayName = n.FieldName
+	case NodeTypeVariable:
+		// For variables, prefer FieldName if available, otherwise use TypeName
+		displayName = n.FieldName
+		if displayName == "" {
+			displayName = n.TypeName
 		}
-		content = content.Append(n.TypeName)
-	}
-	if n.FieldName != "" {
-		if !content.IsEmpty() {
-			content = content.Append(".", "text-gray-500")
+	default:
+		// Fallback: use the first available name
+		if n.MethodName != "" {
+			displayName = n.MethodName
+		} else if n.FieldName != "" {
+			displayName = n.FieldName
+		} else if n.TypeName != "" {
+			displayName = n.TypeName
+		} else if n.PackageName != "" {
+			displayName = n.PackageName
 		}
+	}
 
-		content = content.Append(n.FieldName, "font-bold")
-	}
-	if n.MethodName != "" {
-		if !content.IsEmpty() {
-			content = content.Append(".", "text-gray-500")
-		}
+	// Build styled content using clicky.Text builder
+	content := clicky.Text(icon).Append(" ")
 
-		content = content.Append(n.MethodName, "font-bold")
+	if displayName != "" {
+		content = content.Append(displayName, nameStyle)
+
+		// Add parentheses for methods with subtle styling
+		if n.NodeType == NodeTypeMethod && displayName != "" {
+			content = content.Append("()", "text-gray-500 text-sm")
+		}
+	}
+
+	// Add line number with subdued styling
+	if n.StartLine > 0 {
+		content = content.Append(" L", "text-gray-400 text-xs")
+		content = content.Append(fmt.Sprintf("%d", n.StartLine), "text-gray-500 text-xs")
 	}
 
 	return content
@@ -561,4 +594,169 @@ func (n *ASTNode) GetFullSourceCode() ([]string, error) {
 		return []string{line}, nil
 	}
 	return n.GetSourceCodeLines(n.StartLine, n.EndLine)
+}
+
+// Global node registry for tree building - cleared and rebuilt as needed
+var globalNodeChildren = make(map[int64][]*ASTNode)
+
+// PopulateNodeHierarchy builds parent-child relationships from a flat list of nodes
+func PopulateNodeHierarchy(nodes []*ASTNode) {
+	// Clear existing registry
+	globalNodeChildren = make(map[int64][]*ASTNode)
+
+	// Build parent->children mapping
+	for _, node := range nodes {
+		if node.ParentID != nil {
+			globalNodeChildren[*node.ParentID] = append(globalNodeChildren[*node.ParentID], node)
+		}
+	}
+}
+
+// GetChildren implements api.TreeNode interface for ASTNode
+func (n *ASTNode) GetChildren() []api.TreeNode {
+	children := globalNodeChildren[n.ID]
+	result := make([]api.TreeNode, len(children))
+	for i, child := range children {
+		result[i] = child
+	}
+	return result
+}
+
+// DirectoryTreeNode represents a directory in the filesystem hierarchy
+type DirectoryTreeNode struct {
+	Path     string
+	Children []api.TreeNode
+}
+
+func (d *DirectoryTreeNode) Pretty() api.Text {
+	return clicky.Text("📁", "text-blue-600").Append(" "+d.Path, "text-blue-600 font-medium")
+}
+
+func (d *DirectoryTreeNode) GetChildren() []api.TreeNode {
+	return d.Children
+}
+
+// FileTreeNode represents a source file in the hierarchy
+type FileTreeNode struct {
+	FilePath string
+	Children []api.TreeNode
+}
+
+func (f *FileTreeNode) Pretty() api.Text {
+	return clicky.Text("📄", "text-green-600").Append(" "+filepath.Base(f.FilePath), "text-green-600 font-medium")
+}
+
+func (f *FileTreeNode) GetChildren() []api.TreeNode {
+	return f.Children
+}
+
+// PackageTreeNode represents a package within a file
+type PackageTreeNode struct {
+	PackageName string
+	Children    []api.TreeNode
+}
+
+func (p *PackageTreeNode) Pretty() api.Text {
+	return clicky.Text("📦", "text-purple-600").Append(" "+p.PackageName, "text-purple-600 font-medium")
+}
+
+func (p *PackageTreeNode) GetChildren() []api.TreeNode {
+	return p.Children
+}
+
+// DisplayConfig controls what elements are shown in the AST tree
+type DisplayConfig struct {
+	// Structure control
+	ShowDirs     bool // Show/hide directory structure (default: true)
+	ShowFiles    bool // Show/hide individual files (default: true)
+	ShowPackages bool // Show/hide package nodes (default: true)
+
+	// Content control
+	ShowTypes   bool // Show/hide type definitions (default: true)
+	ShowMethods bool // Show/hide methods (default: true)
+	ShowFields  bool // Show/hide struct fields (default: false)
+	ShowParams  bool // Show/hide method parameters (default: false)
+	ShowImports bool // Show/hide import statements (default: false)
+
+	// Display details
+	ShowLineNo    bool // Show/hide line numbers (default: true)
+	ShowFileStats bool // Show file-level stats (lines, types, etc.)
+	ShowComplexity bool // Show complexity metrics
+}
+
+// DefaultDisplayConfig returns sensible defaults for AST display
+func DefaultDisplayConfig() DisplayConfig {
+	return DisplayConfig{
+		ShowDirs:      true,
+		ShowFiles:     true,
+		ShowPackages:  true,
+		ShowTypes:     true,
+		ShowMethods:   true,
+		ShowFields:    false,
+		ShowParams:    false,
+		ShowImports:   false,
+		ShowLineNo:    true,
+		ShowFileStats: false,
+		ShowComplexity: false,
+	}
+}
+
+// ASTRootTreeNode represents the root of an AST tree for display
+type ASTRootTreeNode struct {
+	nodes         []*ASTNode
+	total         int
+	availableIDs  map[int64]bool // Map of node IDs available in current result set
+}
+
+func (art *ASTRootTreeNode) Pretty() api.Text {
+	content := fmt.Sprintf("🏗️ AST Nodes (%d)", art.total)
+	return api.Text{
+		Content: content,
+		Style:   "text-blue-600 font-bold",
+	}
+}
+
+func (art *ASTRootTreeNode) GetChildren() []api.TreeNode {
+	// Smart root detection: return nodes that either have no parent OR whose parent is not in the current result set
+	var roots []api.TreeNode
+	for _, node := range art.nodes {
+		// Treat as root if:
+		// 1. Node has no parent (true root), OR
+		// 2. Node's parent is not available in current result set (virtual root)
+		if node.ParentID == nil || !art.availableIDs[*node.ParentID] {
+			roots = append(roots, node)
+		}
+	}
+	return roots
+}
+
+// BuildASTNodeTree creates a tree structure from AST nodes for clicky formatting
+func BuildASTNodeTree(nodes []*ASTNode) api.TreeNode {
+	if len(nodes) == 0 {
+		return &ASTRootTreeNode{
+			nodes:        []*ASTNode{},
+			total:        0,
+			availableIDs: make(map[int64]bool),
+		}
+	}
+
+	// Build map of available node IDs for smart root detection
+	availableIDs := make(map[int64]bool)
+	for _, node := range nodes {
+		availableIDs[node.ID] = true
+	}
+
+	// Populate the parent-child relationships
+	PopulateNodeHierarchy(nodes)
+
+	return &ASTRootTreeNode{
+		nodes:        nodes,
+		total:        len(nodes),
+		availableIDs: availableIDs,
+	}
+}
+
+// ClearNodeHierarchy cleans up the global registry
+func ClearNodeHierarchy() {
+	globalNodeChildren = make(map[int64][]*ASTNode)
 }

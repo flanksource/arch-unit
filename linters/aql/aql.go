@@ -124,9 +124,15 @@ func (a *AQL) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Viola
 			}
 
 			// Use generic analyzer
-			task := &clicky.Task{}
-			if _, err := a.analyzer.AnalyzeFile(task, file, content); err != nil {
-				return nil, fmt.Errorf("Failed to extract AST from %s: %v", file, err)
+			task := clicky.StartTask("analyze-file", func(ctx commonsContext.Context, t *clicky.Task) (bool, error) {
+				if _, err := a.analyzer.AnalyzeFile(t, file, content); err != nil {
+					return false, fmt.Errorf("Failed to extract AST from %s: %v", file, err)
+				}
+				return true, nil
+			})
+
+			if _, err := task.GetResult(); err != nil {
+				return nil, err
 			}
 		}
 	}

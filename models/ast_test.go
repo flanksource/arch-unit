@@ -173,3 +173,164 @@ var _ = Describe("Performance tests", func() {
 		Expect(names).To(HaveLen(350))
 	})
 })
+
+var _ = Describe("ASTNode Pretty", func() {
+	DescribeTable("should show only current name for different node types",
+		func(node *models.ASTNode, expectedContent string) {
+			result := node.Pretty()
+			Expect(result.String()).To(ContainSubstring(expectedContent))
+		},
+		Entry("package node", &models.ASTNode{NodeType: models.NodeTypePackage, PackageName: "main", TypeName: "MyType"}, "main"),
+		Entry("type node", &models.ASTNode{NodeType: models.NodeTypeType, PackageName: "main", TypeName: "MyType"}, "MyType"),
+		Entry("method node", &models.ASTNode{NodeType: models.NodeTypeMethod, PackageName: "main", TypeName: "MyType", MethodName: "DoSomething"}, "DoSomething()"),
+		Entry("field node", &models.ASTNode{NodeType: models.NodeTypeField, PackageName: "main", TypeName: "MyType", FieldName: "myField"}, "myField"),
+		Entry("variable node", &models.ASTNode{NodeType: models.NodeTypeVariable, PackageName: "main", FieldName: "myVar"}, "myVar"),
+	)
+
+	It("should not contain full path separators for complex nodes", func() {
+		node := &models.ASTNode{
+			NodeType:    models.NodeTypeMethod,
+			PackageName: "com.example.pkg",
+			TypeName:    "MyClass",
+			MethodName:  "complexMethod",
+		}
+
+		result := node.Pretty()
+		resultStr := result.String()
+		Expect(resultStr).To(ContainSubstring("complexMethod()"))
+		Expect(resultStr).NotTo(ContainSubstring("com.example.pkg"))
+		Expect(resultStr).NotTo(ContainSubstring("MyClass"))
+		// Check that it doesn't contain separator dots (but allow dots in method parentheses)
+		Expect(resultStr).NotTo(ContainSubstring("com.example.pkg.MyClass"))
+		Expect(resultStr).NotTo(ContainSubstring("MyClass.complexMethod"))
+	})
+
+	It("should include line numbers when provided", func() {
+		node := &models.ASTNode{
+			NodeType:   models.NodeTypeMethod,
+			MethodName: "TestMethod",
+			StartLine:  42,
+		}
+
+		result := node.Pretty()
+		Expect(result.String()).To(ContainSubstring("L42"))
+	})
+
+	It("should not include line numbers when StartLine is 0", func() {
+		node := &models.ASTNode{
+			NodeType:   models.NodeTypeMethod,
+			MethodName: "TestMethod",
+			StartLine:  0,
+		}
+
+		result := node.Pretty()
+		Expect(result.String()).NotTo(ContainSubstring("L"))
+	})
+})
+
+var _ = Describe("ASTNode TreeNode Interface", func() {
+	var nodes []*models.ASTNode
+
+	BeforeEach(func() {
+		nodes = []*models.ASTNode{
+			{ID: 1, NodeType: models.NodeTypePackage, PackageName: "main", ParentID: nil},
+			{ID: 2, NodeType: models.NodeTypeType, TypeName: "MyType", ParentID: &[]int64{1}[0]},
+			{ID: 3, NodeType: models.NodeTypeMethod, MethodName: "Method1", ParentID: &[]int64{2}[0]},
+			{ID: 4, NodeType: models.NodeTypeField, FieldName: "field1", ParentID: &[]int64{2}[0]},
+			{ID: 5, NodeType: models.NodeTypeType, TypeName: "AnotherType", ParentID: &[]int64{1}[0]},
+		}
+		models.PopulateNodeHierarchy(nodes)
+	})
+
+	AfterEach(func() {
+		models.ClearNodeHierarchy()
+	})
+
+	It("should return correct children for parent nodes", func() {
+		// Package node should have type children
+		packageNode := nodes[0]  // ID: 1
+		children := packageNode.GetChildren()
+
+		Expect(children).To(HaveLen(2))
+		// Check that children are the type nodes
+		childIDs := make([]int64, len(children))
+		for i, child := range children {
+			astChild := child.(*models.ASTNode)
+			childIDs[i] = astChild.ID
+		}
+		Expect(childIDs).To(ContainElements(int64(2), int64(5)))
+	})
+
+	It("should return correct children for type nodes", func() {
+		// Type node should have method and field children
+		typeNode := nodes[1] // ID: 2
+		children := typeNode.GetChildren()
+
+		Expect(children).To(HaveLen(2))
+		childIDs := make([]int64, len(children))
+		for i, child := range children {
+			astChild := child.(*models.ASTNode)
+			childIDs[i] = astChild.ID
+		}
+		Expect(childIDs).To(ContainElements(int64(3), int64(4)))
+	})
+
+	It("should return empty children for leaf nodes", func() {
+		// Method and field nodes should be leaves
+		methodNode := nodes[2] // ID: 3
+		fieldNode := nodes[3]  // ID: 4
+
+		Expect(methodNode.GetChildren()).To(BeEmpty())
+		Expect(fieldNode.GetChildren()).To(BeEmpty())
+	})
+})
+
+var _ = Describe("BuildASTNodeTree", func() {
+	It("should create a tree structure with correct root", func() {
+		nodes := []*models.ASTNode{
+			{ID: 1, NodeType: models.NodeTypePackage, PackageName: "main", ParentID: nil},
+			{ID: 2, NodeType: models.NodeTypeType, TypeName: "MyType", ParentID: &[]int64{1}[0]},
+		}
+
+		tree := models.BuildASTNodeTree(nodes)
+
+		Expect(tree).NotTo(BeNil())
+
+		// Check root pretty formatting
+		pretty := tree.Pretty()
+		Expect(pretty.Content).To(ContainSubstring("AST Nodes (2)"))
+
+		// Check root children (should return root-level nodes only)
+		children := tree.GetChildren()
+		Expect(children).To(HaveLen(1)) // Only the package node has no parent
+
+		packageChild := children[0].(*models.ASTNode)
+		Expect(packageChild.ID).To(Equal(int64(1)))
+	})
+
+	It("should handle empty node list", func() {
+		tree := models.BuildASTNodeTree([]*models.ASTNode{})
+
+		Expect(tree).NotTo(BeNil())
+		pretty := tree.Pretty()
+		Expect(pretty.Content).To(ContainSubstring("AST Nodes (0)"))
+
+		children := tree.GetChildren()
+		Expect(children).To(BeEmpty())
+	})
+
+	It("should work with clicky formatting", func() {
+		nodes := []*models.ASTNode{
+			{ID: 1, NodeType: models.NodeTypePackage, PackageName: "example", ParentID: nil},
+			{ID: 2, NodeType: models.NodeTypeMethod, MethodName: "testMethod", ParentID: &[]int64{1}[0]},
+		}
+
+		tree := models.BuildASTNodeTree(nodes)
+
+		// This should not panic and should return formatted output
+		// Note: We can't test actual clicky.Format output here without importing clicky in tests
+		// but we can verify the interface is correctly implemented
+		Expect(tree.Pretty()).NotTo(BeNil())
+		Expect(tree.GetChildren()).NotTo(BeNil())
+	})
+})

@@ -10,6 +10,7 @@ import (
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
 	"github.com/flanksource/clicky"
+	flanksourceContext "github.com/flanksource/commons/context"
 )
 
 // GenericAnalyzer is a single analyzer that handles all languages
@@ -287,38 +288,45 @@ func AnalyzeGoFiles(rootDir string, files []string, ruleSets []models.RuleSet) (
 		FileCount: len(files),
 	}
 
-	// Create a dummy task for logging
-	task := &clicky.Task{}
+	// Create a proper task for file analysis
+	task := clicky.StartTask("analyze-files-batch", func(ctx flanksourceContext.Context, t *clicky.Task) (*models.AnalysisResult, error) {
+		for _, file := range files {
+			// Get rules for this file
+			ruleCount := 0
+			for _, ruleSet := range ruleSets {
+				ruleCount += len(ruleSet.Rules)
+			}
+			result.RuleCount += ruleCount
 
-	for _, file := range files {
-		// Get rules for this file
-		ruleCount := 0
-		for _, ruleSet := range ruleSets {
-			ruleCount += len(ruleSet.Rules)
-		}
-		result.RuleCount += ruleCount
+			// Read file content
+			content, err := os.ReadFile(file)
+			if err != nil {
+				// Skip files that can't be read
+				continue
+			}
 
-		// Read file content
-		content, err := os.ReadFile(file)
-		if err != nil {
-			// Skip files that can't be read
-			continue
-		}
-
-		// Analyze with rules
-		astResult, err := analyzer.AnalyzeFileWithRules(task, file, content, ruleSets)
-		if err != nil {
-			// Skip files with analysis errors
-			continue
-		}
+			// Analyze with rules
+			astResult, err := analyzer.AnalyzeFileWithRules(t, file, content, ruleSets)
+			if err != nil {
+				// Skip files with analysis errors
+				continue
+			}
 
 		// Add violations to overall result
 		if astResult != nil {
 			result.Violations = append(result.Violations, astResult.Violations...)
 		}
+		}
+		return result, nil
+	})
+
+	// Wait for task completion and get the result
+	taskResult, err := task.GetResult()
+	if err != nil {
+		return nil, err
 	}
 
-	return result, nil
+	return taskResult, nil
 }
 
 // getCachedASTResult retrieves AST data from cache and reconstructs it as types.ASTResult

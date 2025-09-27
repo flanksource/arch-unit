@@ -1,6 +1,9 @@
 package _go
 
 import (
+	"os"
+	"path/filepath"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -16,21 +19,9 @@ var _ = Describe("GoDependencyScanner ScanGoMod", func() {
 
 	Context("when scanning simple go.mod", func() {
 		It("should parse dependencies correctly", func() {
-			content := []byte(`module github.com/example/project
-
-go 1.21
-
-require (
-	github.com/flanksource/commons v1.2.3
-	github.com/stretchr/testify v1.8.4
-	golang.org/x/mod v0.12.0
-)
-
-require (
-	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
-)`)
+			testFile := filepath.Join("testdata", "simple.go.mod")
+			content, err := os.ReadFile(testFile)
+			Expect(err).NotTo(HaveOccurred())
 
 			deps, err := scanner.ScanFile(nil, "/test/go.mod", content)
 			Expect(err).NotTo(HaveOccurred())
@@ -64,18 +55,9 @@ require (
 
 	Context("when scanning go.mod with replace directives", func() {
 		It("should apply replace directives correctly", func() {
-			content := []byte(`module github.com/example/project
-
-go 1.21
-
-require (
-	github.com/flanksource/commons v1.2.3
-	github.com/local/package v0.0.0
-)
-
-replace github.com/local/package => ../local-package
-
-replace github.com/flanksource/commons => github.com/flanksource/commons v1.3.0`)
+			testFile := filepath.Join("testdata", "with_replace.go.mod")
+			content, err := os.ReadFile(testFile)
+			Expect(err).NotTo(HaveOccurred())
 
 			deps, err := scanner.ScanFile(nil, "/test/go.mod", content)
 			Expect(err).NotTo(HaveOccurred())

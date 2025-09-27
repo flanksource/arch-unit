@@ -12,7 +12,6 @@ import (
 
 var (
 	graphFormat   string
-	graphNoColor  bool
 	graphDepth    int
 	graphShowLibs bool
 	graphRootOnly bool
@@ -59,7 +58,6 @@ func init() {
 	astCmd.AddCommand(astGraphCmd)
 
 	astGraphCmd.Flags().StringVar(&graphFormat, "format", "tree", "Output format: tree, dot, json")
-	astGraphCmd.Flags().BoolVar(&graphNoColor, "no-color", false, "Disable colored output")
 	astGraphCmd.Flags().IntVar(&graphDepth, "depth", 3, "Maximum depth for call graph traversal")
 	astGraphCmd.Flags().BoolVar(&graphShowLibs, "show-libs", true, "Show external library calls")
 	astGraphCmd.Flags().BoolVar(&graphRootOnly, "root-only", false, "Show only root nodes (entry points)")
