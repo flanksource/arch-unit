@@ -88,12 +88,13 @@ var _ = Describe("GORM Integration", func() {
 			})
 
 			It("should handle custom violation properties", func() {
+				customMessage := "Custom violation message"
 				violation := testDB.CreateTestViolation(func(v *models.Violation) {
 					v.File = "/custom/violation.go"
 					v.Line = 100
 					v.Column = 25
 					v.Source = "custom-linter"
-					v.Message = "Custom violation message"
+					v.Message = &customMessage
 					// Create AST node for caller
 					callerNode := &models.ASTNode{
 						PackageName: "custom.package",

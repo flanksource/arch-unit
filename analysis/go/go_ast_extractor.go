@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/flanksource/arch-unit/analysis/types"
 	"github.com/flanksource/arch-unit/internal/cache"
@@ -119,6 +120,7 @@ func (e *GoASTExtractor) extractTypeSpec(cache cache.ReadOnlyCache, spec *ast.Ty
 		StartLine:    startPos.Line,
 		EndLine:      endPos.Line,
 		LineCount:    endPos.Line - startPos.Line + 1,
+		IsPrivate:    e.isPrivate(typeName),
 		LastModified: time.Now(),
 	}
 
@@ -167,6 +169,7 @@ func (e *GoASTExtractor) extractStructFields(cache cache.ReadOnlyCache, parentNo
 				EndLine:      e.fileSet.Position(field.End()).Line,
 				FieldType:    &fieldType,
 				DefaultValue: defaultValue,
+				IsPrivate:    e.isPrivate(name.Name),
 				LastModified: time.Now(),
 			}
 
@@ -190,6 +193,7 @@ func (e *GoASTExtractor) extractInterfaceMethods(cache cache.ReadOnlyCache, pare
 				NodeType:     models.NodeTypeMethod,
 				StartLine:    e.fileSet.Position(method.Pos()).Line,
 				EndLine:      e.fileSet.Position(method.End()).Line,
+				IsPrivate:    e.isPrivate(methodName),
 				LastModified: time.Now(),
 			}
 
@@ -220,6 +224,7 @@ func (e *GoASTExtractor) extractValueSpec(cache cache.ReadOnlyCache, spec *ast.V
 			NodeType:     models.NodeTypeVariable,
 			StartLine:    e.fileSet.Position(spec.Pos()).Line,
 			EndLine:      e.fileSet.Position(spec.End()).Line,
+			IsPrivate:    e.isPrivate(name.Name),
 			LastModified: time.Now(),
 		}
 
@@ -264,6 +269,7 @@ func (e *GoASTExtractor) extractFuncDecl(cache cache.ReadOnlyCache, decl *ast.Fu
 		ReturnValues:         returnValues,
 		ParameterCount:       len(parameters),
 		ReturnCount:          len(returnValues),
+		IsPrivate:            e.isPrivate(funcName),
 		LastModified:         time.Now(),
 	}
 
@@ -724,4 +730,24 @@ func (e *GoASTExtractor) getCallExprText(call *ast.CallExpr) string {
 	}
 
 	return fmt.Sprintf("call@%d:%d", startPos.Line, startPos.Column)
+}
+
+// isPrivate determines if a Go identifier is private (unexported)
+// In Go, names starting with lowercase letters are unexported (private)
+func (e *GoASTExtractor) isPrivate(name string) bool {
+	if name == "" {
+		return false
+	}
+	// Find the first letter (skip underscores)
+	for _, r := range name {
+		if unicode.IsLetter(r) {
+			return !unicode.IsUpper(r)
+		}
+		// If it's not a letter and not underscore, consider it public
+		if r != '_' {
+			return false
+		}
+	}
+	// If only underscores or no letters, consider it private
+	return true
 }

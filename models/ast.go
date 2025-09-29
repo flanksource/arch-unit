@@ -58,7 +58,7 @@ type Function struct {
 	Parameters []Parameter `json:"parameters"`
 	ReturnType string      `json:"return_type,omitempty"`
 	Comments   []Comment   `json:"comments"`
-	IsExported bool        `json:"is_exported,omitempty"` // For Go visibility
+	IsPrivate  bool        `json:"is_private,omitempty"` // Unified visibility across languages
 }
 
 // Field represents a struct/class field
@@ -67,7 +67,7 @@ type Field struct {
 	Type       string    `json:"type"`
 	NameLength int       `json:"name_length"`
 	Comments   []Comment `json:"comments"`
-	IsExported bool      `json:"is_exported,omitempty"`
+	IsPrivate  bool      `json:"is_private,omitempty"` // Unified visibility across languages
 }
 
 // TypeDefinition represents a type definition (struct, class, interface, etc.)
@@ -81,7 +81,7 @@ type TypeDefinition struct {
 	Fields     []Field    `json:"fields"`
 	Methods    []Function `json:"methods"`
 	Comments   []Comment  `json:"comments"`
-	IsExported bool       `json:"is_exported,omitempty"`
+	IsPrivate  bool       `json:"is_private,omitempty"` // Unified visibility across languages
 }
 
 // Variable represents a variable declaration
@@ -91,8 +91,8 @@ type Variable struct {
 	NameLength int       `json:"name_length"`
 	Line       int       `json:"line"`
 	IsConstant bool      `json:"is_constant"`
-	IsExported bool      `json:"is_exported,omitempty"`
 	Comments   []Comment `json:"comments"`
+	IsPrivate  bool      `json:"is_private,omitempty"` // Unified visibility across languages
 }
 
 // Import represents an import statement
@@ -255,6 +255,7 @@ type ASTNode struct {
 	Summary      *string `json:"summary,omitempty" gorm:"column:summary" pretty:"label=Summary,style=text-gray-700"`
 	FieldType    *string `json:"field_type,omitempty" gorm:"column:field_type" pretty:"label=Field Type"`    // Go type or SQL column type
 	DefaultValue *string `json:"default_value,omitempty" gorm:"column:default_value" pretty:"label=Default"` // Default value for fields
+	IsPrivate    bool    `json:"is_private,omitempty" gorm:"column:is_private;default:false;index" pretty:"label=Private"` // Unified visibility across languages
 }
 
 func (a ASTNode) Key() string {

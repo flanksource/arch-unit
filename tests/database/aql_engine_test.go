@@ -228,7 +228,7 @@ rules:
 			// Verify we have the complexity violation
 			hasComplexityViolation := false
 			for _, violation := range violations {
-				if strings.Contains(violation.Message, "violated limit") {
+				if violation.Message != nil && strings.Contains(*violation.Message, "violated limit") {
 					hasComplexityViolation = true
 				}
 			}

@@ -126,12 +126,13 @@ func (tdb *TestDB) CreateTestASTNode(overrides ...func(*models.ASTNode)) *models
 
 // CreateTestViolation creates a test violation with default values
 func (tdb *TestDB) CreateTestViolation(overrides ...func(*models.Violation)) *models.Violation {
+	message := "Test violation"
 	violation := &models.Violation{
 		File:    "/test/file.go",
 		Line:    42,
 		Column:  10,
 		Source:  "arch-unit",
-		Message: "Test violation",
+		Message: &message,
 		// Note: CallerID and CalledID should be set when AST nodes are available
 		// For test purposes, the caller/called information is in the message
 	}

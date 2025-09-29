@@ -1,7 +1,6 @@
 package java
 
 import (
-	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -9,14 +8,24 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/flanksource/arch-unit/analysis/types"
 	"github.com/flanksource/arch-unit/internal/cache"
 	"github.com/flanksource/arch-unit/models"
-	flanksourceContext "github.com/flanksource/commons/context"
+	"github.com/flanksource/commons/logger"
 )
 
+var ARCHIE_HOME = os.ExpandEnv("$HOME/.arch-unit")
+
+var tempJar = filepath.Join(ARCHIE_HOME, "java_ast_extractor.jar")
+
+func init() {
+	if err := os.WriteFile(tempJar, javaASTExtractorJar, 0644); err != nil {
+		logger.Errorf("failed to write JAR content: %w", err)
+	}
+}
+
+//
 //go:embed java_ast_extractor.jar
 var javaASTExtractorJar []byte
 
@@ -29,30 +38,6 @@ type JavaASTExtractor struct {
 // NewJavaASTExtractor creates a new Java AST extractor
 func NewJavaASTExtractor() *JavaASTExtractor {
 	return &JavaASTExtractor{}
-}
-
-// JavaASTNode represents a node in Java AST
-type JavaASTNode struct {
-	Type                 string               `json:"type"`
-	Name                 string               `json:"name"`
-	StartLine            int                  `json:"start_line"`
-	EndLine              int                  `json:"end_line"`
-	ParameterCount       int                  `json:"parameter_count"`
-	ReturnCount          int                  `json:"return_count"`
-	Parameters           []models.Parameter   `json:"parameters,omitempty"`
-	ReturnValues         []models.ReturnValue `json:"return_values,omitempty"`
-	CyclomaticComplexity int                  `json:"cyclomatic_complexity"`
-	Parent               string               `json:"parent"`
-	Modifiers            []string             `json:"modifiers"`
-	IsInterface          bool                 `json:"is_interface"`
-	IsAbstract           bool                 `json:"is_abstract"`
-	IsStatic             bool                 `json:"is_static"`
-	IsPrivate            bool                 `json:"is_private"`
-	IsPublic             bool                 `json:"is_public"`
-	IsProtected          bool                 `json:"is_protected"`
-	IsFinal              bool                 `json:"is_final"`
-	SuperClass           string               `json:"super_class,omitempty"`
-	Interfaces           []string             `json:"interfaces,omitempty"`
 }
 
 // JavaImport represents an import in Java
@@ -72,12 +57,22 @@ type JavaRelationship struct {
 }
 
 // JavaASTResult represents the complete result from Java AST extraction
+// Now using Go-compatible ASTNode structure directly
 type JavaASTResult struct {
-	Nodes         []JavaASTNode      `json:"nodes"`
+	Nodes         []*models.ASTNode  `json:"nodes"`
 	Imports       []JavaImport       `json:"imports"`
 	Relationships []JavaRelationship `json:"relationships"`
 	PackageName   string             `json:"package_name"`
 	ClassName     string             `json:"class_name"`
+}
+
+func (j JavaASTResult) String() string {
+	s := fmt.Sprintf("%s.%s", j.PackageName, j.ClassName)
+	s += fmt.Sprintf("\nNodes: %d", len(j.Nodes))
+	s += fmt.Sprintf("\nImports: %d", len(j.Imports))
+	s += fmt.Sprintf("\nRelationships: %d", len(j.Relationships))
+
+	return s
 }
 
 // ExtractFile extracts AST information from a Java file
@@ -95,47 +90,15 @@ func (e *JavaASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath strin
 		return nil, fmt.Errorf("failed to extract Java AST: %w", err)
 	}
 
-	// Convert Java nodes to AST nodes
+	// Java extractor now produces ASTNode-compatible JSON directly
+	// Just need to set LastModified and check cache for existing IDs
 	nodeMap := make(map[string]string) // fullName -> node key
 
-	for _, node := range javaResult.Nodes {
-		astNode := &models.ASTNode{
-			FilePath:             filePath,
-			PackageName:          e.packageName,
-			TypeName:             "",
-			MethodName:           "",
-			FieldName:            "",
-			NodeType:             e.mapJavaNodeType(node.Type),
-			StartLine:            node.StartLine,
-			EndLine:              node.EndLine,
-			LineCount:            node.EndLine - node.StartLine + 1,
-			CyclomaticComplexity: node.CyclomaticComplexity,
-			Parameters:           node.Parameters,
-			ReturnValues:         node.ReturnValues,
-			LastModified:         time.Now(),
-		}
-
-		// Set appropriate fields based on node type
-		switch node.Type {
-		case "class", "interface", "enum":
-			astNode.TypeName = node.Name
-		case "method", "constructor":
-			if node.Parent != "" {
-				astNode.TypeName = node.Parent
-				astNode.MethodName = node.Name
-			} else {
-				astNode.MethodName = node.Name
-			}
-		case "field":
-			if node.Parent != "" {
-				astNode.TypeName = node.Parent
-			}
-			astNode.FieldName = node.Name
-		}
+	for _, astNode := range javaResult.Nodes {
 
 		// Generate unique key for the node
 		nodeKey := astNode.Key()
-		fullName := e.getNodeFullName(node)
+		fullName := e.getNodeFullName(astNode)
 
 		// Check cache for existing node ID
 		if existingNodeID, found := cache.GetASTId(nodeKey); found {
@@ -208,23 +171,11 @@ func (e *JavaASTExtractor) ExtractFile(cache cache.ReadOnlyCache, filePath strin
 
 // runJavaASTExtraction runs the Java AST extraction program
 func (e *JavaASTExtractor) runJavaASTExtraction(filePath string) (*JavaASTResult, error) {
-	_ = flanksourceContext.NewContext(context.Background())
 
-	// Create temp JAR file
-	tempJar, err := os.CreateTemp("", "java_ast_extractor_*.jar")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp jar file: %w", err)
-	}
-	defer func() { _ = os.Remove(tempJar.Name()) }()
-
-	// Write embedded JAR to temp file
-	if _, err := tempJar.Write(javaASTExtractorJar); err != nil {
-		return nil, fmt.Errorf("failed to write JAR content: %w", err)
-	}
-	_ = tempJar.Close()
+	logger.Tracef("[java] analyzing %s", filePath)
 
 	// Execute the JAR with java
-	cmd := exec.Command("java", "-jar", tempJar.Name(), filePath)
+	cmd := exec.Command("java", "-jar", tempJar, filePath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("Java AST extraction failed: %w - output: %s", err, string(output))
@@ -275,45 +226,38 @@ func (e *JavaASTExtractor) extractPackageName(filePath string, content []byte) s
 }
 
 // getNodeFullName creates a full name for a node for relationship mapping
-func (e *JavaASTExtractor) getNodeFullName(node JavaASTNode) string {
-	switch node.Type {
-	case "class", "interface", "enum":
-		if e.packageName != "" {
-			return fmt.Sprintf("%s.%s", e.packageName, node.Name)
+func (e *JavaASTExtractor) getNodeFullName(node *models.ASTNode) string {
+	switch node.NodeType {
+	case "type":
+		if node.PackageName != "" {
+			return fmt.Sprintf("%s.%s", node.PackageName, node.TypeName)
 		}
-		return node.Name
-	case "method", "constructor":
-		if node.Parent != "" {
-			if e.packageName != "" {
-				return fmt.Sprintf("%s.%s.%s", e.packageName, node.Parent, node.Name)
+		return node.TypeName
+	case "method":
+		if node.TypeName != "" {
+			if node.PackageName != "" {
+				return fmt.Sprintf("%s.%s.%s", node.PackageName, node.TypeName, node.MethodName)
 			}
-			return fmt.Sprintf("%s.%s", node.Parent, node.Name)
+			return fmt.Sprintf("%s.%s", node.TypeName, node.MethodName)
 		}
-		return node.Name
+		return node.MethodName
 	case "field":
-		if node.Parent != "" {
-			if e.packageName != "" {
-				return fmt.Sprintf("%s.%s.%s", e.packageName, node.Parent, node.Name)
+		if node.TypeName != "" {
+			if node.PackageName != "" {
+				return fmt.Sprintf("%s.%s.%s", node.PackageName, node.TypeName, node.FieldName)
 			}
-			return fmt.Sprintf("%s.%s", node.Parent, node.Name)
+			return fmt.Sprintf("%s.%s", node.TypeName, node.FieldName)
 		}
-		return node.Name
+		return node.FieldName
 	default:
-		return node.Name
-	}
-}
-
-// mapJavaNodeType maps Java node types to generic AST node types
-func (e *JavaASTExtractor) mapJavaNodeType(javaType string) models.NodeType {
-	switch javaType {
-	case "class", "interface", "enum":
-		return models.NodeTypeType
-	case "method", "constructor":
-		return models.NodeTypeMethod
-	case "field":
-		return models.NodeTypeField
-	default:
-		return models.NodeTypeVariable
+		if node.MethodName != "" {
+			return node.MethodName
+		} else if node.FieldName != "" {
+			return node.FieldName
+		} else if node.TypeName != "" {
+			return node.TypeName
+		}
+		return ""
 	}
 }
 

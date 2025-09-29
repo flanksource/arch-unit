@@ -212,7 +212,7 @@ func (c *CommentAnalysisLinter) createViolation(node *models.ASTNode, comment *m
 		File:             relPath,
 		Line:             comment.StartLine,
 		Column:           1,
-		Message:          result.Message,
+		Message:          &result.Message,
 		Rule:             rule,
 		Source:           c.Name(),
 		Fixable:          result.AutoFixable,

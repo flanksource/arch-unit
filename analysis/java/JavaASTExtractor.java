@@ -13,6 +13,7 @@ import com.github.javaparser.ast.type.Type;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.annotations.SerializedName;
 
 import java.io.File;
 import java.io.IOException;
@@ -29,7 +30,8 @@ public class JavaASTExtractor {
     private final Gson gson;
     private String packageName = "";
     private String currentClass = "";
-    private final List<ASTNode> nodes = new ArrayList<ASTNode>();
+    private String currentFilePath = "";
+    private final List<GoASTNode> nodes = new ArrayList<GoASTNode>();
     private final List<ASTImport> imports = new ArrayList<ASTImport>();
     private final List<ASTRelationship> relationships = new ArrayList<ASTRelationship>();
 
@@ -61,6 +63,9 @@ public class JavaASTExtractor {
         if (!file.exists()) {
             throw new IOException("File does not exist: " + filePath);
         }
+
+        // Store file path for use in nodes
+        this.currentFilePath = filePath;
 
         String content = new String(Files.readAllBytes(Paths.get(filePath)), "UTF-8");
 
@@ -121,40 +126,41 @@ public class JavaASTExtractor {
         public void visit(ClassOrInterfaceDeclaration n, Void arg) {
             currentClass = n.getNameAsString();
 
-            ASTNode node = new ASTNode();
-            node.type = n.isInterface() ? "interface" : "class";
-            node.name = n.getNameAsString();
+            GoASTNode node = new GoASTNode();
+
+            // Set Go-compatible fields
+            node.filePath = currentFilePath;
+            node.packageName = packageName;
+            node.typeName = n.getNameAsString();
+            node.nodeType = "type"; // Go uses "type" for classes/interfaces
             node.startLine = n.getBegin().isPresent() ? n.getBegin().get().line : 0;
             node.endLine = n.getEnd().isPresent() ? n.getEnd().get().line : 0;
+            node.lineCount = node.endLine - node.startLine + 1;
 
-            // Extract modifiers
-            node.modifiers = extractModifiers(n.getModifiers());
-            node.isInterface = n.isInterface();
-            node.isAbstract = n.hasModifier(Modifier.Keyword.ABSTRACT);
-            node.isStatic = n.hasModifier(Modifier.Keyword.STATIC);
+            // Set visibility - Go only tracks isPrivate
             node.isPrivate = n.hasModifier(Modifier.Keyword.PRIVATE);
-            node.isPublic = n.hasModifier(Modifier.Keyword.PUBLIC);
-            node.isProtected = n.hasModifier(Modifier.Keyword.PROTECTED);
-            node.isFinal = n.hasModifier(Modifier.Keyword.FINAL);
+
+            // No parameters or returns for types
+            node.parameterCount = 0;
+            node.returnCount = 0;
+            node.cyclomaticComplexity = 0;
 
             // Extract extends/implements relationships
             if (!n.getExtendedTypes().isEmpty()) {
-                node.superClass = n.getExtendedTypes().get(0).getNameAsString();
+                String superClass = n.getExtendedTypes().get(0).getNameAsString();
 
                 // Create extends relationship
                 ASTRelationship relationship = new ASTRelationship();
                 relationship.fromNode = getFullName(currentClass);
-                relationship.toNode = node.superClass;
+                relationship.toNode = superClass;
                 relationship.type = "extends";
                 relationship.line = node.startLine;
                 relationships.add(relationship);
             }
 
             if (!n.getImplementedTypes().isEmpty()) {
-                node.interfaces = new ArrayList<String>();
                 for (Type type : n.getImplementedTypes()) {
                     String interfaceName = type.asString();
-                    node.interfaces.add(interfaceName);
 
                     // Create implements relationship
                     ASTRelationship relationship = new ASTRelationship();
@@ -174,16 +180,24 @@ public class JavaASTExtractor {
         public void visit(EnumDeclaration n, Void arg) {
             currentClass = n.getNameAsString();
 
-            ASTNode node = new ASTNode();
-            node.type = "enum";
-            node.name = n.getNameAsString();
+            GoASTNode node = new GoASTNode();
+
+            // Set Go-compatible fields
+            node.filePath = currentFilePath;
+            node.packageName = packageName;
+            node.typeName = n.getNameAsString();
+            node.nodeType = "type"; // Go treats enums as types
             node.startLine = n.getBegin().isPresent() ? n.getBegin().get().line : 0;
             node.endLine = n.getEnd().isPresent() ? n.getEnd().get().line : 0;
-            node.modifiers = extractModifiers(n.getModifiers());
-            node.isPublic = n.hasModifier(Modifier.Keyword.PUBLIC);
+            node.lineCount = node.endLine - node.startLine + 1;
+
+            // Set visibility
             node.isPrivate = n.hasModifier(Modifier.Keyword.PRIVATE);
-            node.isProtected = n.hasModifier(Modifier.Keyword.PROTECTED);
-            node.isFinal = true; // Enums are implicitly final
+
+            // No parameters or returns for enums
+            node.parameterCount = 0;
+            node.returnCount = 0;
+            node.cyclomaticComplexity = 0;
 
             nodes.add(node);
             super.visit(n, arg);
@@ -191,27 +205,39 @@ public class JavaASTExtractor {
 
         @Override
         public void visit(MethodDeclaration n, Void arg) {
-            ASTNode node = new ASTNode();
-            node.type = "method";
-            node.name = n.getNameAsString();
-            node.parent = currentClass;
+            GoASTNode node = new GoASTNode();
+
+            // Set Go-compatible fields
+            node.filePath = currentFilePath;
+            node.packageName = packageName;
+            node.typeName = currentClass;
+            node.methodName = n.getNameAsString();
+            node.nodeType = "method";
             node.startLine = n.getBegin().isPresent() ? n.getBegin().get().line : 0;
             node.endLine = n.getEnd().isPresent() ? n.getEnd().get().line : 0;
+            node.lineCount = node.endLine - node.startLine + 1;
 
-            // Extract modifiers
-            node.modifiers = extractModifiers(n.getModifiers());
-            node.isAbstract = n.hasModifier(Modifier.Keyword.ABSTRACT);
-            node.isStatic = n.hasModifier(Modifier.Keyword.STATIC);
+            // Set visibility
             node.isPrivate = n.hasModifier(Modifier.Keyword.PRIVATE);
-            node.isPublic = n.hasModifier(Modifier.Keyword.PUBLIC);
-            node.isProtected = n.hasModifier(Modifier.Keyword.PROTECTED);
-            node.isFinal = n.hasModifier(Modifier.Keyword.FINAL);
 
-            // Parameters and return values
+            // Extract detailed parameter information
             node.parameterCount = n.getParameters().size();
-            node.returnCount = n.getType().isVoidType() ? 0 : 1;
+            for (com.github.javaparser.ast.body.Parameter param : n.getParameters()) {
+                String paramName = param.getNameAsString();
+                String paramType = param.getType().asString();
+                node.parameters.add(new Parameter(paramName, paramType));
+            }
 
-            // Simple cyclomatic complexity calculation
+            // Extract return value information
+            if (n.getType().isVoidType()) {
+                node.returnCount = 0;
+            } else {
+                node.returnCount = 1;
+                String returnType = n.getType().asString();
+                node.returnValues.add(new ReturnValue("", returnType));
+            }
+
+            // Calculate cyclomatic complexity
             node.cyclomaticComplexity = calculateCyclomaticComplexity(n);
 
             nodes.add(node);
@@ -224,24 +250,33 @@ public class JavaASTExtractor {
 
         @Override
         public void visit(ConstructorDeclaration n, Void arg) {
-            ASTNode node = new ASTNode();
-            node.type = "constructor";
-            node.name = n.getNameAsString();
-            node.parent = currentClass;
+            GoASTNode node = new GoASTNode();
+
+            // Set Go-compatible fields
+            node.filePath = currentFilePath;
+            node.packageName = packageName;
+            node.typeName = currentClass;
+            node.methodName = n.getNameAsString();
+            node.nodeType = "method"; // Go treats constructors as methods
             node.startLine = n.getBegin().isPresent() ? n.getBegin().get().line : 0;
             node.endLine = n.getEnd().isPresent() ? n.getEnd().get().line : 0;
+            node.lineCount = node.endLine - node.startLine + 1;
 
-            // Extract modifiers
-            node.modifiers = extractModifiers(n.getModifiers());
+            // Set visibility
             node.isPrivate = n.hasModifier(Modifier.Keyword.PRIVATE);
-            node.isPublic = n.hasModifier(Modifier.Keyword.PUBLIC);
-            node.isProtected = n.hasModifier(Modifier.Keyword.PROTECTED);
 
-            // Parameters
+            // Extract detailed parameter information
             node.parameterCount = n.getParameters().size();
-            node.returnCount = 0; // Constructors don't return values
+            for (com.github.javaparser.ast.body.Parameter param : n.getParameters()) {
+                String paramName = param.getNameAsString();
+                String paramType = param.getType().asString();
+                node.parameters.add(new Parameter(paramName, paramType));
+            }
 
-            // Simple cyclomatic complexity calculation
+            // Constructors don't return values
+            node.returnCount = 0;
+
+            // Calculate cyclomatic complexity
             node.cyclomaticComplexity = calculateCyclomaticComplexity(n);
 
             nodes.add(node);
@@ -255,20 +290,25 @@ public class JavaASTExtractor {
         @Override
         public void visit(FieldDeclaration n, Void arg) {
             for (VariableDeclarator variable : n.getVariables()) {
-                ASTNode node = new ASTNode();
-                node.type = "field";
-                node.name = variable.getNameAsString();
-                node.parent = currentClass;
+                GoASTNode node = new GoASTNode();
+
+                // Set Go-compatible fields
+                node.filePath = currentFilePath;
+                node.packageName = packageName;
+                node.typeName = currentClass;
+                node.fieldName = variable.getNameAsString();
+                node.nodeType = "field";
                 node.startLine = n.getBegin().isPresent() ? n.getBegin().get().line : 0;
                 node.endLine = n.getEnd().isPresent() ? n.getEnd().get().line : 0;
+                node.lineCount = node.endLine - node.startLine + 1;
 
-                // Extract modifiers
-                node.modifiers = extractModifiers(n.getModifiers());
-                node.isStatic = n.hasModifier(Modifier.Keyword.STATIC);
+                // Set visibility
                 node.isPrivate = n.hasModifier(Modifier.Keyword.PRIVATE);
-                node.isPublic = n.hasModifier(Modifier.Keyword.PUBLIC);
-                node.isProtected = n.hasModifier(Modifier.Keyword.PROTECTED);
-                node.isFinal = n.hasModifier(Modifier.Keyword.FINAL);
+
+                // Fields don't have parameters, returns, or complexity
+                node.parameterCount = 0;
+                node.returnCount = 0;
+                node.cyclomaticComplexity = 0;
 
                 nodes.add(node);
             }
@@ -293,13 +333,6 @@ public class JavaASTExtractor {
         }
     }
 
-    private List<String> extractModifiers(com.github.javaparser.ast.NodeList<Modifier> modifiers) {
-        List<String> result = new ArrayList<String>();
-        for (Modifier modifier : modifiers) {
-            result.add(modifier.getKeyword().asString());
-        }
-        return result;
-    }
 
     private int calculateCyclomaticComplexity(CallableDeclaration<?> method) {
         final int[] complexity = {1}; // Base complexity is 1
@@ -347,38 +380,62 @@ public class JavaASTExtractor {
         return packageName + "." + className + "." + methodName;
     }
 
-    // Data classes for JSON serialization
+    // Data classes for JSON serialization - now matches Go models.ASTNode structure
     public static class ASTResult {
-        public List<ASTNode> nodes;
+        public List<GoASTNode> nodes;
         public List<ASTImport> imports;
         public List<ASTRelationship> relationships;
         public String packageName;
         public String className;
     }
 
-    public static class ASTNode {
-        public String type;
-        public String name;
-        public int startLine;
-        public int endLine;
-        public int parameterCount;
-        public int returnCount;
-        public int cyclomaticComplexity;
-        public String parent;
-        public List<String> modifiers;
-        public boolean isInterface;
-        public boolean isAbstract;
-        public boolean isStatic;
-        public boolean isPrivate;
-        public boolean isPublic;
-        public boolean isProtected;
-        public boolean isFinal;
-        public String superClass;
-        public List<String> interfaces;
+    public static class GoASTNode {
+        // Core identification fields - using snake_case to match Go JSON tags
+        @SerializedName("file_path")
+        public String filePath;
+        @SerializedName("package_name")
+        public String packageName;
+        @SerializedName("type_name")
+        public String typeName;
+        @SerializedName("method_name")
+        public String methodName;
+        @SerializedName("field_name")
+        public String fieldName;
+        @SerializedName("node_type")
+        public String nodeType;
+        public String language;
 
-        // For JSON compatibility with Go structs
+        // Location information
+        @SerializedName("start_line")
+        public int startLine;
+        @SerializedName("end_line")
+        public int endLine;
+        @SerializedName("line_count")
+        public int lineCount;
+
+        // Complexity and metrics
+        @SerializedName("cyclomatic_complexity")
+        public int cyclomaticComplexity;
+        @SerializedName("parameter_count")
+        public int parameterCount;
+        @SerializedName("return_count")
+        public int returnCount;
+
+        // Detailed parameter and return information
         public List<Parameter> parameters;
+        @SerializedName("return_values")
         public List<ReturnValue> returnValues;
+
+        // Visibility
+        @SerializedName("is_private")
+        public boolean isPrivate;
+
+        // Constructor for easy creation
+        public GoASTNode() {
+            this.parameters = new ArrayList<Parameter>();
+            this.returnValues = new ArrayList<ReturnValue>();
+            this.language = "java";
+        }
     }
 
     public static class ASTImport {
@@ -398,9 +455,23 @@ public class JavaASTExtractor {
     public static class Parameter {
         public String name;
         public String type;
+        @SerializedName("name_length")
+        public int nameLength;
+
+        public Parameter(String name, String type) {
+            this.name = name;
+            this.type = type;
+            this.nameLength = name != null ? name.length() : 0;
+        }
     }
 
     public static class ReturnValue {
+        public String name;
         public String type;
+
+        public ReturnValue(String name, String type) {
+            this.name = name;
+            this.type = type;
+        }
     }
 }

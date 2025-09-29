@@ -538,7 +538,7 @@ func (a *Analyzer) FormatNoNodesFoundError(pattern string) error {
 
 	if len(sources) == 0 {
 		message.WriteString("No analysis sources found. Run analysis first with: arch-unit ast analyze")
-		return fmt.Errorf(message.String())
+		return fmt.Errorf("%s", message.String())
 	}
 
 	message.WriteString("Analysis sources:\n")
@@ -549,5 +549,5 @@ func (a *Analyzer) FormatNoNodesFoundError(pattern string) error {
 	}
 	message.WriteString(fmt.Sprintf("Total: %d nodes analyzed across %d sources", totalNodes, len(sources)))
 
-	return fmt.Errorf(message.String())
+	return fmt.Errorf("%s", message.String())
 }

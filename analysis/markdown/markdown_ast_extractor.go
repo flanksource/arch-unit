@@ -9,7 +9,9 @@ import (
 	"github.com/flanksource/arch-unit/analysis"
 	"github.com/flanksource/arch-unit/analysis/types"
 	"github.com/flanksource/arch-unit/internal/cache"
+	"github.com/flanksource/arch-unit/languages"
 	"github.com/flanksource/arch-unit/models"
+	"github.com/flanksource/clicky"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -236,8 +238,31 @@ func (e *MarkdownASTExtractor) countNodeLines(node ast.Node, source []byte) int 
 	return count
 }
 
+// markdownAnalyzerAdapter adapts the MarkdownASTExtractor to the languages.ASTAnalyzer interface
+type markdownAnalyzerAdapter struct {
+	extractor *MarkdownASTExtractor
+}
+
+func (a *markdownAnalyzerAdapter) AnalyzeFile(task interface{}, filepath string, content []byte) (interface{}, error) {
+	// Type assert task to *clicky.Task
+	clickyTask, ok := task.(*clicky.Task)
+	if !ok {
+		// For backward compatibility, create a minimal adapter if not the right type
+		return nil, nil
+	}
+
+	// Use the generic analyzer to handle the Markdown extractor
+	// This delegates to the existing analysis framework
+	genericAnalyzer := languages.GetGenericAnalyzerAdapter()
+	return genericAnalyzer.AnalyzeFile(clickyTask, filepath, content)
+}
+
 func init() {
-	// Register Markdown AST extractor
+	// Register Markdown AST extractor with old registry (for backward compatibility)
 	mdExtractor := NewMarkdownASTExtractor()
-	analysis.RegisterExtractor("markdown", mdExtractor)
+	analysis.DefaultExtractorRegistry.Register("markdown", mdExtractor)
+
+	// Register Markdown analyzer with unified registry
+	markdownAnalyzer := &markdownAnalyzerAdapter{extractor: mdExtractor}
+	languages.SetAnalyzer("markdown", markdownAnalyzer)
 }

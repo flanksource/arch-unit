@@ -59,3 +59,8 @@ hack/
 *.backup*
 .task
 examples/
+
+# Gradle
+analysis/java/.gradle/
+analysis/java/build/
+analysis/java/java_ast_extractor.jar

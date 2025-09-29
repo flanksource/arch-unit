@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/flanksource/arch-unit/analysis"
+	"github.com/flanksource/arch-unit/languages"
 	"github.com/flanksource/arch-unit/models"
+	"github.com/flanksource/clicky"
 	"golang.org/x/mod/modfile"
 )
 
@@ -187,6 +189,25 @@ func (s *GoDependencyScanner) scanGoSum(ctx *models.ScanContext, filepath string
 	return result, nil
 }
 
+// goAnalyzerAdapter adapts the GoASTExtractor to the languages.ASTAnalyzer interface
+type goAnalyzerAdapter struct {
+	extractor *GoASTExtractor
+}
+
+func (a *goAnalyzerAdapter) AnalyzeFile(task interface{}, filepath string, content []byte) (interface{}, error) {
+	// Type assert task to *clicky.Task
+	clickyTask, ok := task.(*clicky.Task)
+	if !ok {
+		// For backward compatibility, create a minimal adapter if not the right type
+		return nil, nil
+	}
+
+	// Use the generic analyzer to handle the Go extractor
+	// This delegates to the existing analysis framework
+	genericAnalyzer := languages.GetGenericAnalyzerAdapter()
+	return genericAnalyzer.AnalyzeFile(clickyTask, filepath, content)
+}
+
 func init() {
 	// Register Go dependency scanner
 	goDependencyScanner := NewGoDependencyScanner()
@@ -195,4 +216,8 @@ func init() {
 	// Register Go AST extractor with DefaultExtractorRegistry
 	goExtractor := NewGoASTExtractor()
 	analysis.DefaultExtractorRegistry.Register("go", goExtractor)
+
+	// Register Go analyzer with unified registry
+	goAnalyzer := &goAnalyzerAdapter{extractor: goExtractor}
+	languages.SetAnalyzer("go", goAnalyzer)
 }

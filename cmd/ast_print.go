@@ -196,7 +196,11 @@ func executeAQLQueryPrint(astCache *cache.ASTCache, aqlQuery string, workingDir 
 
 	for _, v := range violations {
 		relPath := MakeRelativePath(v.File, workingDir)
-		fmt.Printf("  %s:%d - %s\n", relPath, v.Line, v.Message)
+		message := ""
+		if v.Message != nil {
+			message = *v.Message
+		}
+		fmt.Printf("  %s:%d - %s\n", relPath, v.Line, message)
 	}
 
 	return nil

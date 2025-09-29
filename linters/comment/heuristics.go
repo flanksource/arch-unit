@@ -241,7 +241,8 @@ func (h *CommentHeuristics) checkOutdatedComment(comment *models.Comment) *Heuri
 // checkMissingDocumentation checks if a function is missing documentation
 func (h *CommentHeuristics) checkMissingDocumentation(function *models.Function) *HeuristicResult {
 	// Only check exported functions (Go convention)
-	if !function.IsExported {
+	// Note: IsPrivate is the inverse of IsExported
+	if function.IsPrivate {
 		return nil
 	}
 
