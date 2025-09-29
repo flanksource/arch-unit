@@ -131,7 +131,7 @@ func (r *RuleViolationAnalyzer) checkCallRelationship(astResult *types.ASTResult
 			CallerID: &relationship.FromASTID,
 			Called:   calledNode, // Will be nil for external calls
 			Rule:     rule,
-			Message:  violationMsg,
+			Message:  models.StringPtr(violationMsg),
 			Source:   "arch-unit",
 		}
 
@@ -201,7 +201,7 @@ func (r *RuleViolationAnalyzer) checkLibraryCallRelationship(astResult *types.AS
 			Line:    libRel.LineNo,
 			Column:  0,
 			Rule:    rule,
-			Message: violationMsg,
+			Message: models.StringPtr(violationMsg),
 			Source:  "arch-unit",
 		}
 

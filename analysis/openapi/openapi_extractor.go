@@ -242,7 +242,7 @@ func (e *OpenAPIExtractor) convertSchemaToASTNode(schemaName string, schema Sche
 		NodeType:     models.NodeTypeTypeHTTPSchema,
 		StartLine:    -1,
 		LastModified: time.Now(),
-		Summary:      fmt.Sprintf("API schema with %d properties", len(schema.Properties)),
+		Summary:      models.StringPtr(fmt.Sprintf("API schema with %d properties", len(schema.Properties))),
 	}
 }
 
@@ -256,7 +256,7 @@ func (e *OpenAPIExtractor) convertSchemaPropertyToASTNode(propName string, propS
 		NodeType:     models.NodeTypeField,
 		StartLine:    -1,
 		LastModified: time.Now(),
-		Summary:      fmt.Sprintf("%s field", propSchema.Type),
+		Summary:      models.StringPtr(fmt.Sprintf("%s field", propSchema.Type)),
 	}
 }
 
@@ -317,7 +317,7 @@ func (e *OpenAPIExtractor) convertOperationToASTNode(path, method string, operat
 		Parameters:     parameters,
 		ParameterCount: len(parameters),
 		LastModified:   time.Now(),
-		Summary:        fmt.Sprintf("%s endpoint with %d parameters", method, len(parameters)),
+		Summary:        models.StringPtr(fmt.Sprintf("%s endpoint with %d parameters", method, len(parameters))),
 	}
 }
 

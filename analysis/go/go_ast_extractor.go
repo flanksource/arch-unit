@@ -144,6 +144,18 @@ func (e *GoASTExtractor) extractTypeSpec(cache cache.ReadOnlyCache, spec *ast.Ty
 // extractStructFields processes struct fields
 func (e *GoASTExtractor) extractStructFields(cache cache.ReadOnlyCache, parentNode *models.ASTNode, typeName string, structType *ast.StructType, result *types.ASTResult) error {
 	for _, field := range structType.Fields.List {
+		// Get field type with full qualified name
+		fieldType := e.getFullQualifiedTypeString(field.Type)
+
+		// Extract default value from struct tag if present
+		var defaultValue *string
+		if field.Tag != nil {
+			tagValue := strings.Trim(field.Tag.Value, "`")
+			if defaultVal := e.extractDefaultFromTag(tagValue); defaultVal != "" {
+				defaultValue = &defaultVal
+			}
+		}
+
 		for _, name := range field.Names {
 			fieldNode := &models.ASTNode{
 				FilePath:     e.filePath,
@@ -153,6 +165,8 @@ func (e *GoASTExtractor) extractStructFields(cache cache.ReadOnlyCache, parentNo
 				NodeType:     models.NodeTypeField,
 				StartLine:    e.fileSet.Position(field.Pos()).Line,
 				EndLine:      e.fileSet.Position(field.End()).Line,
+				FieldType:    &fieldType,
+				DefaultValue: defaultValue,
 				LastModified: time.Now(),
 			}
 
@@ -286,7 +300,7 @@ func (e *GoASTExtractor) extractParameters(funcType *ast.FuncType) []models.Para
 
 	var parameters []models.Parameter
 	for _, param := range funcType.Params.List {
-		paramType := e.getTypeString(param.Type)
+		paramType := e.getFullQualifiedTypeString(param.Type)
 
 		if len(param.Names) == 0 {
 			// Unnamed parameter
@@ -317,7 +331,7 @@ func (e *GoASTExtractor) extractReturnValues(funcType *ast.FuncType) []models.Re
 
 	var returnValues []models.ReturnValue
 	for _, result := range funcType.Results.List {
-		returnType := e.getTypeString(result.Type)
+		returnType := e.getFullQualifiedTypeString(result.Type)
 
 		if len(result.Names) == 0 {
 			// Unnamed return
@@ -381,6 +395,130 @@ func (e *GoASTExtractor) getTypeString(expr ast.Expr) string {
 		// Fallback for complex types
 		return "interface{}"
 	}
+}
+
+// getFullQualifiedTypeString converts an AST expression to a fully qualified type string
+func (e *GoASTExtractor) getFullQualifiedTypeString(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		// Check if this is a primitive type
+		if e.isPrimitiveType(t.Name) {
+			return t.Name
+		}
+		// For non-primitive types in the same package, prefix with package name
+		if e.packageName != "" {
+			return e.packageName + "." + t.Name
+		}
+		return t.Name
+	case *ast.StarExpr:
+		return "*" + e.getFullQualifiedTypeString(t.X)
+	case *ast.ArrayType:
+		if t.Len == nil {
+			return "[]" + e.getFullQualifiedTypeString(t.Elt)
+		}
+		return "[...]" + e.getFullQualifiedTypeString(t.Elt)
+	case *ast.SliceExpr:
+		return "[]" + e.getFullQualifiedTypeString(t.X)
+	case *ast.MapType:
+		return "map[" + e.getFullQualifiedTypeString(t.Key) + "]" + e.getFullQualifiedTypeString(t.Value)
+	case *ast.ChanType:
+		switch t.Dir {
+		case ast.SEND:
+			return "chan<- " + e.getFullQualifiedTypeString(t.Value)
+		case ast.RECV:
+			return "<-chan " + e.getFullQualifiedTypeString(t.Value)
+		default:
+			return "chan " + e.getFullQualifiedTypeString(t.Value)
+		}
+	case *ast.FuncType:
+		return "func(...)"
+	case *ast.InterfaceType:
+		return "interface{}"
+	case *ast.StructType:
+		return "struct{...}"
+	case *ast.SelectorExpr:
+		// Package qualified type - resolve the full package path
+		if ident, ok := t.X.(*ast.Ident); ok {
+			// Check if this is a known import
+			if pkgPath, exists := e.imports[ident.Name]; exists {
+				return pkgPath + "." + t.Sel.Name
+			}
+			return ident.Name + "." + t.Sel.Name
+		}
+		return e.getFullQualifiedTypeString(t.X) + "." + t.Sel.Name
+	case *ast.Ellipsis:
+		return "..." + e.getFullQualifiedTypeString(t.Elt)
+	default:
+		// Fallback for complex types
+		return "interface{}"
+	}
+}
+
+// isPrimitiveType checks if a type name represents a Go primitive type
+func (e *GoASTExtractor) isPrimitiveType(typeName string) bool {
+	primitives := map[string]bool{
+		"bool":       true,
+		"byte":       true,
+		"complex64":  true,
+		"complex128": true,
+		"error":      true,
+		"float32":    true,
+		"float64":    true,
+		"int":        true,
+		"int8":       true,
+		"int16":      true,
+		"int32":      true,
+		"int64":      true,
+		"rune":       true,
+		"string":     true,
+		"uint":       true,
+		"uint8":      true,
+		"uint16":     true,
+		"uint32":     true,
+		"uint64":     true,
+		"uintptr":    true,
+	}
+	return primitives[typeName]
+}
+
+// extractDefaultFromTag extracts default value from struct tag
+func (e *GoASTExtractor) extractDefaultFromTag(tag string) string {
+	// Look for common default value patterns in tags
+	// Examples: `json:"name" default:"value"` or `default:"value"`
+
+	// Split by spaces and look for default:"value" pattern
+	parts := strings.Fields(tag)
+	for _, part := range parts {
+		if strings.HasPrefix(part, "default:") {
+			// Extract value from default:"value"
+			if strings.Contains(part, ":") {
+				defaultPart := strings.SplitN(part, ":", 2)[1]
+				// Remove quotes
+				defaultPart = strings.Trim(defaultPart, `"'`)
+				return defaultPart
+			}
+		}
+	}
+
+	// Also check for validate tag with default values
+	for _, part := range parts {
+		if strings.HasPrefix(part, "validate:") && strings.Contains(part, "default=") {
+			// Extract from validate:"required,default=value"
+			if idx := strings.Index(part, "default="); idx != -1 {
+				remaining := part[idx+8:] // len("default=") = 8
+				// Find end of default value (either comma or end of string)
+				endIdx := strings.Index(remaining, ",")
+				if endIdx == -1 {
+					endIdx = len(remaining)
+				}
+				defaultVal := remaining[:endIdx]
+				defaultVal = strings.Trim(defaultVal, `"'`)
+				return defaultVal
+			}
+		}
+	}
+
+	return ""
 }
 
 // calculateCyclomaticComplexity calculates cyclomatic complexity of a function

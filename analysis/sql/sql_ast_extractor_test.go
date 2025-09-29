@@ -200,7 +200,7 @@ var _ = Describe("SQL AST Extractor", func() {
 			// Check indexes
 			var indexNodes []*models.ASTNode
 			for _, node := range result.Nodes {
-				if node.NodeType == models.NodeTypeMethod && node.Summary == "Database index" {
+				if node.NodeType == models.NodeTypeMethod && node.Summary != nil && *node.Summary == "Database index" {
 					indexNodes = append(indexNodes, node)
 				}
 			}
@@ -242,7 +242,7 @@ var _ = Describe("SQL AST Extractor", func() {
 
 			// Check that indexes have correct parent relationships
 			for _, node := range result.Nodes {
-				if node.NodeType == models.NodeTypeMethod && node.Summary == "Database index" {
+				if node.NodeType == models.NodeTypeMethod && node.Summary != nil && *node.Summary == "Database index" {
 					if node.TypeName == "users" {
 						Expect(node.ParentID).NotTo(BeNil())
 						Expect(*node.ParentID).To(Equal(usersTable.ID))
@@ -374,7 +374,7 @@ var _ = Describe("SQL AST Extractor", func() {
 			// Check foreign keys
 			var fkNodes []*models.ASTNode
 			for _, node := range result.Nodes {
-				if node.NodeType == models.NodeTypeMethod && strings.Contains(node.Summary, "Foreign key") {
+				if node.NodeType == models.NodeTypeMethod && node.Summary != nil && strings.Contains(*node.Summary, "Foreign key") {
 					fkNodes = append(fkNodes, node)
 				}
 			}
@@ -385,7 +385,7 @@ var _ = Describe("SQL AST Extractor", func() {
 			// Check that at least one foreign key points to users
 			var hasUsersFK bool
 			for _, fk := range fkNodes {
-				if fk.TypeName == "orders" && fk.Summary == "Foreign key to users" {
+				if fk.TypeName == "orders" && fk.Summary != nil && *fk.Summary == "Foreign key to users" {
 					hasUsersFK = true
 					break
 				}

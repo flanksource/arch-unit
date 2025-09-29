@@ -201,7 +201,7 @@ func (a *AQL) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Viola
 			violation := models.Violation{
 				File:    sourceFile,
 				Line:    1,
-				Message: fmt.Sprintf("AQL parsing error: %v", err),
+				Message: models.StringPtr(fmt.Sprintf("AQL parsing error: %v", err)),
 				Source:  "aql",
 			}
 			allViolations = append(allViolations, violation)
@@ -215,7 +215,7 @@ func (a *AQL) Run(ctx commonsContext.Context, task *clicky.Task) ([]models.Viola
 			violation := models.Violation{
 				File:    sourceFile,
 				Line:    1,
-				Message: fmt.Sprintf("AQL execution error: %v", err),
+				Message: models.StringPtr(fmt.Sprintf("AQL execution error: %v", err)),
 				Source:  "aql",
 			}
 			allViolations = append(allViolations, violation)

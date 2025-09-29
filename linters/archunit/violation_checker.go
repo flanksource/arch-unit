@@ -146,8 +146,8 @@ func (v *ViolationChecker) checkCallExpr(call *ast.CallExpr, rules *models.RuleS
 			Caller:  callerNode,
 			Called:  calledNode,
 			Rule:    rule,
-			Message: violationMsg,
-			Code:    sourceCode,
+			Message: models.StringPtr(violationMsg),
+			Code:    models.StringPtr(sourceCode),
 		}
 	}
 

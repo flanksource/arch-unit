@@ -151,7 +151,7 @@ func (e *SQLASTExtractor) extractEnums(ctx context.Context, result *types.ASTRes
 			NodeType:     models.NodeTypeType, // Use base type for now
 			StartLine:    -1,
 			LastModified: time.Now(),
-			Summary:      "Database enum",
+			Summary:      models.StringPtr("Database enum"),
 		}
 		result.AddNode(enumNode)
 
@@ -170,7 +170,7 @@ func (e *SQLASTExtractor) extractEnums(ctx context.Context, result *types.ASTRes
 				NodeType:     models.NodeTypeField, // Use base field type
 				StartLine:    -1,
 				LastModified: time.Now(),
-				Summary:      "Enum value",
+				Summary:      models.StringPtr("Enum value"),
 			}
 			result.AddNode(valueNode)
 		}
@@ -202,7 +202,7 @@ func (e *SQLASTExtractor) extractTables(ctx context.Context, result *types.ASTRe
 			NodeType:     nodeType,
 			StartLine:    -1,
 			LastModified: time.Now(),
-			Summary:      fmt.Sprintf("Database %s", tableType),
+			Summary:      models.StringPtr(fmt.Sprintf("Database %s", tableType)),
 		}
 		result.AddNode(tableNode)
 		tableNodes[table.TableName] = tableNode
@@ -240,10 +240,10 @@ func (e *SQLASTExtractor) extractColumns(ctx context.Context, result *types.ASTR
 			FieldName:    column.ColumnName,
 			NodeType:     models.NodeTypeFieldColumn,
 			StartLine:    -1,
-			FieldType:    column.DataType,
-			DefaultValue: column.DefaultValue.String,
+			FieldType:    models.StringPtr(column.DataType),
+			DefaultValue: models.StringPtr(column.DefaultValue.String),
 			LastModified: time.Now(),
-			Summary:      fmt.Sprintf("%s column", column.DataType),
+			Summary:      models.StringPtr(fmt.Sprintf("%s column", column.DataType)),
 		}
 
 		// Set parent relationship after the table node has been added and has an ID
@@ -271,7 +271,7 @@ func (e *SQLASTExtractor) extractIndexes(ctx context.Context, result *types.ASTR
 			NodeType:     models.NodeTypeMethod, // Use base method type
 			StartLine:    -1,
 			LastModified: time.Now(),
-			Summary:      "Database index",
+			Summary:      models.StringPtr("Database index"),
 		}
 
 		// Set parent relationship
@@ -375,7 +375,7 @@ func (e *SQLASTExtractor) extractProcs(ctx context.Context, result *types.ASTRes
 			Parameters:     parameters,
 			ParameterCount: len(parameters),
 			LastModified:   time.Now(),
-			Summary:        fmt.Sprintf("SQL %s with %d parameters", proc.ProcType, len(parameters)),
+			Summary:        models.StringPtr(fmt.Sprintf("SQL %s with %d parameters", proc.ProcType, len(parameters))),
 		}
 		result.AddNode(procNode)
 	}

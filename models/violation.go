@@ -25,9 +25,9 @@ type Violation struct {
 	Called   *ASTNode `json:"called,omitempty" gorm:"foreignKey:CalledID;references:ID"`
 	
 	// The line of code the violation was found on.
-	Code    string `json:"code,omitempty" gorm:"column:code"`
-	Rule    *Rule  `json:"rule,omitempty" gorm:"column:rule_json;serializer:json"`
-	Message string `json:"message,omitempty" gorm:"column:message"`
+	Code    *string `json:"code,omitempty" gorm:"column:code"`
+	Rule    *Rule   `json:"rule,omitempty" gorm:"column:rule_json;serializer:json"`
+	Message *string `json:"message,omitempty" gorm:"column:message"`
 	// Source tool that reported the violation (e.g., arch-unit, golangci-lint)
 	Source           string    `json:"source,omitempty" gorm:"column:source;not null;index"`
 	Fixable          bool      `json:"fixable,omitempty" gorm:"column:fixable;default:false"`
@@ -61,8 +61,8 @@ func (v Violation) Pretty() api.Text {
 	}
 
 	// Add code snippet if available
-	if v.Code != "" {
-		t = t.Append(", ⇥ ", "text-gray-400").Append(strings.TrimSpace(v.Code), "text-blue-500")
+	if v.Code != nil && *v.Code != "" {
+		t = t.Append(", ⇥ ", "text-gray-400").Append(strings.TrimSpace(*v.Code), "text-blue-500")
 	}
 
 	return t.Append(" (").Add(v.Rule.Pretty()).Append(")")
@@ -120,4 +120,9 @@ type AnalysisResult struct {
 	Violations []Violation `json:"violations,omitempty"`
 	FileCount  int         `json:"file_count,omitempty"`
 	RuleCount  int         `json:"rule_count,omitempty"`
+}
+
+// StringPtr is a helper function to create a pointer to a string
+func StringPtr(s string) *string {
+	return &s
 }

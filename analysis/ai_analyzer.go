@@ -165,7 +165,7 @@ func (aa *AIAnalyzer) generateViolations(ast *models.GenericAST, commentResults 
 			Column:  1,
 			Caller:  &callerNode,
 			Called:  &calledNode,
-			Message: aa.formatCommentViolationMessage(result),
+			Message: models.StringPtr(aa.formatCommentViolationMessage(result)),
 			Source:  "ai-analyzer",
 		}
 		violations = append(violations, violation)

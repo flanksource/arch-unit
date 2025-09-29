@@ -113,7 +113,7 @@ func (e *AQLEngine) executeLimitStatement(rule *models.AQLRule, stmt *models.AQL
 				Line:    node.StartLine,
 				Caller:  callerNode,
 				Called:  calledNode,
-				Message: fmt.Sprintf("Rule '%s': %s violated limit", rule.Name, node.GetFullName()),
+				Message: models.StringPtr(fmt.Sprintf("Rule '%s': %s violated limit", rule.Name, node.GetFullName())),
 				Source:  "aql",
 			}
 			violations = append(violations, violation)
@@ -201,7 +201,7 @@ func (e *AQLEngine) executeForbidRelationship(rule *models.AQLRule, fromPattern,
 						Line:    rel.LineNo,
 						Caller:  callerNode,
 						Called:  calledNode,
-						Message: fmt.Sprintf("Rule '%s': Forbidden call from %s to %s", rule.Name, fromNode.GetFullName(), toNode.GetFullName()),
+						Message: models.StringPtr(fmt.Sprintf("Rule '%s': Forbidden call from %s to %s", rule.Name, fromNode.GetFullName(), toNode.GetFullName())),
 						Source:  "aql",
 					}
 					violations = append(violations, violation)
@@ -240,7 +240,7 @@ func (e *AQLEngine) executeForbidPattern(rule *models.AQLRule, pattern *models.A
 			Line:    node.StartLine,
 			Caller:  callerNode,
 			Called:  calledNode,
-			Message: fmt.Sprintf("Rule '%s': Forbidden pattern %s found in %s", rule.Name, pattern.String(), node.GetFullName()),
+			Message: models.StringPtr(fmt.Sprintf("Rule '%s': Forbidden pattern %s found in %s", rule.Name, pattern.String(), node.GetFullName())),
 			Source:  "aql",
 		}
 		violations = append(violations, violation)
@@ -329,7 +329,7 @@ func (e *AQLEngine) executeRequireRelationship(rule *models.AQLRule, fromPattern
 				Line:    fromNode.StartLine,
 				Caller:  callerNode,
 				Called:  calledNode,
-				Message: fmt.Sprintf("Rule '%s': Required relationship from %s to %s not found", rule.Name, fromNode.GetFullName(), toPattern.String()),
+				Message: models.StringPtr(fmt.Sprintf("Rule '%s': Required relationship from %s to %s not found", rule.Name, fromNode.GetFullName(), toPattern.String())),
 				Source:  "aql",
 			}
 			violations = append(violations, violation)
@@ -352,7 +352,7 @@ func (e *AQLEngine) executeRequirePattern(rule *models.AQLRule, pattern *models.
 		violation := &models.Violation{
 			File:    "",
 			Line:    0,
-			Message: fmt.Sprintf("Rule '%s': Required pattern %s not found in codebase", rule.Name, pattern.String()),
+			Message: models.StringPtr(fmt.Sprintf("Rule '%s': Required pattern %s not found in codebase", rule.Name, pattern.String())),
 			Source:  "aql",
 		}
 		return []*models.Violation{violation}, nil

@@ -148,15 +148,15 @@ func runASTAnalyzeSQL(cmd *cobra.Command, args []string) error {
 			case models.NodeTypeTypeView:
 				viewCount++
 			case models.NodeTypeType:
-				if node.Summary == "Database enum" {
+				if node.Summary != nil && *node.Summary == "Database enum" {
 					enumCount++
 				}
 			case models.NodeTypeMethodStoredProc, models.NodeTypeMethodFunction:
 				procCount++
 			case models.NodeTypeMethod:
-				if node.Summary == "Database index" {
+				if node.Summary != nil && *node.Summary == "Database index" {
 					indexCount++
-				} else if strings.Contains(node.Summary, "Foreign key") {
+				} else if node.Summary != nil && strings.Contains(*node.Summary, "Foreign key") {
 					foreignKeyCount++
 				}
 			case models.NodeTypeFieldColumn:

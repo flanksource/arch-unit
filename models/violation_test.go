@@ -121,7 +121,7 @@ var _ = Describe("Violation", func() {
 				Caller:  callerNode,
 				Called:  calledNode,
 				Rule:    rule,
-				Message: "Direct external API calls are not allowed",
+				Message: StringPtr("Direct external API calls are not allowed"),
 			}
 
 			result := violation.Pretty()
@@ -155,7 +155,7 @@ var _ = Describe("Violation", func() {
 				Caller:  callerNode,
 				Called:  calledNode,
 				Rule:    rule,
-				Message: "Use the gateway service instead",
+				Message: StringPtr("Use the gateway service instead"),
 			}
 
 			result := violation.Pretty()

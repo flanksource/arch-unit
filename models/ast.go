@@ -252,9 +252,9 @@ type ASTNode struct {
 	FileHash             string        `json:"file_hash,omitempty" gorm:"column:file_hash" pretty:"hide"`
 	// Summary is an AI generated/enhanced summary of the node,
 	// For fields, its a max of 5 words, for method, a max of 20 works, and for types a maximum of 50
-	Summary      string `json:"summary,omitempty" gorm:"column:summary" pretty:"label=Summary,style=text-gray-700"`
-	FieldType    string `json:"field_type,omitempty" gorm:"column:field_type" pretty:"label=Field Type"`    // Go type or SQL column type
-	DefaultValue string `json:"default_value,omitempty" gorm:"column:default_value" pretty:"label=Default"` // Default value for fields
+	Summary      *string `json:"summary,omitempty" gorm:"column:summary" pretty:"label=Summary,style=text-gray-700"`
+	FieldType    *string `json:"field_type,omitempty" gorm:"column:field_type" pretty:"label=Field Type"`    // Go type or SQL column type
+	DefaultValue *string `json:"default_value,omitempty" gorm:"column:default_value" pretty:"label=Default"` // Default value for fields
 }
 
 func (a ASTNode) Key() string {
@@ -518,15 +518,15 @@ func (n *ASTNode) Pretty() api.Text {
 	}
 
 	// Add field type if available
-	if n.FieldType != "" {
+	if n.FieldType != nil && *n.FieldType != "" {
 		content = content.Append(" : ", "text-gray-400 text-xs")
-		content = content.Append(n.FieldType, "text-blue-500 text-xs")
+		content = content.Append(*n.FieldType, "text-blue-500 text-xs")
 	}
 
 	// Add default value if available
-	if n.DefaultValue != "" {
+	if n.DefaultValue != nil && *n.DefaultValue != "" {
 		content = content.Append(" = ", "text-gray-400 text-xs")
-		content = content.Append(n.DefaultValue, "text-green-500 text-xs")
+		content = content.Append(*n.DefaultValue, "text-green-500 text-xs")
 	}
 
 	// Add line number with subdued styling (only for real source files, not virtual nodes)
@@ -706,17 +706,48 @@ func (n *ASTNode) PrettyWithConfig(config DisplayConfig, parentContext string) a
 		content = content.Append(fmt.Sprintf("%d", n.CyclomaticComplexity), complexityStyle+" text-xs")
 	}
 
-	// Add parameter count for methods
+	// Add parameter information for methods
 	if (n.NodeType == NodeTypeMethod || strings.HasPrefix(string(n.NodeType), "method_")) && len(n.Parameters) > 0 {
 		content = content.Append(" (", "text-gray-400 text-xs")
-		content = content.Append(fmt.Sprintf("%d params", len(n.Parameters)), "text-blue-500 text-xs")
+
+		if config.ShowParams {
+			// Show detailed parameter information
+			var paramStrs []string
+			for _, param := range n.Parameters {
+				if param.Name != "_" && param.Name != "" {
+					paramStrs = append(paramStrs, fmt.Sprintf("%s %s", param.Name, param.Type))
+				} else {
+					paramStrs = append(paramStrs, param.Type)
+				}
+			}
+			content = content.Append(strings.Join(paramStrs, ", "), "text-blue-500 text-xs")
+		} else {
+			// Show just parameter count
+			content = content.Append(fmt.Sprintf("%d params", len(n.Parameters)), "text-blue-500 text-xs")
+		}
+
 		content = content.Append(")", "text-gray-400 text-xs")
 	}
 
-	// Add return count for methods
+	// Add return information for methods
 	if (n.NodeType == NodeTypeMethod || strings.HasPrefix(string(n.NodeType), "method_")) && n.ReturnCount > 0 {
 		content = content.Append(" → ", "text-gray-400 text-xs")
-		content = content.Append(fmt.Sprintf("%d ret", n.ReturnCount), "text-purple-500 text-xs")
+
+		if len(n.ReturnValues) > 0 {
+			// Show detailed return information
+			var returnStrs []string
+			for _, ret := range n.ReturnValues {
+				if ret.Name != "" {
+					returnStrs = append(returnStrs, fmt.Sprintf("%s %s", ret.Name, ret.Type))
+				} else {
+					returnStrs = append(returnStrs, ret.Type)
+				}
+			}
+			content = content.Append(strings.Join(returnStrs, ", "), "text-purple-500 text-xs")
+		} else {
+			// Fallback to count if detailed info not available
+			content = content.Append(fmt.Sprintf("%d ret", n.ReturnCount), "text-purple-500 text-xs")
+		}
 	}
 
 	// Add line count for larger items
@@ -1491,19 +1522,67 @@ func (n ASTNode) PrettyRow(opts interface{}) map[string]api.Text {
 		}
 	}
 
-	// Parameters column (keep existing)
+	// Parameters column - show types if available, otherwise count
 	if n.ParameterCount > 0 {
+		var content string
+		if len(n.Parameters) > 0 {
+			// Show parameter types
+			var paramTypes []string
+			for _, param := range n.Parameters {
+				paramTypes = append(paramTypes, param.Type)
+			}
+			content = strings.Join(paramTypes, ", ")
+			// Truncate if too long
+			if len(content) > 30 {
+				content = content[:27] + "..."
+			}
+		} else {
+			// Fallback to count
+			content = fmt.Sprintf("%d", n.ParameterCount)
+		}
 		row["Params"] = api.Text{
-			Content: fmt.Sprintf("%d", n.ParameterCount),
+			Content: content,
 			Style:   "max-w-[20ch] truncate",
 		}
 	}
 
-	// Returns column (keep existing)
+	// Returns column - show return types if available, otherwise count
 	if n.ReturnCount > 0 {
+		var content string
+		if len(n.ReturnValues) > 0 {
+			// Show return types
+			var returnTypes []string
+			for _, ret := range n.ReturnValues {
+				returnTypes = append(returnTypes, ret.Type)
+			}
+			content = strings.Join(returnTypes, ", ")
+			// Truncate if too long
+			if len(content) > 30 {
+				content = content[:27] + "..."
+			}
+		} else {
+			// Fallback to count
+			content = fmt.Sprintf("%d", n.ReturnCount)
+		}
 		row["Returns"] = api.Text{
-			Content: fmt.Sprintf("%d", n.ReturnCount),
+			Content: content,
 			Style:   "max-w-[20ch] truncate",
+		}
+	}
+
+	// Field Type column - show type for fields
+	if n.FieldType != nil && *n.FieldType != "" {
+		row["Type"] = api.Text{
+			Content: *n.FieldType,
+			Style:   "text-blue-500 max-w-[20ch] truncate",
+		}
+	}
+
+	// Default Value column - show default value for fields
+	if n.DefaultValue != nil && *n.DefaultValue != "" {
+		row["Default"] = api.Text{
+			Content: *n.DefaultValue,
+			Style:   "text-green-500 max-w-[20ch] truncate",
 		}
 	}
 

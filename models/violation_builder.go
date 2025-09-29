@@ -37,7 +37,7 @@ func (vb *ViolationBuilder) WithLocation(line, column int) *ViolationBuilder {
 
 // WithMessage sets the violation message
 func (vb *ViolationBuilder) WithMessage(message string) *ViolationBuilder {
-	vb.violation.Message = message
+	vb.violation.Message = &message
 	return vb
 }
 
@@ -98,7 +98,7 @@ func (vb *ViolationBuilder) WithFixApplicability(applicability string) *Violatio
 
 // WithCode sets the code snippet where the violation was found
 func (vb *ViolationBuilder) WithCode(code string) *ViolationBuilder {
-	vb.violation.Code = code
+	vb.violation.Code = &code
 	return vb
 }
 
