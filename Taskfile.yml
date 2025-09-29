@@ -23,25 +23,9 @@ tasks:
     env:
       CGO_ENABLED: '{{.CGO_ENABLED | default "1"}}'
 
-  install:gradle-wrapper:
-    desc: Install Gradle wrapper
-    dir: analysis/java
-    generates:
-      - gradlew
-    cmds:
-      - mkdir -p gradle/wrapper
-      - curl -L https://services.gradle.org/distributions/gradle-8.5-bin.zip -o gradle-8.5-bin.zip
-      - unzip -q gradle-8.5-bin.zip
-      - ./gradle-8.5/bin/gradle wrapper --gradle-version 8.5
-      - rm -rf gradle-8.5 gradle-8.5-bin.zip
-    status:
-      - test -f gradlew
-
   build:java-jar:
     desc: Build the Java AST extractor JAR
     dir: analysis/java
-    deps:
-      - install:gradle-wrapper
     sources:
       - JavaASTExtractor.java
       - build.gradle
