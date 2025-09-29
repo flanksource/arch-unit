@@ -104,6 +104,37 @@ func (a *Analyzer) QueryPattern(pattern string) ([]*models.ASTNode, error) {
 		}
 	}
 
+	// Add language filtering if specified
+	if aqlPattern.Language != "" && aqlPattern.Language != "*" {
+		lang := strings.ToLower(aqlPattern.Language)
+		conditions := []string{}
+		args := []interface{}{}
+
+		// Direct language match for nodes with explicit language field
+		conditions = append(conditions, "language = ?")
+		args = append(args, lang)
+
+		// File path-based inference for nodes without explicit language
+		switch lang {
+		case "sql":
+			conditions = append(conditions, "(language = '' OR language IS NULL) AND file_path LIKE ?")
+			args = append(args, "sql://%")
+		case "openapi":
+			conditions = append(conditions, "(language = '' OR language IS NULL) AND file_path LIKE ?")
+			args = append(args, "openapi://%")
+		default:
+			ext := getFileExtensionForLanguage(lang)
+			if ext != "" {
+				conditions = append(conditions, "(language = '' OR language IS NULL) AND file_path LIKE ?")
+				args = append(args, "%."+ext)
+			}
+		}
+
+		if len(conditions) > 0 {
+			query = query.Where(strings.Join(conditions, " OR "), args...)
+		}
+	}
+
 	// Log verbose query information
 	if logger.IsLevelEnabled(3) { // Debug level
 		logger.Debugf("Executing GORM query with pattern: %+v", aqlPattern)
@@ -381,4 +412,142 @@ func (a *Analyzer) QueryByPackage(packageName string) ([]*models.ASTNode, error)
 	query := "SELECT * FROM ast_nodes WHERE package_name = ? AND file_path LIKE ? ORDER BY file_path, start_line"
 	workingDirPattern := a.workDir + "/%"
 	return a.cache.QueryASTNodes(query, packageName, workingDirPattern)
+}
+
+// getFileExtensionForLanguage returns the file extension for a given language
+func getFileExtensionForLanguage(language string) string {
+	switch strings.ToLower(language) {
+	case "go":
+		return "go"
+	case "python":
+		return "py"
+	case "javascript":
+		return "js"
+	case "typescript":
+		return "ts"
+	case "java":
+		return "java"
+	case "rust":
+		return "rs"
+	case "sql":
+		return "sql"
+	default:
+		return ""
+	}
+}
+
+// AnalysisSource represents a source of analyzed data
+type AnalysisSource struct {
+	Type     string `json:"type"`      // "files", "sql", "openapi", "custom"
+	Name     string `json:"name"`      // Human readable name
+	NodeCount int   `json:"node_count"` // Number of nodes from this source
+}
+
+// GetAnalysisSources returns a breakdown of all analysis sources
+func (a *Analyzer) GetAnalysisSources() ([]AnalysisSource, error) {
+	// Query for language statistics from database
+	query := `
+		SELECT
+			CASE
+				WHEN language != '' THEN language
+				WHEN file_path LIKE 'sql://%' THEN 'sql'
+				WHEN file_path LIKE 'openapi://%' THEN 'openapi'
+				WHEN file_path LIKE 'virtual://%' THEN 'custom'
+				WHEN file_path LIKE '%.go' THEN 'go'
+				WHEN file_path LIKE '%.py' THEN 'python'
+				WHEN file_path LIKE '%.js' OR file_path LIKE '%.jsx' OR file_path LIKE '%.ts' OR file_path LIKE '%.tsx' THEN 'javascript'
+				WHEN file_path LIKE '%.java' THEN 'java'
+				WHEN file_path LIKE '%.rs' THEN 'rust'
+				ELSE 'unknown'
+			END as detected_language,
+			COUNT(*) as node_count
+		FROM ast_nodes
+		WHERE file_path LIKE ? OR file_path LIKE 'sql://%' OR file_path LIKE 'openapi://%' OR file_path LIKE 'virtual://%'
+		GROUP BY detected_language
+		ORDER BY node_count DESC
+	`
+
+	workingDirPattern := a.workDir + "/%"
+	rows, err := a.cache.QueryRaw(query, workingDirPattern)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get analysis sources: %w", err)
+	}
+	defer rows.Close()
+
+	var sources []AnalysisSource
+	for rows.Next() {
+		var language string
+		var count int
+		if err := rows.Scan(&language, &count); err != nil {
+			return nil, err
+		}
+
+		// Create human-readable names
+		var sourceName string
+		var sourceType string
+		switch language {
+		case "sql":
+			sourceName = "SQL databases"
+			sourceType = "sql"
+		case "openapi":
+			sourceName = "OpenAPI specifications"
+			sourceType = "openapi"
+		case "custom":
+			sourceName = "Custom analyzers"
+			sourceType = "custom"
+		case "go":
+			sourceName = "Go files"
+			sourceType = "files"
+		case "python":
+			sourceName = "Python files"
+			sourceType = "files"
+		case "javascript", "typescript":
+			sourceName = "JavaScript/TypeScript files"
+			sourceType = "files"
+		case "java":
+			sourceName = "Java files"
+			sourceType = "files"
+		case "rust":
+			sourceName = "Rust files"
+			sourceType = "files"
+		default:
+			sourceName = fmt.Sprintf("%s files", strings.Title(language))
+			sourceType = "files"
+		}
+
+		sources = append(sources, AnalysisSource{
+			Type:     sourceType,
+			Name:     sourceName,
+			NodeCount: count,
+		})
+	}
+
+	return sources, nil
+}
+
+// FormatNoNodesFoundError creates an enhanced error message with analysis source information
+func (a *Analyzer) FormatNoNodesFoundError(pattern string) error {
+	sources, err := a.GetAnalysisSources()
+	if err != nil {
+		// Fallback to simple error if we can't get source info
+		return fmt.Errorf("no nodes found matching pattern: '%s'", pattern)
+	}
+
+	var message strings.Builder
+	message.WriteString(fmt.Sprintf("No nodes found matching pattern: '%s'\n", pattern))
+
+	if len(sources) == 0 {
+		message.WriteString("No analysis sources found. Run analysis first with: arch-unit ast analyze")
+		return fmt.Errorf(message.String())
+	}
+
+	message.WriteString("Analysis sources:\n")
+	totalNodes := 0
+	for _, source := range sources {
+		message.WriteString(fmt.Sprintf("- %s: %d nodes\n", source.Name, source.NodeCount))
+		totalNodes += source.NodeCount
+	}
+	message.WriteString(fmt.Sprintf("Total: %d nodes analyzed across %d sources", totalNodes, len(sources)))
+
+	return fmt.Errorf(message.String())
 }

@@ -71,7 +71,7 @@ func (r *Renamer) FindNodeToRename(analyzer *Analyzer, nameOrPattern string) (*m
 	}
 
 	if len(nodes) == 0 {
-		return nil, fmt.Errorf("no nodes found matching: %s", nameOrPattern)
+		return nil, analyzer.FormatNoNodesFoundError(nameOrPattern)
 	}
 
 	if len(nodes) > 1 {

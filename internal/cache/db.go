@@ -4,8 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 	"sync"
-	
+
 	"github.com/flanksource/arch-unit/models"
+	commonsLogger "github.com/flanksource/commons/logger"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -24,8 +25,14 @@ func NewDB(driverName, dataSourceName string) (*DB, error) {
 
 	if driverName == "sqlite" {
 		// Configure GORM with SQLite
+		// Enable SQL logging if verbosity level is 3 or higher (-vvv)
+		var logMode logger.LogLevel = logger.Silent
+		if commonsLogger.IsLevelEnabled(3) {
+			logMode = logger.Info // Enable SQL query logging for high verbosity
+		}
+
 		config := &gorm.Config{
-			Logger: logger.Default.LogMode(logger.Silent), // Reduce logging noise
+			Logger: logger.Default.LogMode(logMode),
 		}
 		
 		gormDB, err = gorm.Open(sqlite.Open(dataSourceName), config)

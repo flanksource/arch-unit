@@ -77,6 +77,7 @@ type AQLPattern struct {
 	Method     string `json:"method,omitempty" yaml:"method,omitempty"`
 	Field      string `json:"field,omitempty" yaml:"field,omitempty"`
 	FilePath   string `json:"file_path,omitempty" yaml:"file_path,omitempty"` // Doublestar glob pattern for file paths
+	Language   string `json:"language,omitempty" yaml:"language,omitempty"`   // "go", "python", "sql", "openapi", etc.
 	Metric     string `json:"metric,omitempty" yaml:"metric,omitempty"`       // "cyclomatic", "parameters", "lines"
 	IsWildcard bool   `json:"is_wildcard" yaml:"is_wildcard"`
 	Original   string `json:"original" yaml:"original"` // Original pattern text
@@ -153,16 +154,29 @@ func (p *AQLPattern) String() string {
 		return p.Original
 	}
 
-	// Start with file path if present
+	// Start with language if present
 	var result string
+	if p.Language != "" {
+		result = p.Language
+	}
+
+	// Add file path if present
 	if p.FilePath != "" {
-		result = "@" + p.FilePath
+		if result != "" {
+			result += ":@" + p.FilePath
+		} else {
+			result = "@" + p.FilePath
+		}
 	}
 
 	// Handle special case for simple wildcard
 	if p.Package == "*" && p.Type == "*" && p.Method == "*" && p.Field == "" && p.Metric == "" {
-		if p.FilePath != "" {
-			result += ":*"
+		if p.FilePath != "" || p.Language != "" {
+			if result != "" {
+				result += ":*"
+			} else {
+				result = "*"
+			}
 		} else {
 			return "*"
 		}
@@ -201,8 +215,12 @@ func (p *AQLPattern) String() string {
 			astPattern = strings.Join(parts, ":")
 		}
 
-		if p.FilePath != "" && astPattern != "" {
-			result += ":" + astPattern
+		if (p.FilePath != "" || p.Language != "") && astPattern != "" {
+			if result != "" {
+				result += ":" + astPattern
+			} else {
+				result = astPattern
+			}
 		} else if astPattern != "" {
 			result = astPattern
 		}
@@ -323,7 +341,26 @@ func ParsePattern(pattern string) (*AQLPattern, error) {
 		parts = []string{pattern}
 	}
 
-	// Initialize defaults 
+	// Smart language detection: check if first part is a known language
+	knownLanguages := []string{"sql", "go", "python", "javascript", "typescript", "openapi", "java", "rust", "custom"}
+	if len(parts) > 0 {
+		firstPart := strings.ToLower(parts[0])
+		for _, lang := range knownLanguages {
+			if firstPart == lang {
+				p.Language = lang
+				// Remove language from parts and continue with remaining pattern
+				if len(parts) > 1 {
+					parts = parts[1:]
+				} else {
+					// Only language specified, default to match all
+					parts = []string{"*"}
+				}
+				break
+			}
+		}
+	}
+
+	// Initialize defaults
 	p.Package = "*"
 	p.Type = "" 
 	p.Method = ""
@@ -384,6 +421,13 @@ func (p *AQLPattern) Matches(node *ASTNode) bool {
 	// Check file path pattern first if specified
 	if p.FilePath != "" && p.FilePath != "*" {
 		if !matchesFilePath(node.FilePath, p.FilePath) {
+			return false
+		}
+	}
+
+	// Check language pattern if specified
+	if p.Language != "" && p.Language != "*" {
+		if !matchesLanguage(node, p.Language) {
 			return false
 		}
 	}
@@ -484,6 +528,58 @@ func matchesWildcard(text, pattern string) bool {
 	}
 
 	return text == pattern
+}
+
+// matchesLanguage checks if an AST node matches the specified language
+func matchesLanguage(node *ASTNode, language string) bool {
+	// First check if node has explicit language field
+	if node.Language != nil && *node.Language != "" {
+		return strings.EqualFold(*node.Language, language)
+	}
+
+	// If no explicit language, infer from file path
+	inferredLanguage := inferLanguageFromPath(node.FilePath)
+	return strings.EqualFold(inferredLanguage, language)
+}
+
+// inferLanguageFromPath infers language from file path or virtual path
+func inferLanguageFromPath(filePath string) string {
+	// Handle virtual paths
+	if strings.HasPrefix(filePath, "sql://") {
+		return "sql"
+	}
+	if strings.HasPrefix(filePath, "openapi://") {
+		return "openapi"
+	}
+	if strings.HasPrefix(filePath, "virtual://") {
+		// Extract type from virtual path: virtual://type/identifier
+		parts := strings.Split(strings.TrimPrefix(filePath, "virtual://"), "/")
+		if len(parts) > 0 {
+			return parts[0]
+		}
+		return "custom"
+	}
+
+	// Handle regular file extensions
+	switch {
+	case strings.HasSuffix(filePath, ".go"):
+		return "go"
+	case strings.HasSuffix(filePath, ".py"):
+		return "python"
+	case strings.HasSuffix(filePath, ".js") || strings.HasSuffix(filePath, ".jsx") ||
+		 strings.HasSuffix(filePath, ".mjs") || strings.HasSuffix(filePath, ".cjs"):
+		return "javascript"
+	case strings.HasSuffix(filePath, ".ts") || strings.HasSuffix(filePath, ".tsx"):
+		return "typescript"
+	case strings.HasSuffix(filePath, ".java"):
+		return "java"
+	case strings.HasSuffix(filePath, ".rs"):
+		return "rust"
+	case strings.HasSuffix(filePath, ".sql"):
+		return "sql"
+	default:
+		return ""
+	}
 }
 
 // Evaluate evaluates a condition against an AST node

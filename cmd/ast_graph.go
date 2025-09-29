@@ -95,7 +95,8 @@ func runASTGraph(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(nodes) == 0 {
-		logger.Infof("No nodes found matching pattern: %s", pattern)
+		errorMsg := analyzer.FormatNoNodesFoundError(pattern)
+		logger.Infof(errorMsg.Error())
 		return nil
 	}
 

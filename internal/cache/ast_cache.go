@@ -243,6 +243,12 @@ func (c *ASTCache) NeedsReanalysis(filePath string) (bool, error) {
 
 // UpdateFileMetadata updates or inserts file metadata
 func (c *ASTCache) UpdateFileMetadata(filePath string) error {
+	// Check if this is a virtual path (SQL connection, OpenAPI URL, etc.)
+	if isVirtualPath(filePath) {
+		return c.updateVirtualPathMetadata(filePath)
+	}
+
+	// Handle regular file paths
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to stat file: %w", err)
@@ -271,6 +277,40 @@ func (c *ASTCache) UpdateFileMetadata(filePath string) error {
 	}
 
 	return nil
+}
+
+// updateVirtualPathMetadata handles metadata updates for virtual paths (SQL connections, OpenAPI URLs, etc.)
+func (c *ASTCache) updateVirtualPathMetadata(virtualPath string) error {
+	// For virtual paths, we create a hash based on the path itself since there's no file content
+	hash := sha256.Sum256([]byte(virtualPath))
+	virtualHash := hex.EncodeToString(hash[:])
+
+	now := time.Now()
+	metadata := &models.FileMetadata{
+		FilePath:        virtualPath,
+		FileHash:        virtualHash,
+		FileSize:        0, // Virtual paths don't have a file size
+		LastModified:    now,
+		LastAnalyzed:    now,
+		AnalysisVersion: "1.0-virtual",
+	}
+
+	// Use Clauses to handle upsert (INSERT ... ON CONFLICT DO UPDATE)
+	if err := c.db.GetWriteDB().Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "file_path"}},
+		DoUpdates: clause.AssignmentColumns([]string{"file_hash", "file_size", "last_modified", "last_analyzed", "analysis_version"}),
+	}).Create(metadata).Error; err != nil {
+		return fmt.Errorf("failed to update virtual path metadata: %w", err)
+	}
+
+	return nil
+}
+
+// isVirtualPath checks if a path is a virtual path (SQL connection, OpenAPI URL, etc.)
+func isVirtualPath(path string) bool {
+	return strings.HasPrefix(path, "virtual://") ||
+		strings.HasPrefix(path, "sql://") ||
+		strings.HasPrefix(path, "openapi://")
 }
 
 // StoreASTNode stores an AST node and returns its ID

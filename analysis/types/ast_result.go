@@ -51,6 +51,10 @@ func NewASTResult(filepath string, language string) *ASTResult {
 
 // AddNode adds an AST node to the result
 func (r *ASTResult) AddNode(node *models.ASTNode) {
+	// Set the language on the node if not already set
+	if (node.Language == nil || *node.Language == "") && r.Language != "" {
+		node.Language = &r.Language
+	}
 	r.Nodes = append(r.Nodes, node)
 	r.NodeCount++
 }

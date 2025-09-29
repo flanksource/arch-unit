@@ -343,7 +343,8 @@ func (a *GenericAnalyzer) getCachedASTResult(filepath string) (*types.ASTResult,
 	}
 
 	// Create ASTResult from cached data
-	result := types.NewASTResult(filepath, "go") // TODO: detect language from file extension
+	language := a.detectLanguageFromPath(filepath)
+	result := types.NewASTResult(filepath, language)
 
 	// Add all cached nodes
 	for _, node := range nodes {
@@ -381,4 +382,44 @@ func (a *GenericAnalyzer) getCachedASTResult(filepath string) (*types.ASTResult,
 	}
 
 	return result, nil
+}
+
+// detectLanguageFromPath detects language from file path or virtual path
+func (a *GenericAnalyzer) detectLanguageFromPath(filepath string) string {
+	// Handle virtual paths
+	if strings.HasPrefix(filepath, "sql://") {
+		return "sql"
+	}
+	if strings.HasPrefix(filepath, "openapi://") {
+		return "openapi"
+	}
+	if strings.HasPrefix(filepath, "virtual://") {
+		// Extract type from virtual path: virtual://type/identifier
+		parts := strings.Split(strings.TrimPrefix(filepath, "virtual://"), "/")
+		if len(parts) > 0 {
+			return parts[0]
+		}
+		return "custom"
+	}
+
+	// Handle regular file extensions
+	switch {
+	case strings.HasSuffix(filepath, ".go"):
+		return "go"
+	case strings.HasSuffix(filepath, ".py"):
+		return "python"
+	case strings.HasSuffix(filepath, ".js") || strings.HasSuffix(filepath, ".jsx") ||
+		 strings.HasSuffix(filepath, ".mjs") || strings.HasSuffix(filepath, ".cjs"):
+		return "javascript"
+	case strings.HasSuffix(filepath, ".ts") || strings.HasSuffix(filepath, ".tsx"):
+		return "typescript"
+	case strings.HasSuffix(filepath, ".java"):
+		return "java"
+	case strings.HasSuffix(filepath, ".rs"):
+		return "rust"
+	case strings.HasSuffix(filepath, ".sql"):
+		return "sql"
+	default:
+		return ""
+	}
 }
