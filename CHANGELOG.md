@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5](https://github.com/flanksource/arch-unit/compare/v1.0.4...v1.0.5) (2025-09-29)
+
+
+### 📦 Build System
+
+* commit Gradle wrapper files for reproducible builds ([04a5f44](https://github.com/flanksource/arch-unit/commit/04a5f443e941a77dc68762df44d296f9c6972b08))
+
 ## [1.0.4](https://github.com/flanksource/arch-unit/compare/v1.0.3...v1.0.4) (2025-09-29)
 
 ## [1.0.3](https://github.com/flanksource/arch-unit/compare/v1.0.2...v1.0.3) (2025-09-29)
