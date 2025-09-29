@@ -3,16 +3,6 @@ name: Release
 on:
   push:
     branches: [main, master]
-  workflow_dispatch:
-    inputs:
-      dry-run:
-        description: "Run in dry-run mode (no actual release)"
-        required: false
-        default: "false"
-        type: choice
-        options:
-          - "true"
-          - "false"
 
 permissions:
   contents: write
@@ -55,43 +45,8 @@ jobs:
             @semantic-release/exec@6 \
             conventional-changelog-conventionalcommits@7
 
-      - name: Semantic Release (Dry Run)
-        if: github.event.inputs.dry-run == 'true'
-        id: semantic-dry
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          npx semantic-release --dry-run --no-ci
-
-      - name: Check for changes since last release
-        id: changes
-        run: |
-          # Get the last release tag
-          LAST_TAG=$(git tag --list --sort=-version:refname | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-          echo "last_tag=${LAST_TAG}" >> $GITHUB_OUTPUT
-
-          if [ -z "$LAST_TAG" ]; then
-            echo "No previous release found, this will be the first release"
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "commits_since_last=0" >> $GITHUB_OUTPUT
-          else
-            # Count commits since last tag
-            COMMITS_SINCE=$(git rev-list --count ${LAST_TAG}..HEAD)
-            echo "commits_since_last=${COMMITS_SINCE}" >> $GITHUB_OUTPUT
-            echo "Found ${COMMITS_SINCE} commits since last release (${LAST_TAG})"
-
-            if [ "$COMMITS_SINCE" -gt 0 ]; then
-              echo "has_changes=true" >> $GITHUB_OUTPUT
-              echo "Changes detected since last release:"
-              git log --oneline ${LAST_TAG}..HEAD | head -10
-            else
-              echo "has_changes=false" >> $GITHUB_OUTPUT
-              echo "No changes since last release"
-            fi
-          fi
-
       - name: Semantic Release
-        if: github.event.inputs.dry-run != 'true'
+
         id: semantic
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -102,7 +57,6 @@ jobs:
           npx semantic-release
 
       - name: Release Summary
-        if: github.event.inputs.dry-run != 'true'
         run: |
           echo "=== Release Summary ==="
           echo "New release published: ${{ steps.semantic.outputs.new_release_published }}"
