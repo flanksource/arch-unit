@@ -48,7 +48,7 @@ require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/boombuler/barcode v1.0.1 // indirect
-	github.com/cert-manager/cert-manager v1.16.1 // indirect
+	github.com/cert-manager/cert-manager v1.16.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/x/ansi v0.3.2 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
