@@ -6,10 +6,10 @@
       {
         "preset": "conventionalcommits",
         "releaseRules": [
-          {"release": "patch"}
+          {"type": "*", "release": "patch"}
         ],
         "parserOpts": {
-          "noteKeywords": ["BREAKING CHANGE", "BREAKING CHANGES"]
+          "noteKeywords": []
         }
       }
     ],
@@ -26,10 +26,10 @@
             {"type": "docs", "section": "📚 Documentation", "hidden": false},
             {"type": "test", "section": "✅ Tests", "hidden": false},
             {"type": "build", "section": "📦 Build System", "hidden": false},
-            {"type": "ci", "section": "👷 CI/CD", "hidden": false},
-            {"type": "chore", "section": "🔧 Maintenance", "hidden": false},
+            {"type": "ci", "section": "👷 CI/CD", "hidden": true},
+            {"type": "chore", "section": "🔧 Maintenance", "hidden": true},
             {"type": "style", "section": "💄 Style", "hidden": false},
-            {"type": "revert", "section": "⏪ Reverts", "hidden": false}
+            {"type": "revert", "section": "⏪ Reverts", "hidden": true}
           ]
         },
         "writerOpts": {
