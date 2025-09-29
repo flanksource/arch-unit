@@ -82,6 +82,12 @@ jobs:
       - name: Fetch tags
         run: git fetch --force --tags
 
+      - name: Checkout release tag
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0)
+          echo "Checking out latest tag: $LATEST_TAG"
+          git checkout $LATEST_TAG
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
