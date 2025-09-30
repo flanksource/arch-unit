@@ -1,19 +1,11 @@
 version: 2
 
-before:
-  hooks:
-    - task build:java-jar
-
 builds:
-  - env:
+  - id: arch-unit
+    main: .
+    binary: arch-unit
+    env:
       - CGO_ENABLED=0
-    goos:
-      - linux
-      - windows
-      - darwin
-    goarch:
-      - amd64
-      - arm64
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
