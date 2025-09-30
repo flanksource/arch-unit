@@ -13,13 +13,42 @@ env:
   GO_VERSION: "1.25"
 
 jobs:
+  create-tag:
+    name: Create Release Tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.next }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate next version
+        id: version
+        run: |
+          curl -sL https://github.com/caarlos0/svu/releases/download/v2.3.0/svu_2.3.0_linux_amd64.tar.gz | tar xz
+          chmod +x svu
+          NEXT_VERSION=$(./svu patch)
+          echo "next=$NEXT_VERSION" >> $GITHUB_OUTPUT
+          echo "Next version: $NEXT_VERSION"
+
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.version.outputs.next }}
+          git push origin ${{ steps.version.outputs.next }}
+
   build-java:
     name: Build Java JAR
+    needs: create-tag
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ needs.create-tag.outputs.version }}
           fetch-depth: 0
 
       - name: Set up Java
@@ -42,7 +71,7 @@ jobs:
 
   build-binaries:
     name: Build ${{ matrix.goos }}-${{ matrix.goarch }}
-    needs: build-java
+    needs: [build-java, create-tag]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -52,6 +81,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ needs.create-tag.outputs.version }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -84,28 +114,14 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: build-binaries
+    needs: [build-binaries, create-tag]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ needs.create-tag.outputs.version }}
           fetch-depth: 0
-
-      - name: Fetch tags
-        run: git fetch --force --tags
-
-      - name: Calculate next version
-        id: version
-        run: |
-          # Install svu
-          curl -sL https://github.com/caarlos0/svu/releases/download/v2.3.0/svu_2.3.0_linux_amd64.tar.gz | tar xz
-          chmod +x svu
-
-          # Calculate next patch version
-          NEXT_VERSION=$(./svu patch)
-          echo "next=$NEXT_VERSION" >> $GITHUB_OUTPUT
-          echo "Next version: $NEXT_VERSION"
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -136,4 +152,3 @@ jobs:
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
           SCOOP_BUCKET_GITHUB_TOKEN: ${{ secrets.SCOOP_BUCKET_GITHUB_TOKEN }}
           GITHUB_OWNER: ${{ github.repository_owner }}
-          GORELEASER_CURRENT_TAG: ${{ steps.version.outputs.next }}
