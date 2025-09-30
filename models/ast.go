@@ -11,6 +11,7 @@ import (
 	"github.com/flanksource/arch-unit/internal/source"
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/api/icons"
 )
 
 // Global source reader for on-demand source code retrieval
@@ -228,18 +229,18 @@ type ASTExporter interface {
 
 // ASTNode represents a node in the AST stored in database
 type ASTNode struct {
-	ID                   int64         `json:"id" gorm:"primaryKey;autoIncrement" pretty:"hide"`
+	ID                   int64         `json:"id,omitempty" gorm:"primaryKey;autoIncrement" pretty:"hide"`
 	Parent               *ASTNode      `json:"-" pretty:"hide"`
 	ParentID             *int64        `json:"parent_id,omitempty" gorm:"column:parent_id;index" pretty:"hide"`         // Nullable for root nodes, For a field, parent is the struct/class, for a struct/class parent is package,
 	DependencyID         *int64        `json:"dependency_id,omitempty" gorm:"column:dependency_id;index" pretty:"hide"` // Id of the dependency that contains this node
-	FilePath             string        `json:"file_path" gorm:"column:file_path;not null;index" pretty:"label=File,style=text-blue-500"`
+	FilePath             string        `json:"file_path,omitempty" gorm:"column:file_path;not null;index" pretty:"label=File,style=text-blue-500"`
 	PackageName          string        `json:"package_name,omitempty" gorm:"column:package_name;index" pretty:"label=Package"`
 	TypeName             string        `json:"type_name,omitempty" gorm:"column:type_name;index" pretty:"label=Type,style=text-green-600"`
 	MethodName           string        `json:"method_name,omitempty" gorm:"column:method_name;index" pretty:"label=Method,style=text-purple-600"`
 	FieldName            string        `json:"field_name,omitempty" gorm:"column:field_name" pretty:"label=Field,style=text-orange-600"`
-	NodeType             NodeType      `json:"node_type" gorm:"column:node_type;not null;index" pretty:"label=Type,style=text-gray-600"` // "package", "type", "method", "field", "variable"
-	Language             *string       `json:"language,omitempty" gorm:"column:language;index" pretty:"label=Language"`                  // "go", "python", "sql", "openapi", etc. (optional)
-	StartLine            int           `json:"start_line" gorm:"column:start_line" pretty:"label=Line"`
+	NodeType             NodeType      `json:"node_type,omitempty" gorm:"column:node_type;not null;index" pretty:"label=Type,style=text-gray-600"` // "package", "type", "method", "field", "variable"
+	Language             *string       `json:"language,omitempty" gorm:"column:language;index" pretty:"label=Language"`                            // "go", "python", "sql", "openapi", etc. (optional)
+	StartLine            int           `json:"start_line,omitempty" gorm:"column:start_line" pretty:"label=Line"`
 	EndLine              int           `json:"end_line,omitempty" gorm:"column:end_line" pretty:"hide"`
 	CyclomaticComplexity int           `json:"cyclomatic_complexity,omitempty" gorm:"column:cyclomatic_complexity;default:0;index" pretty:"label=Complexity,green=1-5,yellow=6-10,red=11+"`
 	ParameterCount       int           `json:"parameter_count,omitempty" gorm:"column:parameter_count;default:0" pretty:"label=Params"`
@@ -248,14 +249,87 @@ type ASTNode struct {
 	Imports              []string      `json:"imports,omitempty" gorm:"-" pretty:"hide"`                     // List of import paths - not stored in DB
 	Parameters           []Parameter   `json:"parameters,omitempty" gorm:"serializer:json" pretty:"hide"`    // Detailed parameter information
 	ReturnValues         []ReturnValue `json:"return_values,omitempty" gorm:"serializer:json" pretty:"hide"` // Return value information
-	LastModified         time.Time     `json:"last_modified" gorm:"column:last_modified;index" pretty:"hide"`
+	LastModified         time.Time     `json:"last_modified,omitempty" gorm:"column:last_modified;index" pretty:"hide"`
 	FileHash             string        `json:"file_hash,omitempty" gorm:"column:file_hash" pretty:"hide"`
 	// Summary is an AI generated/enhanced summary of the node,
 	// For fields, its a max of 5 words, for method, a max of 20 works, and for types a maximum of 50
-	Summary      *string `json:"summary,omitempty" gorm:"column:summary" pretty:"label=Summary,style=text-gray-700"`
-	FieldType    *string `json:"field_type,omitempty" gorm:"column:field_type" pretty:"label=Field Type"`    // Go type or SQL column type
-	DefaultValue *string `json:"default_value,omitempty" gorm:"column:default_value" pretty:"label=Default"` // Default value for fields
-	IsPrivate    bool    `json:"is_private,omitempty" gorm:"column:is_private;default:false;index" pretty:"label=Private"` // Unified visibility across languages
+	Summary      *string           `json:"summary,omitempty" gorm:"column:summary" pretty:"label=Summary,style=text-gray-700"`
+	FieldType    *string           `json:"field_type,omitempty" gorm:"column:field_type" pretty:"label=Field Type"`                  // Go type or SQL column type
+	DefaultValue *string           `json:"default_value,omitempty" gorm:"column:default_value" pretty:"label=Default"`               // Default value for fields
+	IsPrivate    bool              `json:"is_private,omitempty" gorm:"column:is_private;default:false;index" pretty:"label=Private"` // Unified visibility across languages
+	Metatdata    map[string]string `json:"metadata,omitempty" gorm:"serializer:json"`                                                // Additional metadata specific to language or analysis
+
+	// Hydrated relationships for easy printing
+	Relationships []*ASTRelationship `json:"-" gorm:"-"`
+	Statements    []ASTStatement     `json:"statements,omitempty" gorm:"-"`
+}
+
+type FieldType string
+
+const (
+	FieldTypeString  FieldType = "string"
+	FieldTypeNumber  FieldType = "number"
+	FieldTypeBoolean FieldType = "boolean"
+	FieldTypeArray   FieldType = "array"
+	FieldTypeObject  FieldType = "object"
+	FieldTypeEnum    FieldType = "enum"
+	FieldTypeDate    FieldType = "date"
+	FieldTypeFloat   FieldType = "float"
+	FieldTypeMap     FieldType = "map"
+	// Result of an expression evaluation
+	FieldTypeExpression FieldType = "expression"
+	// Result of a SQL query
+	FieldTypeSQL FieldType = "sql"
+	// i.e. lambda, closure, arrow function, etc.
+	FieldTypeFunction FieldType = "function"
+	// Result of a method call
+	FieldTypeMethodResult FieldType = "method_result"
+)
+
+func (f FieldType) Pretty() api.Text {
+	switch f {
+	case FieldTypeString:
+		return clicky.Text("string", "text-green-600")
+	case FieldTypeNumber, FieldTypeFloat:
+		return clicky.Text("number", "text-blue-600")
+	case FieldTypeBoolean:
+		return clicky.Text("boolean", "text-red-600")
+	case FieldTypeArray:
+		return clicky.Text("array", "text-purple-600")
+	case FieldTypeObject:
+		return clicky.Text("object", "text-pink-600")
+	case FieldTypeEnum:
+		return clicky.Text("enum", "text-indigo-600")
+	case FieldTypeDate:
+		return clicky.Text("date", "text-gray-600")
+	case FieldTypeMap:
+		return clicky.Text("map", "text-teal-600")
+	default:
+		return clicky.Text(string(f), "text-yellow-600")
+	}
+}
+
+type Value struct {
+	// Literal value as string, or SQL,  pkg.Type.method for method call, expr for expression
+	Value     string    `json:"value"`
+	FieldType FieldType `json:"field_type,omitempty"`
+	//being called
+	Constant bool `json:"constant,omitempty"`
+	// params to a method call
+	Params map[string]Value `json:"params,omitempty"`
+}
+
+func (v Value) Pretty() api.Text {
+	if v.Value == "" {
+		return api.Text{}
+	}
+	// get icon and color for field type
+
+	p := v.FieldType.Pretty()
+	if v.Value != "" {
+		p = p.Append(" = ", "text-gray-500").Append(v.Value, "text-gray-700")
+	}
+	return p
 }
 
 func (a ASTNode) Key() string {
@@ -271,17 +345,200 @@ func (ASTNode) TableName() string {
 	return "ast_nodes"
 }
 
+type ASTStatementType string
+
+const (
+	ASTStatementTypeFunctionCall ASTStatementType = "function_call"
+	ASTStatementTypeIf           ASTStatementType = "if"
+	ASTStatementTypeLoop         ASTStatementType = "loop"
+	ASTStatementTypeImport       ASTStatementType = "import"
+	ASTStatementTypeSQLQuery     ASTStatementType = "sql"
+	ASTStatementTypeExpression   ASTStatementType = "expression"
+	ASTStatementTypeAssignment   ASTStatementType = "assignment"
+	ASTStatementTypeHttpCall     ASTStatementType = "http_call"
+	ASTStatementTypeFileOp       ASTStatementType = "file_op"
+	ASTStatementTypeMessageQueue ASTStatementType = "message_queue"
+	ASTStatementTypeOther        ASTStatementType = "other"
+)
+
+func (t ASTStatementType) Pretty() api.Text {
+	switch t {
+	case ASTStatementTypeFunctionCall:
+		return clicky.Text("").Add(icons.ArrowRight)
+	case ASTStatementTypeIf:
+		return clicky.Text("").Add(icons.If)
+	case ASTStatementTypeLoop:
+		return clicky.Text("").Add(icons.Loop)
+	case ASTStatementTypeSQLQuery:
+		return clicky.Text("").Add(icons.DB)
+	case ASTStatementTypeExpression:
+		return clicky.Text("").Add(icons.Lambda)
+	case ASTStatementTypeAssignment:
+		return clicky.Text("").Add(icons.Variable)
+	case ASTStatementTypeHttpCall:
+		return clicky.Text("").Add(icons.Http)
+	case ASTStatementTypeFileOp:
+		return clicky.Text("").Add(icons.Folder)
+	case ASTStatementTypeMessageQueue:
+		return clicky.Text("").Add(icons.Queue)
+	case ASTStatementTypeImport:
+		return clicky.Text("").Add(icons.ArrowDown)
+	default:
+		return clicky.Text(" other", "text-gray-600")
+	}
+}
+
+type Params map[string]Value
+
+func (p Params) Pretty() api.Text {
+	if len(p) == 0 {
+		return api.Text{}
+	}
+
+	var parts = api.Text{}
+	if len(p) > 3 {
+		// Multi-line format for more than 3 params
+		first := true
+		for k, v := range p {
+			if !first {
+				parts = parts.Append("\n  ", "")
+			}
+			parts = parts.Append(k, "text-gray-500").Append("=", "text-gray-300").Add(v.Pretty())
+			first = false
+		}
+	} else {
+		// Single line format for 3 or fewer params
+		for k, v := range p {
+			parts = parts.Append(k, "text-gray-500").Append("=", "text-gray-300").Add(v.Pretty())
+		}
+	}
+	return parts
+}
+
+// Location represents a file location with line range
+type Location struct {
+	Path      string `json:"path"`
+	StartLine int    `json:"start_line"`
+	EndLine   int    `json:"end_line,omitempty"`
+}
+
+func (l Location) Pretty() api.Text {
+	var result api.Text
+
+	// Add filename if present
+	if l.Path != "" {
+		fileName := filepath.Base(l.Path)
+		result = clicky.Text(fileName, "text-blue-500 font-medium")
+	}
+
+	// Add line numbers even if path is empty
+	if l.EndLine > 0 && l.EndLine != l.StartLine {
+		// Range format: :L1-23
+		if l.Path != "" {
+			result = result.Append(":", "text-gray-400")
+		}
+		result = result.Append("L", "text-gray-500 text-xs")
+		result = result.Append(fmt.Sprintf("%d", l.StartLine), "text-purple-600 font-mono")
+		result = result.Append("-", "text-gray-400")
+		result = result.Append(fmt.Sprintf("%d", l.EndLine), "text-purple-600 font-mono")
+	} else if l.StartLine > 0 {
+		// Single line format: :L1
+		if l.Path != "" {
+			result = result.Append(":", "text-gray-400")
+		}
+		result = result.Append("L", "text-gray-500 text-xs")
+		result = result.Append(fmt.Sprintf("%d", l.StartLine), "text-purple-600 font-mono")
+	}
+
+	return result
+}
+
+// ASTStatement represents specific function calls, flow control statements, or important lines within an AST node
+type ASTStatement struct {
+	From      *ASTNode         `json:"from,omitempty" gorm:"-"`
+	To        *ASTNode         `json:"to,omitempty" gorm:"-"`
+	StartLine int              `json:"start_line,omitempty"`
+	EndLine   int              `json:"end_line,omitempty"`
+	Text      string           `json:"text"`
+	Input     Params           `json:"input,omitempty"`
+	Output    Params           `json:"output,omitempty"`
+	Type      ASTStatementType `json:"type"`
+	Children  []ASTStatement   `json:"children,omitempty"`
+}
+
+func (s ASTStatement) GetChildren() []api.TreeNode {
+	children := make([]api.TreeNode, len(s.Children))
+	for i, child := range s.Children {
+		children[i] = child
+	}
+	return children
+}
+
+func (s ASTStatement) Pretty() api.Text {
+	p := s.Type.Pretty()
+	if s.From != nil {
+		p = p.Append(" ").Add(s.From.ShortName()).Append(" = ", "text-muted")
+	}
+	if s.To != nil {
+		// Determine whether to show full qualified name based on context
+		var targetName api.Text
+		if s.From != nil {
+			fromPkg := s.From.GetPackage().FullName().String()
+			toPkg := s.To.GetPackage().FullName().String()
+			fromType := s.From.GetType().FullName().String()
+			toType := s.To.GetType().FullName().String()
+
+			// If packages differ, use full qualified name
+			if fromPkg != toPkg {
+				targetName = s.To.FullName()
+			} else if fromType != toType {
+				// If packages match but types differ, show Type.Method
+				targetName = clicky.Text("")
+				if s.To.TypeName != "" {
+					targetName = targetName.Append(s.To.TypeName)
+					if s.To.MethodName != "" {
+						targetName = targetName.Append(".", "text-gray-500").Append(s.To.MethodName)
+					} else if s.To.FieldName != "" {
+						targetName = targetName.Append(".", "text-gray-500").Append(s.To.FieldName)
+					}
+				} else {
+					targetName = s.To.ShortName()
+				}
+			} else {
+				// Same package and type, use short name
+				targetName = s.To.ShortName()
+			}
+		} else {
+			// No From context, use short name
+			targetName = s.To.ShortName()
+		}
+		p = p.Append(" → ", "text-gray-400").Add(targetName)
+	}
+	if s.Input != nil && len(s.Input) > 0 {
+		p = p.Append("( ", "text-gray-400").Add(s.Input.Pretty()).Append(" )", "text-gray-400")
+	}
+	if s.Text != "" {
+		p = p.Append(" ").Append(s.Text, "text-gray-700")
+	}
+	if s.Output != nil && len(s.Output) > 0 {
+		p = p.Append(" ").Add(icons.ArrowDoubleRight).Append(" ( ", "text-gray-400").Add(s.Output.Pretty()).Append(" )", "text-gray-400")
+	}
+
+	return p
+}
+
 // ASTRelationship represents a relationship between AST nodes
 type ASTRelationship struct {
-	ID               int64            `json:"id" gorm:"primaryKey;autoIncrement"`
-	FromAST          *ASTNode         `json:"-"`
-	ToAST            *ASTNode         `json:"-"`
-	FromASTID        int64            `json:"from_ast_id" gorm:"column:from_ast_id;not null;index"`
-	ToASTID          *int64           `json:"to_ast_id,omitempty" gorm:"column:to_ast_id;index"` // Nullable for external calls
-	LineNo           int              `json:"line_no,omitempty" gorm:"column:line_no;index"`
-	RelationshipType RelationshipType `json:"relationship_type" gorm:"column:relationship_type;not null;index"`
-	Comments         string           `json:"comments,omitempty" gorm:"column:comments"` // Additional comments or context found in the code
-	Text             string           `json:"text" gorm:"column:text"`                   // Text of the relationship, could be the line(s) with the function call, the line in a go.mod or Chart.yaml=
+	ID               int64             `json:"id" gorm:"primaryKey;autoIncrement"`
+	FromAST          *ASTNode          `json:"-"`
+	ToAST            *ASTNode          `json:"-"`
+	FromASTID        int64             `json:"from_ast_id" gorm:"column:from_ast_id;not null;index"`
+	ToASTID          *int64            `json:"to_ast_id,omitempty" gorm:"column:to_ast_id;index"` // Nullable for external calls
+	LineNo           int               `json:"line_no,omitempty" gorm:"column:line_no;index"`
+	RelationshipType RelationshipType  `json:"relationship_type" gorm:"column:relationship_type;not null;index"`
+	Comments         string            `json:"comments,omitempty" gorm:"column:comments"` // Additional comments or context found in the code
+	Text             string            `json:"text" gorm:"column:text"`                   // Text of the relationship, could be the line(s) with the function call, the line in a go.mod or Chart.yaml=
+	Metadata         map[string]string `json:"metadata,omitempty" gorm:"serializer:json"`
 }
 
 // TableName specifies the table name for ASTRelationship
@@ -300,6 +557,25 @@ const (
 	RelationshipTypeIncludes    RelationshipType = "includes"    // e.g. For a chart including a subchart
 	RelationshipTypeForeignKey  RelationshipType = "foreign_key" // Database foreign key constraint
 )
+
+func (r RelationshipType) Pretty() api.Text {
+	switch r {
+	case RelationshipTypeImport:
+		return clicky.Text("").Add(icons.ArrowDown).Append(" import", "text-blue-600")
+	case RelationshipTypeCall:
+		return clicky.Text("").Add(icons.ArrowRight).Append(" call", "text-green-600")
+	case RelationshipTypeInheritance:
+		return clicky.Text("").Add(icons.ArrowRight).Append(" extends", "text-purple-600")
+	case RelationshipTypeImplements:
+		return clicky.Text("").Add(icons.ArrowRight).Append(" implements", "text-indigo-600")
+	case RelationshipTypeIncludes:
+		return clicky.Text("").Add(icons.ArrowRight).Append(" includes", "text-pink-600")
+	case RelationshipTypeForeignKey:
+		return clicky.Text("").Add(icons.ArrowRight).Append(" foreign key", "text-red-600")
+	default:
+		return clicky.Text("").Add(icons.ArrowRight).Append(" reference", "text-yellow-600")
+	}
+}
 
 // DependencyRelationship represents a relationship between AST node and dependency node
 type DependencyRelationship struct {
@@ -420,6 +696,59 @@ const (
 	RelationshipForeignKey  = "foreign_key"
 )
 
+// nodeTypeIconCache caches NodeType -> api.Text mappings to avoid repeated lookups
+var nodeTypeIconCache = make(map[NodeType]api.Text)
+
+// nodeTypeMap defines icon and style mappings ordered by key length (longest first) for prefix matching
+var nodeTypeMap = []struct {
+	prefix string
+	icon   icons.Icon
+	style  string
+}{
+	{"method_stored_proc", icons.DB, "text-blue-700 font-semibold"},
+	{"method_http_delete", icons.Http, "text-red-600"},
+	{"method_http_post", icons.Http, "text-blue-600"},
+	{"method_http_put", icons.Http, "text-orange-600"},
+	{"method_http_get", icons.Http, "text-green-600"},
+	{"method_function", icons.Lambda, "text-blue-500"},
+	{"type_http_schema", icons.Http, "text-purple-600 italic"},
+	{"field_column", icons.DB, "text-green-700"},
+	{"type_table", icons.DB, "text-purple-700 font-semibold"},
+	{"type_view", icons.DB, "text-purple-500"},
+	{"method", icons.Method, "text-blue-600"},
+	{"variable", icons.Variable, "text-green-500"},
+	{"package", icons.Package, "text-orange-600"},
+	{"dependency", icons.Link, "text-gray-600"},
+	{"field", icons.Variable, "text-green-600"},
+	{"type", icons.Type, "text-purple-600"},
+}
+
+// getNodeTypeIconStyle returns formatted icon and style for a NodeType using longest-match-first with caching
+func getNodeTypeIconStyle(nt NodeType) api.Text {
+	// Check cache first
+	if cached, ok := nodeTypeIconCache[nt]; ok {
+		return cached
+	}
+
+	// Find longest matching prefix
+	var result api.Text
+	for _, mapping := range nodeTypeMap {
+		if strings.HasPrefix(string(nt), mapping.prefix) {
+			result = clicky.Text("").Add(mapping.icon)
+			if mapping.style != "" {
+				result.Style = mapping.style
+			}
+			nodeTypeIconCache[nt] = result
+			return result
+		}
+	}
+
+	// Default fallback
+	result = clicky.Text("")
+	nodeTypeIconCache[nt] = result
+	return result
+}
+
 func (n ASTNode) String() string {
 	parts := []string{}
 
@@ -456,27 +785,8 @@ func (n *ASTNode) GetSignature() string {
 }
 
 func (n *ASTNode) Pretty() api.Text {
-	icon := ""
-	nameStyle := ""
-
-	// Handle subtypes by checking base type prefixes
-	switch {
-	case n.NodeType == NodeTypePackage:
-		icon = "📦"
-		nameStyle = "text-blue-600 font-semibold"
-	case n.NodeType == NodeTypeType || strings.HasPrefix(string(n.NodeType), "type_"):
-		icon = "🏷️"
-		nameStyle = "text-purple-600 font-medium"
-	case n.NodeType == NodeTypeMethod || strings.HasPrefix(string(n.NodeType), "method_"):
-		icon = "⚡"
-		nameStyle = "text-green-600"
-	case n.NodeType == NodeTypeField || strings.HasPrefix(string(n.NodeType), "field_") || n.NodeType == NodeTypeVariable:
-		icon = "📊"
-		nameStyle = "text-amber-600"
-	default:
-		icon = "📝"
-		nameStyle = "text-gray-600"
-	}
+	// Get icon and style from NodeType
+	iconStyle := getNodeTypeIconStyle(n.NodeType)
 
 	// Show only current level name, not full path
 	var displayName string
@@ -506,11 +816,11 @@ func (n *ASTNode) Pretty() api.Text {
 		}
 	}
 
-	// Build styled content using clicky.Text builder
-	content := clicky.Text(icon).Append(" ")
+	// Build styled content starting with icon
+	content := iconStyle.Append(" ", "")
 
 	if displayName != "" {
-		content = content.Append(displayName, nameStyle)
+		content = content.Append(displayName, iconStyle.Style)
 
 		// Add parentheses for methods with subtle styling
 		if n.NodeType == NodeTypeMethod || strings.HasPrefix(string(n.NodeType), "method_") {
@@ -539,7 +849,7 @@ func (n *ASTNode) Pretty() api.Text {
 	return content
 }
 
-func (n *ASTNode) PrettyShort() api.Text {
+func (n *ASTNode) FullName() api.Text {
 	content := clicky.Text("")
 
 	// Include package name if present
@@ -571,74 +881,46 @@ func (n *ASTNode) PrettyShort() api.Text {
 	return content
 }
 
+// ShortClone creates a shallow clone of ASTNode suitable for PrettyShort() display
+// without any fields that could cause cycles (Parent, Statements, Relationships)
+func (n *ASTNode) ShortClone() *ASTNode {
+	if n == nil {
+		return nil
+	}
+	return &ASTNode{
+		ID:          n.ID,
+		FilePath:    n.FilePath,
+		PackageName: n.PackageName,
+		TypeName:    n.TypeName,
+		MethodName:  n.MethodName,
+		FieldName:   n.FieldName,
+		NodeType:    n.NodeType,
+		Language:    n.Language,
+		StartLine:   n.StartLine,
+		FieldType:   n.FieldType,
+		// Explicitly omit: Parent, Statements, Relationships, and other circular references
+	}
+}
+
+// GetPackage returns a new ASTNode representing just the package level
+func (n *ASTNode) GetPackage() *ASTNode {
+	return &ASTNode{
+		PackageName: n.PackageName,
+	}
+}
+
+// GetType returns a new ASTNode representing the package and type level
+func (n *ASTNode) GetType() *ASTNode {
+	return &ASTNode{
+		PackageName: n.PackageName,
+		TypeName:    n.TypeName,
+	}
+}
+
 // ShortName returns a formatted name with icon and type-based coloring using NodeType constants
 func (n *ASTNode) ShortName() api.Text {
-	var icon string
-	var nameStyle string
-
-	// Handle main types and their subtypes using the existing constants
-	switch n.NodeType {
-	// Method types (main + subtypes)
-	case NodeTypeMethod:
-		icon = "ƒ"
-		nameStyle = "text-blue-600"
-	case NodeTypeMethodStoredProc:
-		icon = "🗄️"
-		nameStyle = "text-blue-700 font-semibold" // Darker blue for stored procedures
-	case NodeTypeMethodFunction:
-		icon = "λ"
-		nameStyle = "text-blue-500" // Lighter blue for SQL functions
-	case NodeTypeMethodHTTPGet:
-		icon = "🌐"
-		nameStyle = "text-green-600" // Green for GET
-	case NodeTypeMethodHTTPPost:
-		icon = "🌐"
-		nameStyle = "text-blue-600" // Blue for POST
-	case NodeTypeMethodHTTPPut:
-		icon = "🌐"
-		nameStyle = "text-orange-600" // Orange for PUT
-	case NodeTypeMethodHTTPDelete:
-		icon = "🌐"
-		nameStyle = "text-red-600" // Red for DELETE
-
-	// Type types (main + subtypes)
-	case NodeTypeType:
-		icon = "🏷️"
-		nameStyle = "text-purple-600"
-	case NodeTypeTypeTable:
-		icon = "🗄️"
-		nameStyle = "text-purple-700 font-semibold" // Darker purple for tables
-	case NodeTypeTypeView:
-		icon = "🗄️"
-		nameStyle = "text-purple-500" // Lighter purple for views
-	case NodeTypeTypeHTTPSchema:
-		icon = "🌐"
-		nameStyle = "text-purple-600 italic" // Italic for schemas
-
-	// Field types (main + subtypes)
-	case NodeTypeField:
-		icon = "𝑣"
-		nameStyle = "text-green-600"
-	case NodeTypeVariable:
-		icon = "𝑣"
-		nameStyle = "text-green-500" // Slightly different for variables
-	case NodeTypeFieldColumn:
-		icon = "🗄️"
-		nameStyle = "text-green-700" // Darker green for database columns
-
-	// Other main types
-	case NodeTypePackage:
-		icon = "📦"
-		nameStyle = "text-orange-600"
-	case NodeTypeDependency:
-		icon = "🔗"
-		nameStyle = "text-gray-600"
-
-	// Default fallback
-	default:
-		icon = "📄"
-		nameStyle = "text-gray-600"
-	}
+	// Get icon and style from NodeType
+	iconStyle := getNodeTypeIconStyle(n.NodeType)
 
 	// Determine the display name based on node type
 	var displayName string
@@ -667,20 +949,13 @@ func (n *ASTNode) ShortName() api.Text {
 		}
 	}
 
-	// Create a single flattened text with icon and name
+	// If we have a display name, append it to the icon
 	if displayName != "" {
-		fullContent := fmt.Sprintf("%s %s", icon, displayName)
-		return api.Text{
-			Content: fullContent,
-			Style:   nameStyle,
-		}
+		return iconStyle.Append(" "+displayName, iconStyle.Style)
 	}
 
 	// If no display name, just return the icon
-	return api.Text{
-		Content: icon,
-		Style:   "",
-	}
+	return iconStyle
 }
 
 // PrettyWithConfig returns a detailed Pretty representation based on DisplayConfig and parent context
@@ -857,6 +1132,9 @@ func (n *ASTNode) GetChildren() []api.TreeNode {
 	result := make([]api.TreeNode, len(children))
 	for i, child := range children {
 		result[i] = child
+	}
+	for _, statement := range n.Statements {
+		result = append(result, statement)
 	}
 	return result
 }
@@ -1456,28 +1734,33 @@ func (n ASTNode) PrettyRow(opts interface{}) map[string]api.Text {
 	shortName := n.ShortName()
 	row["Name"] = shortName
 
-	// File column with max-20ch truncation and improved display
-	if n.FilePath != "" {
-		// Show basename with directory hint for better readability
-		fileName := filepath.Base(n.FilePath)
-
-		// Add directory hint if different from filename
-		dirName := filepath.Base(filepath.Dir(n.FilePath))
-		var displayName string
-		if dirName != "." && dirName != fileName && dirName != "" {
-			displayName = fmt.Sprintf("%s/%s", dirName, fileName)
-		} else {
-			displayName = fileName
+	// Package column
+	if n.PackageName != "" {
+		row["Package"] = api.Text{
+			Content: n.PackageName,
+			Style:   "text-orange-600 max-w-[80ch] truncate",
 		}
+	}
 
-		// Truncate to max 20 characters if needed
-		if len(displayName) > 20 {
-			displayName = displayName[:17] + "..."
+	// File column using basename:L1-23 format
+	if n.FilePath != "" {
+		fileName := filepath.Base(n.FilePath)
+		var lineRef string
+		if n.EndLine > 0 && n.EndLine != n.StartLine {
+			lineRef = fmt.Sprintf(":L%d-%d", n.StartLine, n.EndLine)
+		} else if n.StartLine > 0 {
+			lineRef = fmt.Sprintf(":L%d", n.StartLine)
+		}
+		displayName := fileName + lineRef
+
+		// Truncate from beginning if too long (ellipsis-prefix style)
+		if len(displayName) > 77 {
+			displayName = "..." + displayName[len(displayName)-74:]
 		}
 
 		row["File"] = api.Text{
 			Content: displayName,
-			Style:   "text-blue-500 max-w-[20ch] truncate",
+			Style:   "text-blue-500 max-w-[80ch] ellipsis-prefix",
 		}
 	}
 
@@ -1497,13 +1780,13 @@ func (n ASTNode) PrettyRow(opts interface{}) map[string]api.Text {
 
 		row["Lines"] = api.Text{
 			Content: linesContent,
-			Style:   "text-gray-600 max-w-[20ch] truncate font-mono",
+			Style:   "text-gray-600 max-w-[80ch] truncate font-mono",
 		}
 	} else if n.StartLine > 0 {
 		// Show just the start line if no count available
 		row["Lines"] = api.Text{
 			Content: fmt.Sprintf("%d", n.StartLine),
-			Style:   "text-gray-600 max-w-[20ch] truncate font-mono",
+			Style:   "text-gray-600 max-w-[80ch] truncate font-mono",
 		}
 	}
 
@@ -1511,11 +1794,11 @@ func (n ASTNode) PrettyRow(opts interface{}) map[string]api.Text {
 	if n.CyclomaticComplexity > 0 {
 		var style string
 		if n.CyclomaticComplexity <= 5 {
-			style = "text-green-600 max-w-[20ch] truncate"
+			style = "text-green-600 max-w-[80ch] truncate"
 		} else if n.CyclomaticComplexity <= 10 {
-			style = "text-yellow-600 max-w-[20ch] truncate"
+			style = "text-yellow-600 max-w-[80ch] truncate"
 		} else {
-			style = "text-red-600 max-w-[20ch] truncate"
+			style = "text-red-600 max-w-[80ch] truncate"
 		}
 		row["Complexity"] = api.Text{
 			Content: fmt.Sprintf("%d", n.CyclomaticComplexity),
@@ -1523,19 +1806,23 @@ func (n ASTNode) PrettyRow(opts interface{}) map[string]api.Text {
 		}
 	}
 
-	// Parameters column - show types if available, otherwise count
+	// Parameters column - show names and types if available, otherwise count
 	if n.ParameterCount > 0 {
 		var content string
 		if len(n.Parameters) > 0 {
-			// Show parameter types
-			var paramTypes []string
+			// Show parameter names and types
+			var parts []string
 			for _, param := range n.Parameters {
-				paramTypes = append(paramTypes, param.Type)
+				if param.Name != "" && param.Name != "_" {
+					parts = append(parts, fmt.Sprintf("%s %s", param.Name, param.Type))
+				} else {
+					parts = append(parts, param.Type)
+				}
 			}
-			content = strings.Join(paramTypes, ", ")
+			content = strings.Join(parts, ", ")
 			// Truncate if too long
-			if len(content) > 30 {
-				content = content[:27] + "..."
+			if len(content) > 77 {
+				content = content[:74] + "..."
 			}
 		} else {
 			// Fallback to count
@@ -1543,23 +1830,27 @@ func (n ASTNode) PrettyRow(opts interface{}) map[string]api.Text {
 		}
 		row["Params"] = api.Text{
 			Content: content,
-			Style:   "max-w-[20ch] truncate",
+			Style:   "max-w-[80ch] truncate",
 		}
 	}
 
-	// Returns column - show return types if available, otherwise count
+	// Returns column - show return names and types if available, otherwise count
 	if n.ReturnCount > 0 {
 		var content string
 		if len(n.ReturnValues) > 0 {
-			// Show return types
-			var returnTypes []string
+			// Show return names and types
+			var parts []string
 			for _, ret := range n.ReturnValues {
-				returnTypes = append(returnTypes, ret.Type)
+				if ret.Name != "" {
+					parts = append(parts, fmt.Sprintf("%s %s", ret.Name, ret.Type))
+				} else {
+					parts = append(parts, ret.Type)
+				}
 			}
-			content = strings.Join(returnTypes, ", ")
+			content = strings.Join(parts, ", ")
 			// Truncate if too long
-			if len(content) > 30 {
-				content = content[:27] + "..."
+			if len(content) > 77 {
+				content = content[:74] + "..."
 			}
 		} else {
 			// Fallback to count
@@ -1567,7 +1858,7 @@ func (n ASTNode) PrettyRow(opts interface{}) map[string]api.Text {
 		}
 		row["Returns"] = api.Text{
 			Content: content,
-			Style:   "max-w-[20ch] truncate",
+			Style:   "max-w-[80ch] truncate",
 		}
 	}
 
@@ -1575,7 +1866,7 @@ func (n ASTNode) PrettyRow(opts interface{}) map[string]api.Text {
 	if n.FieldType != nil && *n.FieldType != "" {
 		row["Type"] = api.Text{
 			Content: *n.FieldType,
-			Style:   "text-blue-500 max-w-[20ch] truncate",
+			Style:   "text-blue-500 max-w-[80ch] truncate",
 		}
 	}
 
@@ -1583,7 +1874,7 @@ func (n ASTNode) PrettyRow(opts interface{}) map[string]api.Text {
 	if n.DefaultValue != nil && *n.DefaultValue != "" {
 		row["Default"] = api.Text{
 			Content: *n.DefaultValue,
-			Style:   "text-green-500 max-w-[20ch] truncate",
+			Style:   "text-green-500 max-w-[80ch] truncate",
 		}
 	}
 

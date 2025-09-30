@@ -334,3 +334,65 @@ var _ = Describe("BuildASTNodeTree", func() {
 		Expect(tree.GetChildren()).NotTo(BeNil())
 	})
 })
+
+var _ = Describe("Params Pretty", func() {
+	It("should format empty params", func() {
+		params := models.Params{}
+		result := params.Pretty()
+		Expect(result.String()).To(BeEmpty())
+	})
+
+	It("should format single param on one line", func() {
+		params := models.Params{
+			"key1": models.Value{Value: "value1", FieldType: models.FieldTypeString},
+		}
+		result := params.Pretty()
+		Expect(result.String()).To(ContainSubstring("key1="))
+		Expect(result.String()).NotTo(ContainSubstring("\n"))
+	})
+
+	It("should format three params on one line", func() {
+		params := models.Params{
+			"key1": models.Value{Value: "value1", FieldType: models.FieldTypeString},
+			"key2": models.Value{Value: "value2", FieldType: models.FieldTypeString},
+			"key3": models.Value{Value: "value3", FieldType: models.FieldTypeString},
+		}
+		result := params.Pretty()
+		Expect(result.String()).To(ContainSubstring("key1="))
+		Expect(result.String()).To(ContainSubstring("key2="))
+		Expect(result.String()).To(ContainSubstring("key3="))
+		Expect(result.String()).NotTo(ContainSubstring("\n"))
+	})
+
+	It("should format four params with newlines", func() {
+		params := models.Params{
+			"key1": models.Value{Value: "value1", FieldType: models.FieldTypeString},
+			"key2": models.Value{Value: "value2", FieldType: models.FieldTypeString},
+			"key3": models.Value{Value: "value3", FieldType: models.FieldTypeString},
+			"key4": models.Value{Value: "value4", FieldType: models.FieldTypeString},
+		}
+		result := params.Pretty()
+		Expect(result.String()).To(ContainSubstring("key1="))
+		Expect(result.String()).To(ContainSubstring("key2="))
+		Expect(result.String()).To(ContainSubstring("key3="))
+		Expect(result.String()).To(ContainSubstring("key4="))
+		Expect(result.String()).To(ContainSubstring("\n"))
+	})
+
+	It("should format five params with newlines", func() {
+		params := models.Params{
+			"key1": models.Value{Value: "value1", FieldType: models.FieldTypeString},
+			"key2": models.Value{Value: "value2", FieldType: models.FieldTypeString},
+			"key3": models.Value{Value: "value3", FieldType: models.FieldTypeString},
+			"key4": models.Value{Value: "value4", FieldType: models.FieldTypeString},
+			"key5": models.Value{Value: "value5", FieldType: models.FieldTypeString},
+		}
+		result := params.Pretty()
+		Expect(result.String()).To(ContainSubstring("key1="))
+		Expect(result.String()).To(ContainSubstring("key2="))
+		Expect(result.String()).To(ContainSubstring("key3="))
+		Expect(result.String()).To(ContainSubstring("key4="))
+		Expect(result.String()).To(ContainSubstring("key5="))
+		Expect(result.String()).To(ContainSubstring("\n"))
+	})
+})
