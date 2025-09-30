@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.10](https://github.com/flanksource/arch-unit/compare/v1.0.9...v1.0.10) (2025-09-30)
+
+
+### 🐛 Bug Fixes
+
+* checkout release tag in build-binaries job ([7db5606](https://github.com/flanksource/arch-unit/commit/7db5606eb3846ef5f4ad66a66c85d13b9282a2f9))
+
 ## [1.0.9](https://github.com/flanksource/arch-unit/compare/v1.0.8...v1.0.9) (2025-09-30)
 
 ## [1.0.8](https://github.com/flanksource/arch-unit/compare/v1.0.7...v1.0.8) (2025-09-30)
