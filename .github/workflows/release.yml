@@ -27,7 +27,8 @@ jobs:
       - name: Calculate next version
         id: version
         run: |
-          curl -sL https://github.com/caarlos0/svu/releases/download/v2.3.0/svu_2.3.0_linux_amd64.tar.gz | tar xz
+          curl -sL -o svu.tar.gz https://github.com/caarlos0/svu/releases/download/v2.3.0/svu_2.3.0_linux_amd64.tar.gz
+          tar -xzf svu.tar.gz
           chmod +x svu
           NEXT_VERSION=$(./svu patch)
           echo "next=$NEXT_VERSION" >> $GITHUB_OUTPUT
