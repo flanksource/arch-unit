@@ -51,16 +51,25 @@ tasks:
       DIRTY:
         sh: if [ -n "$(git status --porcelain 2>/dev/null)" ]; then echo "true"; else echo "false"; fi
       LDFLAGS: -s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}} -X main.dirty={{.DIRTY}}
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      OUTPUT_NAME: '{{if eq .GOOS "windows"}}{{.BINARY_NAME}}.exe{{else}}{{.BINARY_NAME}}{{end}}'
+      OUTPUT_DIR: '{{.OUTPUT_DIR | default "."}}'
 
     cmds:
-      - go build -ldflags "{{.LDFLAGS}}" -o {{.BINARY_NAME}} {{.MAIN_PACKAGE}}
+      - mkdir -p {{.OUTPUT_DIR}}
+      - go build -ldflags "{{.LDFLAGS}}" -o {{.OUTPUT_DIR}}/{{.OUTPUT_NAME}} {{.MAIN_PACKAGE}}
     sources:
       - ./**/*.go
       - analysis/java/java_ast_extractor.jar
       - go.mod
       - go.sum
     generates:
-      - ./{{.BINARY_NAME}}
+      - '{{.OUTPUT_DIR}}/{{.OUTPUT_NAME}}'
+    env:
+      CGO_ENABLED: 0
+      GOOS: '{{.GOOS}}'
+      GOARCH: '{{.GOARCH}}'
 
   install:
     desc: Install the binary to $GOPATH/bin
